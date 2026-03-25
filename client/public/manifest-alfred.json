@@ -1,0 +1,29 @@
+{
+  "name": "Max Assistant",
+  "short_name": "Max",
+  "description": "Assistant IA professionnel",
+  "start_url": "/max",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "fr",
+  "dir": "ltr",
+  "scope": "/max",
+  "prefer_related_applications": false
+}

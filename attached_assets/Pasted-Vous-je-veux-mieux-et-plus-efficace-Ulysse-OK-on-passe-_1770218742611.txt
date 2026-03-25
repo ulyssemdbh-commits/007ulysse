@@ -1,0 +1,910 @@
+Vous
+
+je veux mieux et plus efficace
+
+Ulysse
+
+OK, on passe en mode “vraie V3 propre et optimisée”, pas juste “je répare ce qui casse”.
+
+Je te propose une version plus robuste, modulaire et safe :
+
+Initialisation des modules PDF claire et contrôlée (status + logs propres)
+Séparation nette:
+extraction brut texte PDF
+parsing métier factures
+Code plus court, moins de magie, mais toujours très puissant
+Fail-safe: si pdfjs échoue → pdf-parse → sinon erreur claire
+Typage strict, regex un peu nettoyées
+Pas de duplication de logique HT/TVA/TTC
+Je ne peux pas dev tout ton domaine métier from scratch dans 3 lignes, mais je peux te donner un service vraiment clean sur lequel tu peux itérer.
+
+Architecture simplifiée
+PdfTextExtractor → centralise toute la galère pdfjs / pdf-parse
+InvoiceParserService → comprend le texte, trouve factures, TVA, TTC, etc.
+import * as fs from "fs";
+import * as path from "path";
+import { createRequire } from "module";
+
+/* ────────────────────────────
+ * Types métier
+ * ──────────────────────────── */
+
+export interface InvoiceLine {
+  reference: string;
+  designation: string;
+  quantite: number;
+  prixUnitaireHT: number;
+  montantHT: number;
+  tva: number;
+}
+
+export interface TVADetail {
+  base: number;
+  taux: number;
+  montant: number;
+}
+
+export interface Invoice {
+  numero: string;
+  date: string;
+  dateEcheance?: string;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  tvaDetails: TVADetail[];
+  fraisLivraison?: {
+    montantHT: number;
+    tva: number;
+    montantTVA: number;
+  };
+  lignes: InvoiceLine[];
+  pageSource: number;
+  validationStatus: "validated" | "warning" | "invalid";
+}
+
+export interface InvoiceExtractionResult {
+  success: boolean;
+  fournisseur: {
+    nom: string;
+    siret?: string;
+    adresse?: string;
+    telephone?: string;
+  };
+  client: {
+    nom: string;
+    adresse?: string;
+  };
+  periode: string;
+  factures: Invoice[];
+  totaux: {
+    nombreFactures: number;
+    totalHT: number;
+    totalTVA: number;
+    totalTTC: number;
+    detailTVA: {
+      tva21: { base: number; montant: number };
+      tva55: { base: number; montant: number };
+      tva10: { base: number; montant: number };
+      tva20: { base: number; montant: number };
+    };
+  };
+  validation: {
+    isValid: boolean;
+    accuracy: number;
+    validatedCount: number;
+    warningCount: number;
+    invalidCount: number;
+    warnings: string[];
+    errors: string[];
+  };
+  summary: string;
+}
+
+/* ────────────────────────────
+ * Extracteur PDF centralisé
+ * ──────────────────────────── */
+
+type PdfGetDocument = (options: any) => { promise: Promise<any> };
+
+class PdfTextExtractor {
+  private pdfGetDocument: PdfGetDocument | null = null;
+  private PDFParseClass: any = null;
+  private loaded = false;
+  private loadingPromise: Promise<void> | null = null;
+
+  private logPrefix = "[InvoiceParser V3][PDF]";
+
+  async ensureLoaded(): Promise<void> {
+    if (this.loaded) return;
+    if (this.loadingPromise) return this.loadingPromise;
+
+    this.loadingPromise = (async () => {
+      // 1) pdfjs-dist (ESM legacy)
+      try {
+        const pdfModule: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        this.pdfGetDocument = pdfModule.getDocument as PdfGetDocument;
+        if (pdfModule.GlobalWorkerOptions) {
+          pdfModule.GlobalWorkerOptions.workerSrc = "";
+        }
+        this.loaded = true;
+        console.log(`${this.logPrefix} pdfjs-dist legacy/ESM OK (worker off)`);
+        return;
+      } catch (e1) {
+        console.warn(`${this.logPrefix} pdfjs-dist legacy KO:`, e1);
+      }
+
+      // 2) pdfjs-dist main
+      if (!this.pdfGetDocument) {
+        try {
+          const pdfModule: any = await import("pdfjs-dist");
+          this.pdfGetDocument = pdfModule.getDocument as PdfGetDocument;
+          if (pdfModule.GlobalWorkerOptions) {
+            pdfModule.GlobalWorkerOptions.workerSrc = "";
+          }
+          this.loaded = true;
+          console.log(`${this.logPrefix} pdfjs-dist main OK (worker off)`);
+          return;
+        } catch (e2) {
+          console.warn(`${this.logPrefix} pdfjs-dist main KO:`, e2);
+        }
+      }
+
+      // 3) pdf-parse fallback (CJS)
+      if (!this.pdfGetDocument) {
+        try {
+          const moduleUrl =
+            "file://" + path.join(process.cwd(), "server", "services", "invoiceParserService.ts");
+          const require = createRequire(moduleUrl);
+          const pdfParseModule = require("pdf-parse");
+          this.PDFParseClass = pdfParseModule.PDFParse || pdfParseModule;
+          if (this.PDFParseClass && typeof this.PDFParseClass === "function") {
+            this.loaded = true;
+            console.log(`${this.logPrefix} pdf-parse OK`);
+            return;
+          }
+        } catch (e3) {
+          console.error(`${this.logPrefix} aucun parser PDF dispo:`, e3);
+        }
+      }
+
+      this.loaded = true; // mais sans backend dispo
+    })();
+
+    return this.loadingPromise;
+  }
+
+  async extractFullText(filePath: string): Promise<{ text: string; numPages: number }> {
+    await this.ensureLoaded();
+
+    if (!this.pdfGetDocument && !this.PDFParseClass) {
+      throw new Error("Aucun module PDF disponible");
+    }
+
+    const buffer = fs.readFileSync(filePath);
+    const uint8Array = new Uint8Array(buffer);
+
+    // 1) pdfjs-dist
+    if (this.pdfGetDocument) {
+      try {
+        const task = this.pdfGetDocument({
+          data: uint8Array,
+          disableWorker: true,
+          isEvalSupported: false,
+          useWorkerFetch: false,
+          standardFontDataUrl: undefined
+        });
+        const pdfDoc = await task.promise;
+        const numPages = pdfDoc.numPages || 0;
+
+        let fullText = "";
+        for (let i = 1; i <= numPages; i++) {
+          const page = await pdfDoc.getPage(i);
+          const content = await page.getTextContent();
+          fullText += `\n--- PAGE ${i} ---\n`;
+          for (const item of content.items as Array<{ str?: string }>) {
+            if (item.str) fullText += item.str + " ";
+          }
+        }
+
+        console.log(`${this.logPrefix} extraction pdfjs-dist: ${numPages} pages`);
+        return { text: fullText, numPages };
+      } catch (e) {
+        console.warn(`${this.logPrefix} pdfjs-dist KO, fallback pdf-parse:`, e);
+      }
+    }
+
+    // 2) pdf-parse
+    if (this.PDFParseClass) {
+      const parser = new this.PDFParseClass(uint8Array);
+      await parser.load();
+      const numPages = parser.doc?.numPages || 0;
+
+      let fullText = "";
+      for (let i = 1; i <= numPages; i++) {
+        const page = await parser.doc.getPage(i);
+        const content = await page.getTextContent();
+        fullText += `\n--- PAGE ${i} ---\n`;
+        for (const item of content.items as Array<{ str?: string }>) {
+          if (item.str) fullText += item.str + " ";
+        }
+      }
+
+      console.log(`${this.logPrefix} extraction pdf-parse: ${numPages} pages`);
+      return { text: fullText, numPages };
+    }
+
+    throw new Error("Impossible d'extraire le texte du PDF");
+  }
+}
+
+const pdfExtractor = new PdfTextExtractor();
+
+/* ────────────────────────────
+ * Service métier
+ * ──────────────────────────── */
+
+export class InvoiceParserService {
+  private readonly TVA_RATES = [2.1, 5.5, 10, 20];
+
+  private readonly INVOICE_PATTERNS: Array<{ pattern: RegExp; priority: number }> = [
+    { pattern: /\bF\d{7}\b/g, priority: 10 }, // Zouaghi
+    { pattern: /\bFC?\d{8,10}\b/gi, priority: 9 },
+    { pattern: /\bFA[\s-]?\d{6,10}\b/gi, priority: 9 },
+    { pattern: /\bFAC[\s-]?\d{6,10}\b/gi, priority: 9 },
+    {
+      pattern: /(?:Facture|Invoice)\s(?:n[°o]?\s*)?[:\s]([A-Z]{0,3}\d{5,12})/gi,
+      priority: 8
+    },
+    { pattern: /\b\d{4}[-/]\d{4,8}\b/g, priority: 7 },
+    { pattern: /\b[A-Z]{2,3}\d{6,10}\b/g, priority: 6 }
+  ];
+
+  private readonly EXCLUDE_PATTERNS = [
+    /^FR\d{11}$/,
+    /^\d{14}$/,
+    /^FR\d{2}\s?\d{5}\s?\d{5}\s?\d{5}\s?\d{5}\s?\d{3}$/,
+    /^[34578]\d{13}$/
+  ];
+
+  /* Utils bas niveau */
+
+  private parseAmount(amountStr: string): number {
+    if (!amountStr) return 0;
+    const cleaned = amountStr
+      .replace(/€/g, "")
+      .replace(/\s/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".")
+      .trim();
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
+  }
+
+  private formatAmount(amount: number): string {
+    return (
+      amount.toLocaleString("fr-FR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }) + " €"
+    );
+  }
+
+  /* Détection fournisseur / client */
+
+  private detectFournisseur(text: string): { nom: string; siret?: string; adresse?: string; telephone?: string } {
+    const lower = text.toLowerCase();
+
+    const known = [
+      {
+        keys: ["zouaghi", "zouaghi-cacher"],
+        info: {
+          nom: "ZOUAGHI CACHER",
+          siret: "38816729800016",
+          adresse: "2A boulevard Latil, 13008 MARSEILLE",
+          telephone: "04 95 05 30 00"
+        }
+      },
+      { keys: ["metro cash", "metro france", "metro cc"], info: { nom: "METRO CASH & CARRY" } },
+      { keys: ["promocash"], info: { nom: "PROMOCASH" } },
+      { keys: ["transgourmet"], info: { nom: "TRANSGOURMET" } },
+      { keys: ["sysco", "brake france"], info: { nom: "SYSCO FRANCE" } },
+      { keys: ["carrefour pro"], info: { nom: "CARREFOUR PRO" } }
+    ];
+
+    for (const s of known) {
+      if (s.keys.some(k => lower.includes(k))) return s.info;
+    }
+
+    const siretMatch = text.match(/(?:SIRET|Siret)\s:?\s([\d\s]{14,17})/i);
+    const siret = siretMatch ? siretMatch[1].replace(/\s/g, "") : undefined;
+
+    const forme = text.match(/(?:SARL|SAS|SA|EURL|SNC|SASU)\s+([A-ZÀ-Ü][A-ZÀ-Ü\s-]{2,40})/i);
+    if (forme) return { nom: forme[1].trim(), siret };
+
+    const header = text.match(/^([A-ZÀ-Ü][A-ZÀ-Ü\s-]{3,40})\s*$/m);
+    if (header && !header[1].includes("FACTURE")) {
+      return { nom: header[1].trim(), siret };
+    }
+
+    return { nom: "Fournisseur", siret };
+  }
+
+  private detectClient(text: string): { nom: string; adresse?: string } {
+    if (text.includes("SUGU VALENTINE")) {
+      return {
+        nom: "SUGU VALENTINE",
+        adresse: "6 AVENUE CESAR BOY, 13011 Marseille"
+      };
+    }
+    if (text.includes("SUGU MAILLANE") || text.includes("SUGUMAILLANE")) {
+      return { nom: "SUGU MAILLANE", adresse: "Marseille" };
+    }
+
+    const patterns = [
+      /(?:Client|Livré à|Destinataire|Adresse de livraison)\s:?\s*([A-ZÀ-Ü][A-ZÀ-Ü\s-]{2,40})/i,
+      /ADRESSE DE LIVRAISON\s+([A-Z][A-Z\s]+)\s+(\d+[^,]+),?\s*(\d{5})/i
+    ];
+
+    for (const p of patterns) {
+      const m = text.match(p);
+      if (m) {
+        return {
+          nom: m[1].trim(),
+          adresse: m[2] && m[3] ? `${m[2]}, ${m[3]}` : undefined
+        };
+      }
+    }
+
+    return { nom: "Client" };
+  }
+
+  /* Détection transport */
+
+  private detectTransportFees(section: string): boolean {
+    const kws = [
+      /\bCOLIS\b/i,
+      /\bTransport\b/i,
+      /\bLivraison\b/i,
+      /\bPort\b/i,
+      /\bFranco\b/i,
+      /\bFrais\s+(?:de\s+)?(?:port|livraison|transport|expédition)\b/i,
+      /\+\d+[.\s]COLIS/i,
+      /\bExpédition\b/i,
+      /\bEnvoi\b/i
+    ];
+    return kws.some(r => r.test(section));
+  }
+
+  /* Numéros de facture */
+
+  private extractInvoiceNumbers(text: string): string[] {
+    const all: Array<{ numero: string; priority: number; index: number }> = [];
+
+    for (const def of this.INVOICE_PATTERNS) {
+      const matches = [...text.matchAll(def.pattern)];
+      for (const m of matches) {
+        const raw = (m[1] || m[0]).toString();
+        const excluded = this.EXCLUDE_PATTERNS.some(ep => ep.test(raw));
+        if (!excluded && raw.length >= 5) {
+          all.push({
+            numero: raw.toUpperCase(),
+            priority: def.priority,
+            index: m.index || 0
+          });
+        }
+      }
+    }
+
+    const unique = new Map<string, { priority: number; index: number }>();
+    for (const m of all) {
+      const ex = unique.get(m.numero);
+      if (!ex || m.priority > ex.priority) {
+        unique.set(m.numero, { priority: m.priority, index: m.index });
+      }
+    }
+
+    return [...unique.entries()]
+      .sort((a, b) => a[1].index - b[1].index)
+      .map(e => e[0]);
+  }
+
+  /* TVA / TTC extraction */
+
+  private extractTVA(section: string): {
+    tvaDetails: TVADetail[];
+    totalHT: number;
+    totalTVA: number;
+    fraisLivraison?: { montantHT: number; tva: number; montantTVA: number };
+  } {
+    const tvaDetails: TVADetail[] = [];
+    let totalHT = 0;
+    let totalTVA = 0;
+    let fraisLivraison: { montantHT: number; tva: number; montantTVA: number } | undefined;
+
+    const hasTransport = this.detectTransportFees(section);
+
+    // tableaux TVA
+    const tablePatterns = [
+      /(\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€?\s*(2[,.]1|5[,.]5|10|20)\s*%?\s*(\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s€/g,
+      /(2[,.]1|5[,.]5|10|20)\s*%?\s*(\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€?\s*(\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s€/g
+    ];
+
+    for (const p of tablePatterns) {
+      let m: RegExpExecArray | null;
+      while ((m = p.exec(section)) !== null) {
+        let base: number, taux: number, montant: number;
+        if (p === tablePatterns[0]) {
+          base = this.parseAmount(m[1]);
+          taux = parseFloat(m[2].replace(",", "."));
+          montant = this.parseAmount(m[3]);
+        } else {
+          taux = parseFloat(m[1].replace(",", "."));
+          base = this.parseAmount(m[2]);
+          montant = this.parseAmount(m[3]);
+        }
+        const expected = Math.round(base * (taux / 100) * 100) / 100;
+        if (Math.abs(expected - montant) <= 0.05) {
+          tvaDetails.push({ base, taux, montant });
+          if (taux === 20 && hasTransport) {
+            fraisLivraison = { montantHT: base, tva: taux, montantTVA: montant };
+          }
+        }
+      }
+    }
+
+    if (tvaDetails.length === 0) {
+      const lines = section.split(/[\r\n]+/);
+      for (const line of lines) {
+        for (const taux of this.TVA_RATES) {
+          const tauxStr = taux.toString().replace(".", "[,\\.]");
+          const reg = new RegExp(
+            `(\\d{1,3}(?:[\\s\\.]\\d{3})*[,\\.]\\d{2})\\s*€?.*?${tauxStr}\\s*%.*?(\\d{1,3}(?:[\\s\\.]\\d{3})*[,\\.]\\d{2})\\s*€`,
+            "i"
+          );
+          const m = line.match(reg);
+          if (m) {
+            const base = this.parseAmount(m[1]);
+            const montant = this.parseAmount(m[2]);
+            const exp = Math.round(base * (taux / 100) * 100) / 100;
+            if (Math.abs(exp - montant) <= 0.05) {
+              tvaDetails.push({ base, taux, montant });
+            }
+          }
+        }
+      }
+    }
+
+    if (tvaDetails.length === 0) {
+      const htP = [
+        /Total\sH.?T.?\s[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€/i,
+        /Montant\sH.?T.?\s[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€/i
+      ];
+      const tvaP = [
+        /Total\sTVA\s[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€/i,
+        /Montant\sTVA\s[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€/i
+      ];
+
+      for (const r of htP) {
+        const m = section.match(r);
+        if (m) {
+          totalHT = this.parseAmount(m[1]);
+          break;
+        }
+      }
+      for (const r of tvaP) {
+        const m = section.match(r);
+        if (m) {
+          totalTVA = this.parseAmount(m[1]);
+          break;
+        }
+      }
+
+      if (totalHT > 0 && totalTVA > 0) {
+        const ratio = (totalTVA / totalHT) * 100;
+        let tauxEstime = 20;
+        for (const t of this.TVA_RATES) {
+          if (Math.abs(ratio - t) < 1) {
+            tauxEstime = t;
+            break;
+          }
+        }
+        tvaDetails.push({ base: totalHT, taux: tauxEstime, montant: totalTVA });
+      }
+    }
+
+    if (tvaDetails.length > 0 && totalHT === 0 && totalTVA === 0) {
+      for (const d of tvaDetails) {
+        totalHT += d.base;
+        totalTVA += d.montant;
+      }
+    }
+
+    return { tvaDetails, totalHT, totalTVA, fraisLivraison };
+  }
+
+  private extractTTC(section: string): number {
+    const patterns = [
+      /NET\s[AÀ]\sPAYER\s[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€/i,
+      /Total\sTTC\s[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€/i,
+      /Montant\sTTC\s[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€/i,
+      /TTC\s*[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€/i,
+      /Total\s*[:\s](\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s*€\s*(?:TTC)?/i
+    ];
+
+    for (const r of patterns) {
+      const m = section.match(r);
+      if (m) return this.parseAmount(m[1]);
+    }
+
+    const all = [...section.matchAll(/(\d{1,3}(?:[\s.]\d{3})[,.]\d{2})\s€/g)]
+      .map(m => this.parseAmount(m[1]))
+      .filter(a => a > 10);
+
+    if (all.length === 0) return 0;
+
+    return Math.max(...all);
+  }
+
+  /* Extraction principale */
+
+  async extractFromPDF(filePath: string): Promise<InvoiceExtractionResult> {
+    const baseResult = (): InvoiceExtractionResult => ({
+      success: false,
+      fournisseur: { nom: "Inconnu" },
+      client: { nom: "Inconnu" },
+      periode: "",
+      factures: [],
+      totaux: {
+        nombreFactures: 0,
+        totalHT: 0,
+        totalTVA: 0,
+        totalTTC: 0,
+        detailTVA: {
+          tva21: { base: 0, montant: 0 },
+          tva55: { base: 0, montant: 0 },
+          tva10: { base: 0, montant: 0 },
+          tva20: { base: 0, montant: 0 }
+        }
+      },
+      validation: {
+        isValid: false,
+        accuracy: 0,
+        validatedCount: 0,
+        warningCount: 0,
+        invalidCount: 0,
+        warnings: [],
+        errors: []
+      },
+      summary: ""
+    });
+
+    const result = baseResult();
+
+    try {
+      const { text, numPages } = await pdfExtractor.extractFullText(filePath);
+      if (!text || text.trim().length === 0) {
+        result.validation.errors.push("Texte non extractible");
+        result.summary = "Erreur: Texte non extractible";
+        return result;
+      }
+
+      console.log(`[InvoiceParser V3] PDF ${numPages} pages, ${text.length} caractères`);
+
+      const fournisseur = this.detectFournisseur(text);
+      const client = this.detectClient(text);
+      const invoiceNumbers = this.extractInvoiceNumbers(text);
+
+      console.log(
+        `[InvoiceParser V3] ${invoiceNumbers.length} numéros de facture détectés pour ${fournisseur.nom}`
+      );
+
+      const factures: Invoice[] = [];
+      const warnings: string[] = [];
+      const errors: string[] = [];
+      let validated = 0;
+      let warn = 0;
+      let invalid = 0;
+
+      for (const numero of invoiceNumbers) {
+        try {
+          const start = text.indexOf(numero);
+          if (start === -1) continue;
+
+          let end = text.length;
+          for (const other of invoiceNumbers) {
+            if (other === numero) continue;
+            const idx = text.indexOf(other, start + numero.length);
+            if (idx > start && idx < end) end = idx;
+          }
+
+          const nextPageIdx = text.indexOf("--- PAGE", start + 20);
+          if (nextPageIdx > start && nextPageIdx < end) {
+            const after = text.substring(nextPageIdx, end);
+            if (!after.includes(numero)) end = nextPageIdx;
+          }
+
+          const section = text.substring(start, end);
+
+          const datePatterns = [
+            /(\d{2}\/\d{2}\/\d{4})/,
+            /(\d{2}\/\d{2}\/\d{2})/,
+            /(\d{2}[-.]\d{2}[-.]\d{4})/,
+            /(\d{2}[-.]\d{2}[-.]\d{2})/
+          ];
+          let date = "";
+          for (const r of datePatterns) {
+            const m = section.match(r);
+            if (m) {
+              date = m[1];
+              break;
+            }
+          }
+
+          const { tvaDetails, totalHT, totalTVA, fraisLivraison } = this.extractTVA(section);
+          const totalTTC = this.extractTTC(section);
+
+          if (totalTTC === 0) {
+            console.log(`[InvoiceParser V3] skip ${numero} (TTC non trouvé)`);
+            continue;
+          }
+
+          let status: Invoice["validationStatus"] = "invalid";
+          const calcTTC = Math.round((totalHT + totalTVA) * 100) / 100;
+          const ecart = Math.abs(calcTTC - totalTTC);
+
+          if (totalHT > 0 && totalTVA > 0) {
+            if (ecart <= 0.02) {
+              status = "validated";
+              validated++;
+            } else if (ecart <= 0.1) {
+              status = "warning";
+              warn++;
+              warnings.push(
+                `${numero}: écart ${ecart.toFixed(
+                  2
+                )}€ entre HT+TVA et TTC (arrondi probablement)`
+              );
+            } else {
+              status = "invalid";
+              invalid++;
+              warnings.push(
+                `${numero}: HT(${this.formatAmount(
+                  totalHT
+                )}) + TVA(${this.formatAmount(
+                  totalTVA
+                )}) ≠ TTC(${this.formatAmount(totalTTC)}) [écart ${ecart.toFixed(2)}€]`
+              );
+            }
+          } else {
+            status = "warning";
+            warn++;
+            warnings.push(`${numero}: TTC trouvé mais HT/TVA incomplets (validation partielle)`);
+          }
+
+          factures.push({
+            numero,
+            date,
+            totalHT,
+            totalTVA,
+            totalTTC,
+            tvaDetails,
+            fraisLivraison,
+            lignes: [],
+            pageSource: 1,
+            validationStatus: status
+          });
+
+          console.log(
+            `[InvoiceParser V3] ${numero} ${date} → ${this.formatAmount(
+              totalTTC
+            )} [${status}]`
+          );
+        } catch (e) {
+          invalid++;
+          errors.push(`${numero}: erreur d'extraction (${(e as Error).message})`);
+        }
+      }
+
+      // tri par date si possible
+      factures.sort((a, b) => {
+        const parse = (d: string) => {
+          const p = d.split(/[/.-]/);
+          if (p.length === 3) {
+            const [dd, mm, yy] = p.map(Number);
+            return new Date(yy < 100 ? 2000 + yy : yy, mm - 1, dd).getTime();
+          }
+          return 0;
+        };
+        if (a.date && b.date) return parse(a.date) - parse(b.date);
+        return a.numero.localeCompare(b.numero);
+      });
+
+      const detailTVA = {
+        tva21: { base: 0, montant: 0 },
+        tva55: { base: 0, montant: 0 },
+        tva10: { base: 0, montant: 0 },
+        tva20: { base: 0, montant: 0 }
+      };
+
+      for (const f of factures) {
+        for (const d of f.tvaDetails) {
+          if (d.taux === 2.1) {
+            detailTVA.tva21.base += d.base;
+            detailTVA.tva21.montant += d.montant;
+          } else if (d.taux === 5.5 || d.taux === 5) {
+            detailTVA.tva55.base += d.base;
+            detailTVA.tva55.montant += d.montant;
+          } else if (d.taux === 10) {
+            detailTVA.tva10.base += d.base;
+            detailTVA.tva10.montant += d.montant;
+          } else if (d.taux === 20) {
+            detailTVA.tva20.base += d.base;
+            detailTVA.tva20.montant += d.montant;
+          }
+        }
+      }
+
+      for (const k of Object.keys(detailTVA) as Array<keyof typeof detailTVA>) {
+        detailTVA[k].base = Math.round(detailTVA[k].base * 100) / 100;
+        detailTVA[k].montant = Math.round(detailTVA[k].montant * 100) / 100;
+      }
+
+      const totaux = {
+        nombreFactures: factures.length,
+        totalHT: Math.round(factures.reduce((s, f) => s + f.totalHT, 0) * 100) / 100,
+        totalTVA: Math.round(factures.reduce((s, f) => s + f.totalTVA, 0) * 100) / 100,
+        totalTTC: Math.round(factures.reduce((s, f) => s + f.totalTTC, 0) * 100) / 100,
+        detailTVA
+      };
+
+      let periode = "";
+      if (factures.length && factures[0].date) {
+        const p = factures[0].date.split(/[/.-]/);
+        if (p.length >= 2) {
+          const moisNoms = [
+            "",
+            "Janvier",
+            "Février",
+            "Mars",
+            "Avril",
+            "Mai",
+            "Juin",
+            "Juillet",
+            "Août",
+            "Septembre",
+            "Octobre",
+            "Novembre",
+            "Décembre"
+          ];
+          const mois = parseInt(p[1], 10);
+          const annee = parseInt(p[2], 10);
+          periode = `${moisNoms[mois] || p[1]} ${annee < 100 ? 2000 + annee : annee}`;
+        }
+      }
+
+      const totalInv = validated + warn + invalid;
+      const accuracy =
+        totalInv > 0
+          ? Math.round(((validated + warn * 0.8) / totalInv) * 100)
+          : 0;
+      const isValid = factures.length > 0 && accuracy >= 80 && errors.length === 0;
+
+      const summary = this.generateSummary(
+        fournisseur,
+        client,
+        periode,
+        factures,
+        totaux,
+        accuracy,
+        validated,
+        warn,
+        invalid,
+        warnings
+      );
+
+      return {
+        success: true,
+        fournisseur,
+        client,
+        periode,
+        factures,
+        totaux,
+        validation: {
+          isValid,
+          accuracy,
+          validatedCount: validated,
+          warningCount: warn,
+          invalidCount: invalid,
+          warnings,
+          errors
+        },
+        summary
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erreur inconnue";
+      result.validation.errors.push(msg);
+      result.summary = `Erreur lors de l'extraction: ${msg}`;
+      return result;
+    }
+  }
+
+  private generateSummary(
+    fournisseur: { nom: string },
+    client: { nom: string },
+    periode: string,
+    factures: Invoice[],
+    totaux: InvoiceExtractionResult["totaux"],
+    accuracy: number,
+    validated: number,
+    warn: number,
+    invalid: number,
+    warnings: string[]
+  ): string {
+    let s = `**FACTURES ${fournisseur.nom}**\n`;
+    s += `Période: **${periode || "N/A"}**\n`;
+    s += `Client: ${client.nom}\n\n`;
+
+    const fiab =
+      accuracy >= 95 ? "EXCELLENT" : accuracy >= 85 ? "BON" : accuracy >= 70 ? "ACCEPTABLE" : "À VÉRIFIER";
+
+    s += `Fiabilité extraction: **${accuracy}% (${fiab})**\n`;
+    s += `Validées: ${validated} | Avertissements: ${warn} | Invalides: ${invalid}\n\n`;
+
+    s += `**${totaux.nombreFactures} factures extraites :**\n\n`;
+    for (const f of factures) {
+      const icon = f.validationStatus === "validated" ? "✓" : f.validationStatus === "warning" ? "!" : "✗";
+      let line = `${icon} **${f.numero}**`;
+      if (f.date) line += ` du ${f.date}`;
+      line += ` → **${this.formatAmount(f.totalTTC)}**`;
+      if (f.fraisLivraison) {
+        line += ` *(livraison ${this.formatAmount(f.fraisLivraison.montantHT)} HT)*`;
+      }
+      s += line + "\n";
+    }
+
+    s += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    s += `**TOTAUX ${periode || ""}:**\n\n`;
+    s += `HT: ${this.formatAmount(totaux.totalHT)}\n`;
+    if (totaux.detailTVA.tva21.base > 0) {
+      s += ` - 2,1%: ${this.formatAmount(totaux.detailTVA.tva21.base)} → TVA ${this.formatAmount(
+        totaux.detailTVA.tva21.montant
+      )}\n`;
+    }
+    if (totaux.detailTVA.tva55.base > 0) {
+      s += ` - 5,5%: ${this.formatAmount(totaux.detailTVA.tva55.base)} → TVA ${this.formatAmount(
+        totaux.detailTVA.tva55.montant
+      )}\n`;
+    }
+    if (totaux.detailTVA.tva10.base > 0) {
+      s += ` - 10%: ${this.formatAmount(totaux.detailTVA.tva10.base)} → TVA ${this.formatAmount(
+        totaux.detailTVA.tva10.montant
+      )}\n`;
+    }
+    if (totaux.detailTVA.tva20.base > 0) {
+      s += ` - 20%: ${this.formatAmount(totaux.detailTVA.tva20.base)} → TVA ${this.formatAmount(
+        totaux.detailTVA.tva20.montant
+      )} *(transport compris)*\n`;
+    }
+    s += `TVA totale: ${this.formatAmount(totaux.totalTVA)}\n`;
+    s += `**TTC: ${this.formatAmount(totaux.totalTTC)}**\n`;
+
+    if (warnings.length > 0) {
+      s += `\nAvertissements principaux:\n`;
+      for (const w of warnings.slice(0, 5)) {
+        s += `- ${w}\n`;
+      }
+      if (warnings.length > 5) {
+        s += `... et ${warnings.length - 5} autres\n`;
+      }
+    }
+
+    return s;
+  }
+}
+
+export const invoiceParserService = new InvoiceParserService();
+En gros :
+
+Plus efficace → un seul extracteur PDF central, fallback propre, moins de duplication.
+Plus maintenable → la logique “PDF” et la logique “facture” sont séparées.
+Plus sûr → erreurs gérées proprement, pas de commentaires cassés ou regex foireuses.

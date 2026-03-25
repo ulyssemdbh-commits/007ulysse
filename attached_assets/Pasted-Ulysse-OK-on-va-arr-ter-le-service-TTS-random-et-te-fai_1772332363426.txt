@@ -1,0 +1,204 @@
+Ulysse
+OK, on va arrêter le “service TTS random” et te faire un vrai design de stack TTS maison, niveau “je n’ai plus besoin d’OpenAI pour parler”.
+
+Je te fais un truc sérieux, en trois couches:
+
+Moteur TTS bas niveau (Piper, multi‑models, ultra optimisé)
+Service TTS intelligent (côté serveur Ulysse)
+Intégration TalkingApp / pipeline v4.1 (latence minimale, barge‑in, cache, QoS)
+1️⃣ Moteur TTS bas niveau – “Piper Turbo”
+
+Objectif: synthèse ultra rapide, stable, multi‑langues, avec prédictibilité.
+
+Matos recommandé
+1 petite VM dédiée (ou container dédié) :
+CPU 4 vCores, 8 Go RAM (plus si tu veux plusieurs modèles en RAM).
+Stockage SSD (Piper s’en fout un peu, mais bon).
+OS: Ubuntu 22.04 ou Debian stable.
+Installation Piper + modèles
+Tu montes une stack comme ça:
+
+/opt/piper
+/opt/piper/models avec par ex:
+fr_FR-mls_5809-low.onnx (FR rapide, voix masculine neutre)
+fr_FR-upmc-medium.onnx (FR un peu plus naturel)
+en_US-… si tu veux l’anglais.
+Important: précharge les modèles au démarrage, ne fais jamais un “load on demand”.
+
+2️⃣ Service TTS intelligent (au-dessus de Piper)
+
+Là on arrête les scripts shell et on fait un service TTS qui a un cerveau:
+
+API HTTP + HTTP chunked streaming
+gestion des files, priorités, cache audio
+healthcheck, metrics, circuit breaker
+Je te le fais en Python FastAPI (pour coller au mieux à Piper), mais on peut le faire en Node si tu préfères.
+
+2.1. API design
+Endpoints:
+
+POST /tts (sync, streaming possible)
+
+body:
+{
+  "text": "Salut Maurice, je suis prêt.",
+  "voice": "fr_fast",
+  "format": "mp3",
+  "speed": 1.0,
+  "cache": true
+}
+réponse:
+soit audio/mpeg en flux,
+soit JSON { audio_base64: "..." } si tu veux rester compatible avec ton pipeline actuel.
+GET /health
+
+ping + ping Piper.
+GET /metrics
+
+temps moyen de synthèse,
+nombre de requêtes,
+hit/miss du cache,
+erreurs.
+2.2. Pipeline interne du service TTS
+Pour chaque requête:
+
+Normalisation du texte:
+
+trim, suppression double espaces
+découpage en phrases (mêmes règles que ton pipeline v4.1 côté LLM)
+option: regex pour nettoyer trucs inutiles (“…” exagérés, etc.)
+Cache audio (fort gain réel):
+
+key = hash(voice + text_normalisé)
+stockage:
+soit en RAM (LRU cache),
+soit sur disque (/var/cache/piper) avec index.
+si hit → renvoi immédiat (10–50ms), aucun appel Piper.
+Planning:
+
+file interne:
+priorité haute pour phrases courtes et messages système,
+priorité normale pour tout le reste.
+limite de requêtes parallèles pour éviter d’exploser la machine (genre 2–4 synthèses concurrentes max).
+Synthèse avec Piper:
+
+soit via bindings Python,
+soit via CLI:
+echo "texte" | piper --model fr_FR-... --output_file -
+résultat: buffer WAV → transcodé vers MP3/OGG (via ffmpeg ou lib interne).
+Streaming:
+
+si utilisé avec ton pipeline TTS phrase‑par‑phrase:
+tu peux renvoyer l’audio phrase par phrase,
+ou tout concaténer si tu veux un call POST /tts global.
+3️⃣ Intégration avec ton pipeline v4.1 (le vrai sujet)
+
+Tu as déjà un pipeline TTS propre. On le rend indépendant d’OpenAI et vraiment performant.
+
+Dans realtimeResponse.ts, remplace ttsOneSentence par une version “PiperService + cache côté service TTS”.
+
+3.1. Nouveau ttsOneSentence côté Node (backend Ulysse)
+const TTS_ENDPOINT = process.env.TTS_ENDPOINT || "http://tts-service:8080/tts";
+
+async function ttsOneSentence(text: string, voice: string): Promise<string | null> {
+  const trimmed = text.trim();
+  if (trimmed.length < 2) return null;
+
+  try {
+    const resp = await fetch(TTS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: trimmed,
+        voice,          // "fr_fast", "fr_natural", etc.
+        format: "mp3",
+        cache: true,
+        speed: 1.0
+      }),
+    });
+
+    if (!resp.ok) {
+      console.error("[TTS] HTTP error", resp.status);
+      return null;
+    }
+
+    // Mode base64 (compatible avec audio_chunk actuel)
+    const json = await resp.json();
+    if (!json.audio_base64) {
+      console.error("[TTS] Missing audio_base64");
+      return null;
+    }
+
+    return json.audio_base64 as string;
+  } catch (err) {
+    console.error("[TTS] Error:", err);
+    return null;
+  }
+}
+Ton pipeline v4.1 reste identique: TTS en parallèle, lecture séquentielle, barge‑in, etc.
+Tu as juste changé le fournisseur TTS.
+
+4️⃣ Optimisations “vraiment sérieuses”
+
+Là où on monte de niveau:
+
+4.1. Multi‑modèles & profils TTS
+Tu peux définir quelques “profils” :
+
+fr_fast → modèle FR low/medium, très rapide, pour tout ce qui est conversationnel.
+fr_narration → modèle un peu plus lourd, pour lectures longues (documents).
+en_fast → modèle EN pour les bouts anglais.
+Dans ton ttsOneSentence, tu fais:
+
+const voiceProfile = session.isOwner ? "fr_fast" : "fr_fast";
+// plus tard: persona-based profile
+Et côté service TTS tu routes vers le bon modèle.
+
+4.2. Pré‑synthèse de phrases courantes (warm cache)
+Tu peux pré‑générer l’audio de:
+
+“Salut Maurice, je suis prêt.”
+“Un instant, je réfléchis.”
+“Encore là ?”
+etc.
+Au démarrage du service TTS, tu lances un job qui:
+
+appelle /tts pour une liste de phrases standard,
+cache tout en local (RAM/disque).
+Résultat: ces phrases sortent instantanément.
+
+4.3. Résilience & circuit breaker
+Dans ton backend, tu peux ajouter:
+
+Si 3 erreurs TTS consécutives:
+tu mets un flag TTS_DOWN = true pendant 30 secondes,
+tu n’appelles plus le service TTS → tu renvoies direct tts_error + texte,
+tu loggues, tu alertes.
+Ça évite de bourriner un service qui vient de mourir.
+
+5️⃣ Pourquoi c’est “mieux” que ce que je t’ai dit avant
+
+Par rapport à la réponse d’avant (que tu as trouvé “léger”, à juste titre):
+
+On ne parle plus de “juste appeler Piper”.
+On parle d’un vrai micro‑service TTS:
+modèles pré‑chargés,
+cache centralisé,
+API propre et stable,
+intégration totale dans ton pipeline voice v4.1,
+extensible (plusieurs modèles, plusieurs langues),
+et surtout remplaçable (tu pourras swap Piper par un autre moteur sans toucher ton backend ni ton front).
+6️⃣ Prochaine étape concrète
+
+Si tu veux du concret, je peux te fournir:
+
+Dockerfile complet pour le service TTS (FastAPI + Piper + modèle FR + cache).
+Le code Python FastAPI :
+/tts → reçoit text, renvoie audio_base64 ou flux,
+/health, /metrics.
+Le patch exact de ton realtimeResponse.ts (remplacement de ttsOneSentence + petite gestion d’erreur TTS).
+Dis-moi juste:
+
+tu préfères FastAPI (Python) ou Node pour le service TTS ?
+tu t’attends à combien de req TTS / seconde max (ordre de grandeur: 1–5, 5–20, 20+)?
+Je te crache ensuite la version code prête à coller, pas juste le design.

@@ -1,0 +1,282 @@
+ Étendre classifyQuery pour les queries sportives
+Dans le fichier où tu implémentes classifyQuery (probablement responsePolicy.ts ou un module dédié), ajoute / adapte ce bloc.
+
+// Exemple d’extension de classifyQuery
+
+export function classifyQuery(query: string): string {
+  const lower = query.toLowerCase();
+
+  // --- SPORTS (foot + autres) ---
+  const footballKeywords = [
+    "ligue des champions", "champions league", "ldc",
+    "ligue 1", "ligue1", "l1",
+    "premier league", "pl",
+    "la liga", "liga",
+    "serie a", "bundesliga",
+    "score", "résultat", "resultat", "classement", "calendrier", "prochaine journée",
+    "match", "buteur", "but", "carton rouge",
+    "om", "marseille", "psg", "paris saint germain",
+    "real madrid", "barça", "barcelona", "bayern", "man city", "manchester city"
+  ];
+
+  const basketballKeywords = [
+    "nba", "euroleague", "euroleague", "basket", "basketball",
+    "playoffs nba", "regular season", "score nba"
+  ];
+
+  const f1Keywords = [
+    "formule 1", "f1", "grand prix", "grand prix f1", "classement pilotes", "classement constructeurs"
+  ];
+
+  // Football d’abord car c’est ton sport principal
+  if (footballKeywords.some(k => lower.includes(k))) {
+    return "sports_football";
+  }
+
+  if (basketballKeywords.some(k => lower.includes(k))) {
+    return "sports_basketball";
+  }
+
+  if (f1Keywords.some(k => lower.includes(k))) {
+    return "sports_motorsport";
+  }
+
+  // --- Reste de ta logique existante ---
+  // (exemple générique, à adapter avec ce que tu as déjà)
+  if (/* ton test conversational */ false) {
+    return "conversational";
+  }
+
+  if (/* test news/temporal */ false) {
+    return "news"; // ou "temporal"
+  }
+
+  // etc.
+
+  return "factual";
+}
+Tu adaptes pour garder tes autres types (conversational, news, temporal, factual, etc.), mais l’idée est que les sports passent par ces nouveaux queryTypes.
+
+2. Brancher le pipeline sports_football dans searchWithMARS
+Dans ton searchWithMARS, juste après :
+
+const queryType = classifyQuery(query);
+console.log(`[MARS] Query classified as: ${queryType}`);
+
+if (queryType === "conversational") {
+  // ...
+}
+if (queryType === "temporal" || queryType === "news") {
+  cfg.freshnessRequired = true;
+}
+Ajoute :
+
+// Nouveau : routeur sports
+if (queryType === "sports_football") {
+  return await searchSportsFootballWithMARS(userId, query, startTime);
+}
+
+// Plus tard tu pourras plugger:
+// if (queryType === "sports_basketball") { ... }
+// if (queryType === "sports_motorsport") { ... }
+Puis plus bas dans le même fichier, ajoute le squelette searchSportsFootballWithMARS.
+
+Je te donne une version neutre qui attend un service sportsCacheService, mais qui est alignée avec ton style MARS :
+
+// À ajouter dans marsService.ts
+
+// À adapter selon ton vrai service / endpoints sports
+import { sportsCacheService } from "../services/sportsCacheService"; 
+// (ou nom réel de ton module foot / cache Djedou Pronos)
+
+async function searchSportsFootballWithMARS(
+  userId: number,
+  query: string,
+  startTime: number
+): Promise<MARSSearchResult> {
+  try {
+    console.log(`[MARS SPORTS] Handling sports_football query: "${query}"`);
+
+    // 1) Utiliser ton cache / service foot
+    const sportsData = await sportsCacheService.searchQuery(query);
+    // À implémenter : searchQuery(query) → { matches: [...], standings: [...], etc. }
+
+    if (!sportsData || (!sportsData.matches || sportsData.matches.length === 0)) {
+      console.log("[MARS SPORTS] No internal sports data, returning insufficient result");
+
+      const factAggregation: FactAggregation = {
+        facts: [],
+        summary: "Pas de données sport internes trouvées pour cette requête",
+        overallConfidence: 0,
+        controversies: [],
+        dataGaps: ["Aucun match correspondant dans le cache sports"],
+      };
+
+      const policyDecision: PolicyDecision = {
+        canRespond: false,
+        confidenceLevel: "insufficient",
+        reasoning: "No internal sports data",
+        warnings: ["Données sport manquantes"],
+        recommendations: ["Vérifier le cache sports ou reformuler la requête"],
+        mustDisclaim: true,
+        disclaimers: [],
+      };
+
+      const orchestratorResponse: OrchestratorResponse = {
+        results: [],
+        directAnswers: [],
+        engineStats: {
+          serper: { success: false, resultCount: 0, timeMs: 0 },
+          perplexity: { success: false, resultCount: 0, timeMs: 0 },
+        },
+        totalTime: 0,
+        success: false,
+      };
+
+      const formattedForAI = formatMARSResults({
+        orchestratorResponse,
+        factAggregation,
+        policyDecision,
+        reliabilityScores: [],
+        queryType: "sports_football",
+        extractedContents: [],
+      });
+
+      await saveSearchToMemory(userId, query, "sports_football", factAggregation, [], policyDecision);
+      await saveToMarsHistory(userId, query, "sports_football", {
+        orchestratorResponse,
+        extractedContents: [],
+        factAggregation,
+        policyDecision,
+        reliabilityScores: [],
+      });
+
+      return {
+        query,
+        queryType: "sports_football",
+        orchestratorResponse,
+        extractedContents: [],
+        reliabilityScores: [],
+        factAggregation,
+        policyDecision,
+        formattedForAI,
+        totalTime: Date.now() - startTime,
+        success: false,
+        error: "No sports data",
+      };
+    }
+
+    // 2) Construire des facts MARS à partir de sportsData
+    const facts = buildSportsFactsFromData(sportsData); // à implémenter
+    const summary = buildSportsSummary(sportsData, query); // à implémenter
+
+    const factAggregation: FactAggregation = {
+      facts,
+      summary,
+      overallConfidence: 90,
+      controversies: [],
+      dataGaps: [],
+    };
+
+    const policyDecision: PolicyDecision = {
+      canRespond: true,
+      confidenceLevel: "high",
+      reasoning: "Sports data from internal cache",
+      warnings: [],
+      recommendations: [],
+      mustDisclaim: false,
+      disclaimers: [],
+    };
+
+    const orchestratorResponse: OrchestratorResponse = {
+      results: [],
+      directAnswers: [],
+      engineStats: {
+        serper: { success: false, resultCount: 0, timeMs: 0 },
+        perplexity: { success: false, resultCount: 0, timeMs: 0 },
+      },
+      totalTime: 0,
+      success: true,
+    };
+
+    const formattedForAI = formatMARSResults({
+      orchestratorResponse,
+      factAggregation,
+      policyDecision,
+      reliabilityScores: [],
+      queryType: "sports_football",
+      extractedContents: [],
+    });
+
+    await saveSearchToMemory(userId, query, "sports_football", factAggregation, [], policyDecision);
+    await saveToMarsHistory(userId, query, "sports_football", {
+      orchestratorResponse,
+      extractedContents: [],
+      factAggregation,
+      policyDecision,
+      reliabilityScores: [],
+    });
+
+    const totalTime = Date.now() - startTime;
+    console.log(`[MARS SPORTS] Football query complete in ${totalTime}ms`);
+
+    return {
+      query,
+      queryType: "sports_football",
+      orchestratorResponse,
+      extractedContents: [],
+      reliabilityScores: [],
+      factAggregation,
+      policyDecision,
+      formattedForAI,
+      totalTime,
+      success: true,
+    };
+  } catch (error) {
+    console.error("[MARS SPORTS] Error:", error);
+    return {
+      query,
+      queryType: "sports_football",
+      orchestratorResponse: {
+        results: [],
+        directAnswers: [],
+        engineStats: {
+          serper: { success: false, resultCount: 0, timeMs: 0 },
+          perplexity: { success: false, resultCount: 0, timeMs: 0 },
+        },
+        totalTime: 0,
+        success: false,
+      },
+      extractedContents: [],
+      reliabilityScores: [],
+      factAggregation: {
+        facts: [],
+        summary: "Erreur sur la requête sports_football",
+        overallConfidence: 0,
+        controversies: [],
+        dataGaps: [],
+      },
+      policyDecision: {
+        canRespond: false,
+        confidenceLevel: "insufficient",
+        reasoning: "Sports error",
+        warnings: [],
+        recommendations: [],
+        mustDisclaim: true,
+        disclaimers: [],
+      },
+      formattedForAI: "[MARS SPORTS] Erreur",
+      totalTime: Date.now() - startTime,
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown sports error",
+    };
+  }
+}
+Là :
+
+sportsCacheService.searchQuery(query) tu l’implémentes en wrapant ton cache Djedou Pronos / API-Football.
+buildSportsFactsFromData peut créer des facts du type :
+“Score final : PSG 2–1 OM (Ligue 1, 28 janvier 2026)”,
+“Buteurs : Mbappé (2), Vitinha (1)”,
+“PSG reste 1er avec 45 points”.
+Ensuite on pourra décliner le même principe pour sports_basketball et sports_motorsport avec leurs services respectifs.

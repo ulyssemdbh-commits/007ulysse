@@ -1,0 +1,256 @@
+Ulysse
+
+Parfait. Là on fait du boulot sérieux.
+
+Je te propose un truc propre en Node/TypeScript, avec Playwright (Chromium), structuré comme tu aimes :
+
+un service core parionsSportScraper (réutilisable),
+une route API POST /api/scrape/parions-sport qui l’utilise,
+un format de sortie propre pour les matchs + cotes.
+Je pars sur Express, tu adaptes à ton framework (Next API routes, Fastify, Nest, peu importe).
+
+1. Installation des deps
+npm install playwright
+# ou
+yarn add playwright
+
+# Si tu n’as pas encore les binaires
+npx playwright install chromium
+2. Service core : parionsSportScraper.ts
+Ce module :
+
+lance Chromium en headless,
+charge l’URL,
+attend que les blocs de matchs soient présents,
+scrap les infos utiles,
+renvoie un tableau tipé.
+Les sélecteurs sont évidemment à ajuster en fonction du DOM réel de Parions Sport, mais je te donne une structure claire.
+
+// src/services/parionsSportScraper.ts
+import { chromium, Browser, Page } from 'playwright';
+
+export interface ParionsSportMatch {
+  competition: string;          // ex: "Ligue des Champions"
+  dateRaw: string;              // ex: "Mar. 18/02"
+  timeRaw: string;              // ex: "21:00"
+  home: string;
+  away: string;
+  odds: {
+    home?: number;              // 1
+    draw?: number;              // N
+    away?: number;              // 2
+  };
+  rawBlockText?: string;        // pour debug
+}
+
+export interface ScrapeResult {
+  url: string;
+  success: boolean;
+  matches: ParionsSportMatch[];
+  error?: string;
+}
+
+/**
+ * Scrape Parions Sport "Top Foot Européen" page
+ * @param url URL complète Parions Sport (celle que tu m’as envoyée)
+ */
+export async function scrapeParionsSport(url: string): Promise<ScrapeResult> {
+  let browser: Browser | undefined;
+  let page: Page | undefined;
+
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+      ],
+    });
+
+    const context = await browser.newContext({
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+      locale: 'fr-FR',
+    });
+
+    page = await context.newPage();
+
+    // Optionnel : gérer le bandeau cookies
+    // tu peux ajouter un click sur un bouton d’acceptation si besoin
+
+    await page.goto(url, {
+      waitUntil: 'networkidle',
+      timeout: 30_000,
+    });
+
+    // Ici il faut ajuster le sélecteur pour cibler les "cartes" de match.
+    // Je te mets un sélecteur générique / exemple.
+    // Inspecte la page dans ton propre navigateur et adapte.
+    const MATCH_CARD_SELECTOR = '[data-testid="event-card"], .ps-event-card, .event-card';
+
+    // On attend qu’au moins un match soit rendu
+    await page.waitForSelector(MATCH_CARD_SELECTOR, { timeout: 15_000 });
+
+    const matches: ParionsSportMatch[] = await page.$$eval(
+      MATCH_CARD_SELECTOR,
+      (cards) => {
+        // Cette partie s’exécute dans le contexte du navigateur
+        const extractFloat = (txt: string | null | undefined): number | undefined => {
+          if (!txt) return undefined;
+          const normalized = txt.replace(',', '.').replace(/[^\d.]/g, '').trim();
+          const val = parseFloat(normalized);
+          return Number.isFinite(val) ? val : undefined;
+        };
+
+        const results: ParionsSportMatch[] = [];
+
+        for (const card of cards) {
+          try {
+            const root = card as HTMLElement;
+
+            // À adapter selon le DOM réel :
+            const compEl = root.querySelector('[data-testid="competition-name"], .competition, .sport-label');
+            const dateEl = root.querySelector('[data-testid="event-date"], .date, .event-date');
+            const timeEl = root.querySelector('[data-testid="event-time"], .time, .event-time');
+
+            const teamsEls = root.querySelectorAll(
+              '[data-testid="team-name"], .team-name, .event-team-name'
+            );
+
+            // Cotes "1N2"
+            const oddsEls = root.querySelectorAll(
+              '[data-testid^="market-outright"], [data-testid^="selection"], .outcome-coefficient, .odds'
+            );
+
+            const competition = compEl?.textContent?.trim() || '';
+            const dateRaw = dateEl?.textContent?.trim() || '';
+            const timeRaw = timeEl?.textContent?.trim() || '';
+
+            const home = teamsEls[0]?.textContent?.trim() || '';
+            const away = teamsEls[1]?.textContent?.trim() || '';
+
+            let homeOdd: number | undefined;
+            let drawOdd: number | undefined;
+            let awayOdd: number | undefined;
+
+            if (oddsEls.length >= 3) {
+              homeOdd = extractFloat(oddsEls[0].textContent);
+              drawOdd = extractFloat(oddsEls[1].textContent);
+              awayOdd = extractFloat(oddsEls[2].textContent);
+            }
+
+            const rawBlockText = root.innerText;
+
+            if (home && away) {
+              results.push({
+                competition,
+                dateRaw,
+                timeRaw,
+                home,
+                away,
+                odds: {
+                  home: homeOdd,
+                  draw: drawOdd,
+                  away: awayOdd,
+                },
+                rawBlockText,
+              });
+            }
+          } catch (e) {
+            // On ignore les erreurs sur un card isolé
+          }
+        }
+
+        return results;
+      }
+    );
+
+    return {
+      url,
+      success: true,
+      matches,
+    };
+  } catch (error: any) {
+    console.error('[ParionsSportScraper] Error:', error);
+    return {
+      url,
+      success: false,
+      matches: [],
+      error: error?.message || 'Unknown error',
+    };
+  } finally {
+    if (page) {
+      await page.close().catch(() => {});
+    }
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+  }
+}
+Tu auras à ajuster les sélecteurs (MATCH_CARD_SELECTOR, .team-name, .odds, etc.) avec un simple inspecteur dans ton navigateur.
+
+3. Route API : POST /api/scrape/parions-sport
+Exemple avec Express.
+
+// src/routes/scrapeParionsSportRoute.ts
+import { Router } from 'express';
+import { scrapeParionsSport } from '../services/parionsSportScraper';
+
+const router = Router();
+
+/**
+ * POST /api/scrape/parions-sport
+ * Body: { url?: string }
+ * Si url absent → valeur par défaut (Top Foot Européen).
+ */
+router.post('/parions-sport', async (req, res) => {
+  const defaultUrl =
+    'https://www.enligne.parionssport.fdj.fr/paris-football?titre=Top%20Foot%20Europ%C3%A9en&ids=58535089,58941152,58531076,58532497,58532492,58554102,58545066,58531576,58531497,58531570,58551460,58532401,58551616,58532453,58558744,58532237,58626935,58602842,58529754,58608172,58529890,58529612,58544781,58529747,58530875,58531060,58559084,58576401';
+
+  const url: string = req.body?.url || defaultUrl;
+
+  try {
+    const result = await scrapeParionsSport(url);
+
+    if (!result.success) {
+      return res.status(500).json({
+        ok: false,
+        error: result.error || 'Scraping failed',
+      });
+    }
+
+    // Optionnel: filtrer uniquement Ligue des Champions, etc.
+    // const filtered = result.matches.filter(m => m.competition.includes('Ligue des Champions'));
+
+    return res.json({
+      ok: true,
+      url: result.url,
+      count: result.matches.length,
+      matches: result.matches,
+    });
+  } catch (error: any) {
+    console.error('[Route /api/scrape/parions-sport] Error:', error);
+    return res.status(500).json({
+      ok: false,
+      error: error?.message || 'Unknown error',
+    });
+  }
+});
+
+export default router;
+Et dans ton serveur :
+
+// src/server.ts
+import express from 'express';
+import bodyParser from 'body-parser';
+import scrapeParionsSportRoute from './routes/scrapeParionsSportRoute';
+
+const app = express();
+app.use(bodyParser.json());
+
+app.use('/api/scrape', scrapeParionsSportRoute);
+
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  console.log(`Scraper API running on http://localhost:${PORT

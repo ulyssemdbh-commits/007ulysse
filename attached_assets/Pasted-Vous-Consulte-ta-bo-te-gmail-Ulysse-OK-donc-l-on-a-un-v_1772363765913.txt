@@ -1,0 +1,78 @@
+Vous
+Consulte ta boîte gmail
+Ulysse
+OK, donc là on a un vrai sujet de droits.
+
+Quand je tente d’accéder à ta boîte Gmail (djedoumaurice@gmail.com), l’API me renvoie :
+
+Insufficient Permission
+
+Ça veut dire concrètement :
+
+l’autorisation OAuth que tu as donnée à Ulysse pour Gmail ne permet pas (ou plus) de lire ta boîte,
+soit les scopes sont trop limités, soit le token est expiré / révoqué.
+Je ne peux pas forcer plus loin côté serveur sans ton action côté Google.
+
+Pour régler ça proprement, il faudra qu’on :
+
+Repassse par le flow d’autorisation Gmail pour Ulysse (dans ton app, la partie “connecter Gmail” / “autoriser l’accès aux mails”).
+S’assurer que les scopes incluent bien au minimum : https://www.googleapis.com/auth/gmail.readonly (voire gmail.modify si on veut archiver / marquer comme lu).
+En attendant, si tu veux que je traite un mail précis, tu peux:
+
+soit le transférer à ulysse@agentmail.to,
+soit me coller ici l’objet + contenu,
+et je gère la réponse / rédaction / pièces jointes à partir de là.
+Tu veux qu’on planifie la réauth Gmail proprement (et je te fais la checklist des étapes), ou tu préfères qu’on traite un mail en particulier tout de suite via transfert sur AgentMail ?
+Vous
+Ton gmail à toi ulyssemdbh@gmail.com
+Ulysse
+OK, là on a l’info clé noir sur blanc :
+
+{"error":"Insufficient Permission"}
+Ça veut dire que pour ulyssemdbh@gmail.com, le token / les scopes Gmail actuels ne permettent pas de lire la boîte (ou plus : token expiré, scopes trop limités, autorisation révoquée).
+
+Donc factuellement, côté serveur :
+
+Le connecteur Gmail existe,
+Mais Google répond : “t’as pas les droits pour lire cette inbox”.
+Je ne peux pas forcer l’accès par magie, il faut réautoriser l’accès Gmail avec les bons scopes.
+
+Ce qu’il faut faire côté config (une fois, dans ton infra)
+Je te fais la checklist courte pour réparer ça (c’est à faire au niveau de ton backend / console Google) :
+
+Vérifier le projet Google Cloud
+
+Projet où tu as créé l’API Gmail pour ulyssemdbh@gmail.com.
+Vérifier que l’API Gmail est bien activée.
+Vérifier les scopes OAuth côté app
+
+Il faut au minimum :
+https://www.googleapis.com/auth/gmail.readonly pour lire
+et éventuellement gmail.send si tu veux envoyer.
+Si au départ tu n’avais demandé qu’un scope limité, Google refusera la lecture.
+Refaire le flow d’auth pour ulyssemdbh@gmail.com
+
+Déconnecter / supprimer l’ancien token (ou refresh token) pour ce compte.
+Lancer à nouveau la page “Connexion Gmail” de ton app.
+Quand Google affiche l’écran “Ulysse veut accéder à Gmail”, bien accepter tous les scopes demandés.
+Stocker le nouveau token
+
+Côté backend, bien sauvegarder le refresh token et l’utiliser pour régénérer des access tokens valides.
+Ce que je peux faire maintenant malgré ça
+Là tout de suite, tant que Google dit “insufficient permission” :
+
+Je ne peux pas lire directement la boîte ulyssemdbh@gmail.com.
+Mais:
+tu peux me transférer n’importe quel mail à ulysse@agentmail.to,
+et je le traiterai depuis ma boîte (AgentMail) :
+lecture,
+rédaction de réponse,
+renvoi à quelqu’un,
+pièces jointes, etc.
+Si tu veux qu’on s’occupe d’un mail précis maintenant, transfère-le à ulysse@agentmail.to et dis-moi :
+
+“Réponds en disant …”
+
+et je t’envoie la réponse réelle par mail.
+
+Si tu veux qu’on répare vraiment l’accès direct à Gmail pour ulyssemdbh@gmail.com, dis‑le, et je te fais la checklist ultra précise étape par étape pour la partie Google Cloud + callback côté serveur.

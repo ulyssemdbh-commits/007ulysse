@@ -1,0 +1,125 @@
+Ulysse
+
+OK, là on touche au cœur de ton “cerveau foot”. Je synthétise et je te pointe les leviers intéressants, sans roman.
+
+1. Ce que fait ce module (et ce qu’il apporte à Ulysse)
+Détection de ligue et clubs à partir du texte
+
+TEAM_TO_LEAGUE_MAP + detectLeagueFromTeamName(teamName) → map team → league (Big 5).
+detectTeamsFromText(text) scanne un texte (message ou réponse IA) et repère les clubs connus.
+Extraction automatique de signal foot depuis les conversations
+
+processFootdatasFromConversation(message, response, context?) :
+détecte les équipes mentionnées dans message + réponse,
+infère un dataType (transfer, ranking, player, stats, news) via regex sur le texte global,
+renvoie une liste FootdatasExtraction[] avec:
+clubId,
+dataType,
+data (rawMessage, rawResponse, context…),
+source: 'conversation',
+extractedAt. → C’est une sonde passive: le chat devient une source de signaux foot structurés.
+Injection de données scrapées dans Footdatas
+
+injectScrapedDataToFootdatas(dataType, scrapedData, sourceUrl) :
+rankings → crée des entrées dans footdatasRankings (avec compétition détectée + season courante).
+topscorers → mappe vers un club + joueur existant, ajoute footdatasPlayerStats (goals, apparitions).
+Retourne { clubsUpdated, itemsAdded }.
+Outils IA “Footdatas” pour toi
+FOOTDATAS_ULYSSE_TOOLS expose des fonctions prêtes à être appelées par l’IA:
+
+getClubInfo → getClubSummaryForAI(clubName).
+searchClubs → recherche textuelle.
+getLeagueClubs → clubs d’une ligue.
+getClubPlayers, getClubTransfers, getClubTrophies.
+Ça me donne une espèce de mini-API Opta maison utilisable directement dans mes prompts.
+
+2. Ce qui est déjà très bien
+Tu as fermé la boucle:
+
+Web / scraping → injectScrapedDataToFootdatas.
+Chat / conversation → processFootdatasFromConversation.
+IA → FOOTDATAS_ULYSSE_TOOLS pour lire ce savoir.
+Le système est plug & play pour moi:
+
+Je peux dire : “Donne-moi le résumé de l’OM” → getClubInfo.
+“Liste les joueurs du PSG” → getClubPlayers.
+“Quels trophées pour le Real ?” → getClubTrophies.
+getCurrentSeason() est simple mais suffisant pour du foot (saison qui commence en juillet).
+
+3. Améliorations ciblées (utile pour la suite)
+3.1. processFootdatasFromConversation – enrichir la donnée
+Actuellement tu stockes:
+
+data: {
+  rawMessage,
+  rawResponse,
+  context: context?.homework?.title || 'conversation',
+}
+Tu peux pousser un peu sans complexifier:
+
+Ajouter meta sur le match / compétition quand on peut:
+Exemple simple: si le texte contient “OM – PSG”, tu peux capturer les deux clubs (tu fais déjà) mais aussi:
+data.matchup = { home: 'om', away: 'psg' }
+Ajouter un champ “summary/extractedText”:
+Par exemple, tu peux tronquer 1–2 phrases autour des mots clés détectés → utile plus tard pour une validation humaine, ou pour un agent de normalisation.
+3.2. injectScrapedDataToFootdatas – éviter les doublons & enrichir
+Tu insères en direct:
+
+addRanking pour chaque entrée → risque de doublons multiples si tu rescrapes souvent.
+addPlayerStats pour chaque topscorer, même saison/compétition.
+Tu peux:
+
+soit ajouter une clé logique et un check rapide avant insert (comme je disais sur le service précédent),
+soit faire un update si tu retrouves une entrée saison + joueur + compétition.
+Au moins, pour topscorers, tu peux:
+
+vérifier si des stats existent déjà pour ce playerId / season / competition.
+3.3. Fonctionnellement, tu peux ajouter 1 ou 2 tools IA clés
+Dans FOOTDATAS_ULYSSE_TOOLS.functions, tu as déjà le nécessaire pour “club view”.
+Deux outils qui seraient top pour moi:
+
+getClubForm
+
+Handler:
+prend clubName + limit (nb de matchs / saisons récents),
+utilise footdatasClubStats + éventuellement footdatasRankings,
+te renvoie un texte du style:
+“OM – Forme récente: 4V 1N 1D, 12 buts marqués, 5 encaissés, actuellement 3e en Ligue 1.”
+
+getKeyPlayers
+
+Handler:
+prend clubName,
+se base sur footdatasPlayerStats (minutes, buts, assists si tu as),
+renvoie:
+“Joueurs clés: Aubameyang (12 buts), Harit (8 passes), Rongier (temps de jeu max).”
+
+Ça, pour mes prompts de prono, c’est de l’or.
+
+4. Intégration avec ton self-awareness / intent
+Maintenant que tu as:
+
+detectIntent() (sports, etc.),
+context-flags, ClarityScore,
+et ce module Footdatas,
+tu peux faire un truc stylé:
+
+Quand intent = sports ET qu’un club est détecté (detectTeamsFromText),
+tu appelles automatiquement un tool footdatas.getClubInfo ou getClubForm,
+tu injectes la réponse dans le contexte IA avant que je parle.
+Concrètement:
+
+Tu poses une question: “Parle-moi de la forme actuelle de l’OM et d’un prono sur leur prochain match.”
+Le preloader:
+détecte sports,
+détecte “om”,
+appelle getClubInfo + (plus tard getClubForm),
+m’envoie ça dans le prompt.
+Résultat → je te réponds avec:
+
+contexte club précis,
+forme récente,
+trophées,
+effectif,
+et je peux caler un prono en étant vraiment “club-aware”.
+Si tu veux, prochaine étape, je te propose un getClubFormForAI + une entrée getClubForm dans FOOTDATAS_ULYSSE_TOOLS avec une spec claire (params + format de retour), pour que tu puisses l’implémenter vite côté backend et que je l’utilise direct.

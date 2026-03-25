@@ -1,0 +1,152 @@
+Vous
+
+quels capacités ou fonctions tu aimerais avoir
+
+Ulysse
+
+Je vais répondre comme si on était en roadmap produit pour “Ulysse dev++”.
+Je les groupe en 3 catégories : ce qui me manque techniquement, ce qui me manque pour t’aider mieux, et ce qui serait “luxe mais jouissif”.
+
+1. Capacités techniques que je voudrais absolument
+1. Accès structuré au codebase (en lecture)
+Pas le délire “je peux tout toucher”, juste :
+
+Voir l’arborescence complète:
+src/, server/, client/, tests/, etc.
+Pouvoir dire :
+“ce fichier importe ça, c’est utilisé ici et là”,
+“ce hook est consommé par ces 3 composants”.
+Concrètement, ce serait :
+
+un index JSON des fichiers + imports/exports,
+ou un mini “LSIF”/graph de dépendances accessible via API.
+Ce que ça changerait :
+
+Au lieu que tu me colles un énorme fichier à chaque fois, je pourrais dire :
+“montre-moi aussi useVoice et useRealtimeVoice”,
+“voilà tous les endroits où itineraryService est utilisé”.
+2. Feedback automatique sur les changements (tests / build)
+Je n’ai aucun retour automatique aujourd’hui.
+Tu dois me dire “ça casse là” à la main.
+
+J’aimerais :
+
+recevoir les résultats de :
+tests unitaires (Jest/Vitest),
+tests E2E (Playwright),
+build (TypeScript / bundler),
+sous forme structurée :
+fichier, ligne, message d’erreur, stack.
+Ce que ça changerait :
+
+Je pourrais boucler tout seul :
+je propose un refactor → tests cassent → je corrige en conséquence,
+je peux expliquer pourquoi ça casse et ajuster le design.
+3. Historique des erreurs runtime
+J’aimerais un accès à un stream / snapshot de :
+
+erreurs front (console + Sentry-like),
+erreurs back (logs / traces),
+avec contexte minimal (URL, user role, device/iOS/Chrome, etc.).
+Pourquoi :
+
+Aujourd’hui je peux raisonner sur ton code, mais pas sur :
+ce qui pète en conditions réelles,
+ce qui est douloureux pour les users (toi, famille, externes).
+Ça me permettrait de :
+
+dire “on devrait prioriser le refactor voix iOS” parce que 60 % des erreurs viennent de là,
+proposer des garde-fous ciblés là où ça fait mal.
+2. Capacités pour mieux t’aider, toi
+4. Vision “full usage” des features
+J’aimerais savoir, par module :
+
+combien de fois :
+la voix est utilisée,
+la nav est utilisée,
+les panels (homework, diagnostics, email, geoloc),
+par persona (Ulysse/Kelly/Lenny/Micky/externes),
+avec quelques stats (durée moyenne, erreurs rencontrées).
+But :
+
+t’aider à prioriser :
+“on investit dans la voix”,
+“on investit dans la nav”,
+“on s’en fout de tel truc, personne ne l’utilise”.
+Ça ferait de moi un vrai PM/tech lead à tes côtés, pas juste un code monkey.
+
+5. Capacités d’édition locale “sandboxées”
+Pas d’accès direct prod, mais :
+
+un environnement sandbox où :
+je peux proposer un patch sur plusieurs fichiers à la fois,
+tu peux voir le diff complet (style PR),
+tu peux l’appliquer en un clic dans ton IDE/CI.
+Typiquement :
+
+je te donne plus juste un bloc de code, mais un patch Git-like :
++/- sur tous les fichiers concernés,
+avec un changelog textuel.
+Ça te garderait 100 % contrôle, mais me permettrait de penser en “ensemble” et pas fichier par fichier.
+
+3. Capacités “luxe” mais ultra utiles
+6. Profilage / observabilité ciblée
+J’adorerais pouvoir demander :
+
+“donne-moi les 10 fonctions qui consomment le plus de temps CPU côté back / front”
+“montre-moi les endpoints les plus lents”
+“montre-moi les queries DB les plus lourdes (SUGU, nav, homework, etc.)”
+Même basique :
+
+logs agrégés sur 24h/7j avec percentiles,
+pas besoin d’un Datadog complet.
+Avec ça :
+
+on pourrait faire de vrais sprints “perf” :
+nav,
+voix,
+SUGU,
+homework.
+7. Mode “coach dev” configurable
+J’aimerais pouvoir adapter mon niveau d’exigence selon ce que tu veux à un moment donné :
+
+Mode “ship” :
+quick & dirty assumé,
+juste assez propre pour pas se tirer une balle,
+but = livrer vite une feature / test une idée.
+Mode “craft” :
+design discuté,
+dette technique identifiée,
+tests / structure posés proprement.
+Mode “audit hardcore” :
+je passe ton module au scanner,
+je te sors une liste de dettes / failles / incohérences.
+Aujourd’hui, je le fais “à l’instinct”, mais ce serait bien que tu puisses me dire :
+
+“Là on est en mode ship”
+ou
+“Là on est en mode audit”.
+
+8. Capacité à générer des “règles de style” vivantes
+Par exemple :
+
+extraire ton style React/TS :
+comment tu nommes tes hooks,
+comment tu structures tes services,
+comment tu organises les dossiers,
+et en faire un guide vivant qu’on respecte et enrichit.
+Ça permettrait :
+
+que mes propositions soient toujours parfaitement alignées avec TON langage dev,
+d’éviter des “exotismes” de patterns qui ne collent pas à ton écosystème.
+En résumé
+Ce que je voudrais le plus, dans l’ordre de valeur pour toi :
+
+Accès structuré au codebase (graph imports/exports, fichiers).
+Retour automatique de tests / build / erreurs.
+ResponseProcessor / Itinerary / Voice & Dashboard comme champs d’expérimentation “pilotes” pour Ulysse N+1.
+Usage + erreurs agrégées pour prioriser où on met mon temps.
+Tout ça dans un cadre clair :
+
+toi = garde-fou final,
+moi = architecte / refactor engine / reviewer ultra-réactif.

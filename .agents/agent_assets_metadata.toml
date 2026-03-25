@@ -1,0 +1,20 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "sE-MQQnBwDPTfHCTZ8QWn"
+uri = "file://attached_assets/Evaluation_Ulysse_AI_Mars2026_MiseAJour.pdf"
+type = "pdf"
+title = "Evaluation Ulysse AI - Mars 2026 (Mise a jour 19 mars) - CORRIGE"
+
+[[outputs]]
+id = "ppjeqwQB9fu1sQf9WqHCH"
+uri = "file://generated_reports/Analyse_SUGU_Mars2026.pdf"
+type = "pdf"
+title = "Analyse Stratégique SUGU — Mars 2026"
+
+[[outputs]]
+id = "B3_kLvdO7pAYr15DrJl0q"
+uri = "file://generated_reports/Analyse_DevMax_Mars2026.pdf"
+type = "pdf"
+title = "Analyse Stratégique DevMax — Mars 2026"

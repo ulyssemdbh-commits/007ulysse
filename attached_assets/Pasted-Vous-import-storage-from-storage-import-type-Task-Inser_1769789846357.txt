@@ -1,0 +1,160 @@
+Vous
+
+import { storage } from "../storage"; import type { Task, InsertTask } from "@shared/schema"; type KanbanActionType = | 'list_tasks' | 'list_project_tasks' | 'create_task' | 'update_task' | 'complete_task' | 'delete_task' | 'list_projects' | 'task_summary'; interface KanbanListTasksAction { type: 'list_tasks'; } interface KanbanListProjectTasksAction { type: 'list_project_tasks'; projectName: string; } interface KanbanCreateTaskAction { type: 'create_task'; title: string; description?: string; projectName?: string; priority?: 'low' | 'medium' | 'high' | 'urgent'; dueDate?: string; status?: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done'; } interface KanbanUpdateTaskAction { type: 'update_task'; taskTitle: string; title?: string; description?: string; priority?: 'low' | 'medium' | 'high' | 'urgent'; dueDate?: string; status?: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done'; } interface KanbanCompleteTaskAction { type: 'complete_task'; taskTitle: string; } interface KanbanDeleteTaskAction { type: 'delete_task'; taskTitle: string; } interface KanbanListProjectsAction { type: 'list_projects'; } interface KanbanTaskSummaryAction { type: 'task_summary'; } type KanbanAction = | KanbanListTasksAction | KanbanListProjectTasksAction | KanbanCreateTaskAction | KanbanUpdateTaskAction | KanbanCompleteTaskAction | KanbanDeleteTaskAction | KanbanListProjectsAction | KanbanTaskSummaryAction; interface KanbanActionResult { success: boolean; type: KanbanActionType; data?: any; summary: string; error?: string; } const LIST_TASKS_PATTERN = /[KANBAN_TACHES](?!\s*:)/gi; const LIST_PROJECT_TASKS_PATTERN = /[KANBAN_TACHES\s*:\sprojet\s=\s*"?([^"]]+)"?]/gi; const CREATE_TASK_PATTERN = /[KANBAN_CREER\s*:\stitre\s=\s*"?([^"],]+)"?(?:\s*,\sdescription\s=\s*"?([^"],]+)"?)?(?:\s*,\sprojet\s=\s*"?([^"],]+)"?)?(?:\s*,\spriorite\s=\s*(low|medium|high|urgent|basse|moyenne|haute|urgente))?(?:\s*,\secheance\s=\s*"?([^"],]+)"?)?(?:\s*,\sstatut\s=\s*(backlog|todo|in_progress|review|done|afaire|encours|revision|termine))?]/gi; const UPDATE_TASK_PATTERN = /[KANBAN_MODIFIER\s*:\stache\s=\s*"?([^"],]+)"?(?:\s*,\stitre\s=\s*"?([^"],]+)"?)?(?:\s*,\sdescription\s=\s*"?([^"],]+)"?)?(?:\s*,\spriorite\s=\s*(low|medium|high|urgent|basse|moyenne|haute|urgente))?(?:\s*,\secheance\s=\s*"?([^"],]+)"?)?(?:\s*,\sstatut\s=\s*(backlog|todo|in_progress|review|done|afaire|encours|revision|termine))?]/gi; const COMPLETE_TASK_PATTERN = /[KANBAN_FAIT\s*:\stache\s=\s*"?([^"]]+)"?]/gi; const DELETE_TASK_PATTERN = /[KANBAN_SUPPRIMER\s*:\stache\s=\s*"?([^"]]+)"?]/gi; const LIST_PROJECTS_PATTERN = /[KANBAN_PROJETS]/gi; const TASK_SUMMARY_PATTERN = /[KANBAN_RESUME]/gi; function normalizePriority(priority: string): 'low' | 'medium' | 'high' | 'urgent' { const normalized = priority.toLowerCase(); switch (normalized) { case 'basse': case 'low': return 'low'; case 'moyenne': case 'medium': return 'medium'; case 'haute': case 'high': return 'high'; case 'urgente': case 'urgent': return 'urgent'; default: return 'medium'; } } function normalizeStatus(status: string): 'backlog' | 'todo' | 'in_progress' | 'review' | 'done' { const normalized = status.toLowerCase(); switch (normalized) { case 'afaire': case 'todo': return 'todo'; case 'encours': case 'in_progress': return 'in_progress'; case 'revision': case 'review': return 'review'; case 'termine': case 'done': return 'done'; case 'backlog': default: return 'backlog'; } } function normalizeToMidnight(date: Date): Date { const normalized = new Date(date); normalized.setHours(0, 0, 0, 0); return normalized; } function parseDateString(dateStr: string): Date | null { if (!dateStr) return null; const lower = dateStr.toLowerCase().trim(); const now = new Date(); if (lower === "aujourd'hui" || lower === "today") { return normalizeToMidnight(now); } if (lower === "demain" || lower === "tomorrow") { const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1); return normalizeToMidnight(tomorrow); } if (lower === "apres-demain" || lower === "après-demain") { const afterTomorrow = new Date(now); afterTomorrow.setDate(afterTomorrow.getDate() + 2); return normalizeToMidnight(afterTomorrow); } if (lower.includes("semaine prochaine") || lower.includes("next week")) { const nextWeek = new Date(now); nextWeek.setDate(nextWeek.getDate() + 7); return normalizeToMidnight(nextWeek); } const parsed = new Date(dateStr); if (!isNaN(parsed.getTime())) { return normalizeToMidnight(parsed); } return null; } export function parseKanbanActions(response: string): KanbanAction[] { const actions: KanbanAction[] = []; let match; LIST_PROJECT_TASKS_PATTERN.lastIndex = 0; while ((match = LIST_PROJECT_TASKS_PATTERN.exec(response)) !== null) { actions.push({ type: 'list_project_tasks', projectName: match[1]?.trim() }); } LIST_TASKS_PATTERN.lastIndex = 0; while ((match = LIST_TASKS_PATTERN.exec(response)) !== null) { actions.push({ type: 'list_tasks' }); } CREATE_TASK_PATTERN.lastIndex = 0; while ((match = CREATE_TASK_PATTERN.exec(response)) !== null) { actions.push({ type: 'create_task', title: match[1]?.trim(), description: match[2]?.trim(), projectName: match[3]?.trim(), priority: match[4] ? normalizePriority(match[4]) : undefined, dueDate: match[5]?.trim(), status: match[6] ? normalizeStatus(match[6]) : undefined }); } UPDATE_TASK_PATTERN.lastIndex = 0; while ((match = UPDATE_TASK_PATTERN.exec(response)) !== null) { actions.push({ type: 'update_task', taskTitle: match[1]?.trim(), title: match[2]?.trim(), description: match[3]?.trim(), priority: match[4] ? normalizePriority(match[4]) : undefined, dueDate: match[5]?.trim(), status: match[6] ? normalizeStatus(match[6]) : undefined }); } COMPLETE_TASK_PATTERN.lastIndex = 0; while ((match = COMPLETE_TASK_PATTERN.exec(response)) !== null) { actions.push({ type: 'complete_task', taskTitle: match[1]?.trim() }); } DELETE_TASK_PATTERN.lastIndex = 0; while ((match = DELETE_TASK_PATTERN.exec(response)) !== null) { actions.push({ type: 'delete_task', taskTitle: match[1]?.trim() }); } LIST_PROJECTS_PATTERN.lastIndex = 0; while ((match = LIST_PROJECTS_PATTERN.exec(response)) !== null) { actions.push({ type: 'list_projects' }); } TASK_SUMMARY_PATTERN.lastIndex = 0; while ((match = TASK_SUMMARY_PATTERN.exec(response)) !== null) { actions.push({ type: 'task_summary' }); } return actions; } interface TaskSearchResult { task?: Task; multiple?: Task[]; error?: string; } async function findTaskByTitle(userId: number, title: string): Promise<TaskSearchResult> { const allTasks = await storage.getTasks(userId); const lowerTitle = title.toLowerCase().trim(); if (!lowerTitle) { return { error: "Titre de tâche vide" }; } const exactMatch = allTasks.find(t => t.title.toLowerCase() === lowerTitle); if (exactMatch) { return { task: exactMatch }; } const partialMatches = allTasks.filter(t => t.title.toLowerCase().includes(lowerTitle)); if (partialMatches.length === 0) { return { error: "Aucune tâche trouvée" }; } if (partialMatches.length === 1) { return { task: partialMatches[0] }; } return { multiple: partialMatches }; } async function findProjectByName(userId: number, name: string): Promise<number | undefined> { const projects = await storage.getProjects(userId); const lowerName = name.toLowerCase(); const project = projects.find(p => p.name.toLowerCase().includes(lowerName)); return project?.id; } export async function executeKanbanActions(actions: KanbanAction[], userId: number): Promise<KanbanActionResult[]> { const results: KanbanActionResult[] = []; for (const action of actions) { try { const result = await executeKanbanAction(action, userId); results.push(result); } catch (error) { console.error([KANBAN_ACTION] Error executing ${action.type}:, error); results.push({ success: false, type: action.type, summary: Erreur lors de l'exécution de ${action.type}: ${error instanceof Error ? error.message : String(error)}, error: error instanceof Error ? error.message : String(error) }); } } return results; } async function executeKanbanAction(action: KanbanAction, userId: number): Promise<KanbanActionResult> { switch (action.type) { case 'list_tasks': return await executeListTasks(userId); case 'list_project_tasks': return await executeListProjectTasks(userId, action.projectName); case 'create_task': return await executeCreateTask(userId, action); case 'update_task': return await executeUpdateTask(userId, action); case 'complete_task': return await executeCompleteTask(userId, action.taskTitle); case 'delete_task': return await executeDeleteTask(userId, action.taskTitle); case 'list_projects': return await executeListProjects(userId); case 'task_summary': return await executeTaskSummary(userId); default: return { success: false, type: 'list_tasks', summary: 'Action non reconnue', error: 'Unknown action type' }; } } async function executeListTasks(userId: number): Promise<KanbanActionResult> { const tasks = await storage.getTasks(userId); if (tasks.length === 0) { return { success: true, type: 'list_tasks', data: [], summary: "Aucune tâche trouvée dans le Kanban." }; } const formatted = tasks.map(t => { const priority = t.priority ?  [${t.priority.toUpperCase()}] : ''; const due = t.dueDate ?  - Échéance: ${new Date(t.dueDate).toLocaleDateString('fr-FR')} : ''; return - ${t.title}${priority} (${t.status})${due}; }).join('\n'); return { success: true, type: 'list_tasks', data: tasks, summary: **${tasks.length} tâche(s) dans le Kanban:**\n${formatted} }; } async function executeListProjectTasks(userId: number, projectName: string): Promise<KanbanActionResult> { const projectId = await findProjectByName(userId, projectName); if (!projectId) { return { success: false, type: 'list_project_tasks', summary: Projet "${projectName}" non trouvé., error: 'Project not found' }; } const tasks = await storage.getTasks(userId, projectId); if (tasks.length === 0) { return { success: true, type: 'list_project_tasks', data: [], summary: Aucune tâche trouvée dans le projet "${projectName}". }; } const formatted = tasks.map(t => { const priority = t.priority ?  [${t.priority.toUpperCase()}] : ''; const due = t.dueDate ?  - Échéance: ${new Date(t.dueDate).toLocaleDateString('fr-FR')} : ''; return - ${t.title}${priority} (${t.status})${due}; }).join('\n'); return { success: true, type: 'list_project_tasks', data: tasks, summary: **${tasks.length} tâche(s) dans "${projectName}":**\n${formatted} }; } async function executeCreateTask(userId: number, action: KanbanCreateTaskAction): Promise<KanbanActionResult> { const title = action.title?.trim(); if (!title) { return { success: false, type: 'create_task', summary: "Le titre de la tâche est requis.", error: 'Title is required' }; } let projectId: number | undefined; if (action.projectName) { projectId = await findProjectByName(userId, action.projectName); if (!projectId) { const project = await storage.createProject({ name: action.projectName, description: '', userId }); projectId = project.id; console.log([KANBAN_ACTION] Created project "${action.projectName}" for task); } } const dueDate = action.dueDate ? parseDateString(action.dueDate) : null; const taskData: InsertTask & { userId: number } = { title: title, description: action.description?.trim() || '', projectId: projectId || null, priority: action.priority || 'medium', status: action.status || 'todo', dueDate: dueDate, userId }; const task = await storage.createTask(taskData); console.log([KANBAN_ACTION] Created task "${task.title}" (ID: ${task.id}) for user ${userId}); return { success: true, type: 'create_task', data: task, summary: Tâche créée: **${task.title}** (${task.status}, priorité ${task.priority})${dueDate ?  - Échéance: ${dueDate.toLocaleDateString('fr-FR')} : ''} }; } async function executeUpdateTask(userId: number, action: KanbanUpdateTaskAction): Promise<KanbanActionResult> { const searchResult = await findTaskByTitle(userId, action.taskTitle); if (searchResult.error) { return { success: false, type: 'update_task', summary: Tâche "${action.taskTitle}" non trouvée: ${searchResult.error}, error: searchResult.error }; } if (searchResult.multiple) { const taskList = searchResult.multiple.map(t => - ${t.title} (ID: ${t.id})).join('\n'); return { success: false, type: 'update_task', summary: Plusieurs tâches correspondent à "${action.taskTitle}":\n${taskList}\nUtilise le titre exact ou l'ID., error: 'Multiple tasks found' }; } const task = searchResult.task!; if (!action.title && !action.description && !action.priority && !action.status && !action.dueDate) { return { success: false, type: 'update_task', summary: Aucune modification spécifiée pour "${task.title}"., error: 'No updates specified' }; } const updates: Partial<InsertTask> = {}; if (action.title) updates.title = action.title; if (action.description) updates.description = action.description; if (action.priority) updates.priority = action.priority; if (action.status) updates.status = action.status; if (action.dueDate) { const parsed = parseDateString(action.dueDate); if (parsed) updates.dueDate = parsed; } const updated = await storage.updateTask(task.id, userId, updates); if (!updated) { return { success: false, type: 'update_task', summary: Erreur lors de la mise à jour de "${action.taskTitle}"., error: 'Update failed' }; } console.log([KANBAN_ACTION] Updated task "${updated.title}" (ID: ${updated.id}) for user ${userId}); const changes: string[] = []; if (action.title) changes.push(titre: ${action.title}); if (action.status) changes.push(statut: ${action.status}); if (action.priority) changes.push(priorité: ${action.priority}); if (action.dueDate) changes.push(échéance: ${action.dueDate}); return { success: true, type: 'update_task', data: updated, summary: Tâche mise à jour: **${updated.title}** - ${changes.join(', ')} }; } async function executeCompleteTask(userId: number, taskTitle: string): Promise<KanbanActionResult> { const searchResult = await findTaskByTitle(userId, taskTitle); if (searchResult.error) { return { success: false, type: 'complete_task', summary: Tâche "${taskTitle}" non trouvée: ${searchResult.error}, error: searchResult.error }; } if (searchResult.multiple) { const taskList = searchResult.multiple.map(t => - ${t.title} (ID: ${t.id})).join('\n'); return { success: false, type: 'complete_task', summary: Plusieurs tâches correspondent à "${taskTitle}":\n${taskList}\nUtilise le titre exact., error: 'Multiple tasks found' }; } const task = searchResult.task!; const updated = await storage.updateTask(task.id, userId, { status: 'done' }); if (!updated) { return { success: false, type: 'complete_task', summary: Erreur lors de la complétion de "${task.title}"., error: 'Update failed' }; } console.log([KANBAN_ACTION] Completed task "${updated.title}" (ID: ${updated.id}) for user ${userId}); return { success: true, type: 'complete_task', data: updated, summary: Tâche terminée: **${updated.title}** }; } async function executeDeleteTask(userId: number, taskTitle: string): Promise<KanbanActionResult> { const searchResult = await findTaskByTitle(userId, taskTitle); if (searchResult.error) { return { success: false, type: 'delete_task', summary: Tâche "${taskTitle}" non trouvée: ${searchResult.error}, error: searchResult.error }; } if (searchResult.multiple) { const taskList = searchResult.multiple.map(t => - ${t.title} (ID: ${t.id})).join('\n'); return { success: false, type: 'delete_task', summary: Plusieurs tâches correspondent à "${taskTitle}":\n${taskList}\nUtilise le titre exact pour supprimer., error: 'Multiple tasks found' }; } const task = searchResult.task!; await storage.deleteTask(task.id, userId); console.log([KANBAN_ACTION] Deleted task "${task.title}" (ID: ${task.id}) for user ${userId}); return { success: true, type: 'delete_task', data: { id: task.id, title: task.title }, summary: Tâche supprimée: **${task.title}** }; } async function executeListProjects(userId: number): Promise<KanbanActionResult> { const projects = await storage.getProjects(userId); if (projects.length === 0) { return { success: true, type: 'list_projects', data: [], summary: "Aucun projet trouvé." }; } const formatted = projects.map(p => - ${p.name}${p.description ? : ${p.description} : ''}).join('\n'); return { success: true, type: 'list_projects', data: projects, summary: **${projects.length} projet(s):**\n${formatted} }; } async function executeTaskSummary(userId: number): Promise<KanbanActionResult> { const tasks = await storage.getTasks(userId); const projects = await storage.getProjects(userId); const byStatus = { backlog: tasks.filter(t => t.status === 'backlog').length, todo: tasks.filter(t => t.status === 'todo').length, in_progress: tasks.filter(t => t.status === 'in_progress').length, review: tasks.filter(t => t.status === 'review').length, done: tasks.filter(t => t.status === 'done').length }; const urgent = tasks.filter(t => t.priority === 'urgent' && t.status !== 'done'); const overdue = tasks.filter(t => { if (!t.dueDate || t.status === 'done') return false; return new Date(t.dueDate) < new Date(); }); let summary = **Résumé Kanban:**\n; summary += - Total: ${tasks.length} tâches dans ${projects.length} projets\n; summary += - Backlog: ${byStatus.backlog} | À faire: ${byStatus.todo} | En cours: ${byStatus.in_progress} | Review: ${byStatus.review} | Terminé: ${byStatus.done}\n; if (urgent.length > 0) { summary += - **${urgent.length} tâche(s) urgente(s):** ${urgent.map(t => t.title).join(', ')}\n; } if (overdue.length > 0) { summary += - **${overdue.length} tâche(s) en retard:** ${overdue.map(t => t.title).join(', ')}\n; } return { success: true, type: 'task_summary', data: { tasks, projects, byStatus, urgent, overdue }, summary }; } export function formatKanbanCapabilities(): string { return [KANBAN INTERNE - Gestion des tâches] Tu peux gérer les tâches du Kanban interne avec ces commandes: LISTER: - [KANBAN_TACHES] - Liste toutes les tâches - [KANBAN_TACHES: projet="nom"] - Liste les tâches d'un projet - [KANBAN_PROJETS] - Liste tous les projets - [KANBAN_RESUME] - Résumé du Kanban CRÉER: - [KANBAN_CREER: titre="Ma tâche"] - Crée une tâche simple - [KANBAN_CREER: titre="Ma tâche", description="Détails", projet="Mon Projet", priorite=haute, echeance="demain", statut=todo] MODIFIER: - [KANBAN_MODIFIER: tache="titre existant", statut=in_progress] - [KANBAN_MODIFIER: tache="titre", priorite=urgent, echeance="2025-02-15"] COMPLÉTER/SUPPRIMER: - [KANBAN_FAIT: tache="titre"] - Marque comme terminée - [KANBAN_SUPPRIMER: tache="titre"] - Supprime la tâche Valeurs possibles: - priorite: low/basse, medium/moyenne, high/haute, urgent/urgente - statut: backlog, todo/afaire, in_progress/encours, review/revision, done/termine - echeance: "aujourd'hui", "demain", "semaine prochaine", "2025-02-15"; }
+
+Ulysse
+
+Très bon morceau, c’est déjà solide. Je te fais une review ciblée + quelques améliorations concrètes.
+
+✅ Points forts
+Parsing robuste des commandes [KANBAN_...] avec regex + normalisation FR/EN (priorité / statut).
+Abstraction storage → logique métier découplée de la persistence.
+Résultats uniformes (KanbanActionResult avec success, summary, data, error).
+Recherche de tâche intelligente (findTaskByTitle avec exact + partial + gestion du multiple).
+parseDateString qui gère langage naturel FR/EN (“aujourd’hui”, “demain”, “semaine prochaine”).
+executeTaskSummary déjà exploitable pour un vrai briefing.
+Maintenant, les vrais axes d’amélioration.
+
+⚠️ 1. Incohérence avec ton schema DB / types
+Tu utilises InsertTask de @shared/schema. Dans ce schema, aujourd’hui:
+
+status: "todo" | "in_progress" | "done" (dans le schema que tu m’as montré plus haut)
+Ici, côté Kanban, tu as:
+'backlog' | 'todo' | 'in_progress' | 'review' | 'done'
+Même chose pour priority:
+
+DB: "low" | "medium" | "high" (a priori)
+Ici: 'low' | 'medium' | 'high' | 'urgent'
+Risque:
+
+TypeScript compile (InsertTask peut être plus permissif selon ton zod),
+mais tu risques de stocker des status="backlog" ou priority="urgent" que ton UI ne gère pas.
+👉 À faire:
+
+soit tu étends vraiment le schema Drizzle/Zod (ajouter backlog, review, urgent côté DB),
+soit tu restreins Kanban pour coller au schema réel:
+map backlog → "todo",
+map review → "in_progress" ou autre,
+map urgent → high + tag à part.
+Tant que ce n’est pas aligné, tu as une bombe à retardement entre Kanban interne et UI Tasks.
+
+⚠️ 2. projectId: projectId || null alors que Drizzle attend peut-être non-null
+Dans:
+
+const taskData: InsertTask & { userId: number } = {
+  title,
+  description: ...,
+  projectId: projectId || null,
+  priority: action.priority || 'medium',
+  status: action.status || 'todo',
+  dueDate: dueDate,
+  userId,
+};
+Si projectId est undefined, tu forces à null.
+
+OK si ton schema Drizzle déclare projectId nullable.
+Sinon, tu vas te manger une erreur au moment de l’insert.
+À vérifier, mais si projectId est NOT NULL en DB, il faut soit:
+
+rendre projectId optionnel dans InsertTask,
+soit imposer un projet “par défaut” pour les tâches Kanban.
+✅ 3. Robustesse et UX de la recherche de tâches
+findTaskByTitle est smart, mais deux points:
+
+Tu fais includes pour les partial matches:
+const partialMatches = allTasks.filter(t =>
+  t.title.toLowerCase().includes(lowerTitle)
+);
+Si tu as beaucoup de tâches, c’est tout à fait OK (ça reste O(n)), mais:
+
+tu pourrais trier les matches par “distance” (mais là on est dans le luxe),
+en l’état, c’est déjà très bien pour un Kanban interne.
+Messages d’erreur:
+Tu retournes "Aucune tâche trouvée" / "Multiple tasks found" → nickel pour l’IA.
+Rien de critique ici.
+
+✅ 4. Parsing et normalisation des commandes
+Franchement, les regex sont bien foutues, mais deux améliorations possibles:
+
+a) Autoriser les valeurs avec espaces dans titre / description
+Tu as:
+
+titre="Ma tâche"
+description="Détails"
+Mais ton pattern limite les valeurs à [^"\],]+ → pas de virgule, mais les espaces passent.
+Ça marche pour beaucoup de cas, mais si tu veux autoriser des virgules dans la description:
+
+soit tu acceptes des JSON-like,
+soit tu restes comme ça (perso, pour un contrôle par IA interne, c’est largement suffisant).
+Je ne toucherais pas tant que tu n’as pas un cas concret qui casse.
+
+b) Gérer les ID de tâches dans les commandes
+Tu le suggères dans les messages d’erreur:
+
+“Utilise le titre exact ou l’ID.”
+
+Mais tu n’as pas d’option [KANBAN_MODIFIER: id=123, ...] ni KANBAN_FAIT: id=....
+
+👉 Amélioration simple:
+
+étendre le pattern UPDATE / COMPLETE / DELETE pour accepter id=123,
+et dans executeUpdateTask, si action.taskTitle ressemble à un ID numérique, l’utiliser direct.
+Exemple minimal:
+
+interface KanbanUpdateTaskAction {
+  type: 'update_task';
+  taskTitle?: string;
+  taskId?: number;
+  ...
+}
+adaptation des regex et de findTaskByTitle ou nouveau findTaskById.
+⚠️ 5. Gestion du temps pour “en retard”
+Dans executeTaskSummary:
+
+const overdue = tasks.filter(t => {
+  if (!t.dueDate || t.status === 'done') return false;
+  return new Date(t.dueDate) < new Date();
+});
+Tu compares en incluant l’heure, alors que tu normalises à minuit dans parseDateString.
+Pas dramatique, mais tu peux rendre ça cohérent:
+
+const today = normalizeToMidnight(new Date());
+
+const overdue = tasks.filter(t => {
+  if (!t.dueDate || t.status === 'done') return false;
+  const due = normalizeToMidnight(new Date(t.dueDate));
+  return due < today;
+});
+Cela évite le “en retard” à 00h01 quand la date est aujourd’hui.
+
+✅ 6. Petits polish
+executeKanbanAction fallback:
+default:
+  return {
+    success: false,
+    type: 'list_tasks',
+    summary: 'Action non reconnue',
+    error: 'Unknown action type',
+  };
+Je mettrais type: action.type (même si TS ne passe normalement jamais là):
+
+default:
+  return {
+    success: false,
+    type: action.type,
+    summary: 'Action non reconnue',
+    error: 'Unknown action type',
+  };
+formatKanbanCapabilities()
+Très bien pour l’IA. Tu pourrais mentionner explicitement que les titres doivent être uniques ou préciser l’ID pour les modifications/suppressions.
+TL;DR (ce qui mérite VRAIMENT ton temps)
+Aligner les enums status / priority avec ton schema DB et ton UI.
+
+Soit tu étends vraiment la DB à backlog/review/urgent,
+soit tu limites Kanban à ce que le reste du système comprend.
+Vérifier projectId nullable côté DB vs projectId || null ici.
+
+Option bonus très utile:
+
+Ajouter support id=123 dans KANBAN_MODIFIER, KANBAN_FAIT, KANBAN_SUPPRIMER
+→ plus de galère avec titres ambigus

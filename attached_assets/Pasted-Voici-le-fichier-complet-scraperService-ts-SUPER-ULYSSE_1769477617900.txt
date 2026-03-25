@@ -1,0 +1,299 @@
+Voici le fichier complet scraperService.ts – SUPER ULYSSE, prêt à coller.
+
+// services/scraperService.ts - Version 100% maison (fetch + cheerio)
+// Aucune dépendance Crawlee, aucune API externe de scraping.
+
+import * as cheerio from 'cheerio';
+import type {
+  ScrapeRequest,
+  ScrapeResult,
+  ScrapedPage,
+  ScrapeMode,
+  SelectorConfig,
+  LinkScope,
+  ScraperProfile,
+} from '../types/scraper';
+
+// ================================
+// Configuration
+// ================================
+
+const DEFAULT_USER_AGENT =
+  'UlysseScraperBot/4.2 (+https://devflow.replit.app; contact: admin@local)';
+
+const REQUEST_TIMEOUT = 30000;
+const RETRY_COUNT = 3;
+const MIN_DELAY = 100;
+const MAX_DELAY = 500;
+
+const BLOCK_LOCALHOST_BY_DEFAULT = true;
+const BLOCKED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1'];
+
+// ================================
+// Profils prédéfinis
+// ================================
+
+export const SCRAPER_PROFILES: Record<string, ScraperProfile> = {
+  default: {
+    name: 'default',
+    description: 'Profil par défaut, équilibré',
+    defaults: {
+      depth: 0,
+      maxPages: 50,
+      maxConcurrency: 3,
+      linkScope: 'same-host',
+      extract: { text: true, links: true, metadata: true },
+    },
+  },
+  news: {
+    name: 'news',
+    description: 'Optimisé pour sites d’actualités',
+    defaults: {
+      depth: 1,
+      maxPages: 40,
+      maxConcurrency: 4,
+      linkScope: 'same-host',
+      extract: { text: true, links: true, metadata: true },
+    },
+  },
+  foot: {
+    name: 'foot',
+    description: 'Optimisé pour sites de football/classements (HTTP-only)',
+    defaults: {
+      mode: 'auto',
+      depth: 1,
+      maxPages: 60,
+      maxConcurrency: 4,
+      linkScope: 'same-host',
+      extract: {
+        text: true,
+        links: true,
+        metadata: true,
+        selectors: {
+          teams: {
+            selector: '.participant__participantName, .team_name, .team',
+            multi: true,
+          },
+          scores: {
+            selector: '.detailScore__wrapper, .score',
+            multi: true,
+          },
+          standings: {
+            selector: '.ui-table__row, .standings__row, tr',
+            multi: true,
+          },
+        },
+      },
+    },
+  },
+  ecommerce: {
+    name: 'ecommerce',
+    description: 'Optimisé pour sites e-commerce',
+    defaults: {
+      depth: 1,
+      maxPages: 80,
+      maxConcurrency: 5,
+      linkScope: 'same-host',
+      excludeExtensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'],
+      extract: {
+        text: true,
+        links: true,
+        metadata: true,
+        selectors: {
+          products: {
+            selector: '.product, .product-item, [data-product]',
+            multi: true,
+          },
+          prices: {
+            selector: '.price, .product-price, [data-price]',
+            multi: true,
+          },
+          titles: {
+            selector: '.product-title, .product-name, h2.title',
+            multi: true,
+          },
+        },
+      },
+    },
+  },
+};
+
+// ================================
+// Utilitaires
+// ================================
+
+function basicHostCheck(url: string): void {
+  if (!BLOCK_LOCALHOST_BY_DEFAULT) return;
+  const host = new URL(url).hostname.toLowerCase();
+  if (BLOCKED_HOSTS.includes(host)) {
+    throw new Error(`Host "${host}" bloqué par sécurité.`);
+  }
+}
+
+function applyProfileDefaults(req: ScrapeRequest): ScrapeRequest {
+  const profile =
+    SCRAPER_PROFILES[req.profile || 'default'] || SCRAPER_PROFILES.default;
+
+  return {
+    ...profile.defaults,
+    ...req,
+    extract: {
+      ...profile.defaults.extract,
+      ...req.extract,
+      selectors: {
+        ...(profile.defaults.extract?.selectors || {}),
+        ...(req.extract?.selectors || {}),
+      },
+    },
+  };
+}
+
+function normalizeUrl(base: string, href: string): string | null {
+  try {
+    if (
+      !href ||
+      href.startsWith('#') ||
+      href.startsWith('javascript:') ||
+      href.startsWith('mailto:')
+    ) {
+      return null;
+    }
+    return new URL(href, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function shouldFollowLink(
+  currentUrl: string,
+  targetUrl: string,
+  scope: LinkScope | undefined,
+): boolean {
+  if (!scope || scope === 'none') return false;
+
+  try {
+    const from = new URL(currentUrl);
+    const to = new URL(targetUrl);
+
+    switch (scope) {
+      case 'same-domain':
+        return (
+          from.hostname.split('.').slice(-2).join('.') ===
+          to.hostname.split('.').slice(-2).join('.')
+        );
+      case 'same-host':
+        return from.hostname === to.hostname;
+      case 'same-path':
+        return (
+          from.hostname === to.hostname &&
+          to.pathname.startsWith(from.pathname)
+        );
+      case 'all':
+        return true;
+      default:
+        return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function isExtensionExcluded(url: string, exts?: string[]): boolean {
+  if (!exts || exts.length === 0) return false;
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return exts.some((ext) => pathname.endsWith(ext.toLowerCase()));
+  } catch {
+    return false;
+  }
+}
+
+function parseSelectorConfig(raw: string | SelectorConfig): SelectorConfig {
+  if (typeof raw === 'string') return { selector: raw };
+  return raw;
+}
+
+async function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function randomDelay(): Promise<void> {
+  await delay(MIN_DELAY + Math.random() * (MAX_DELAY - MIN_DELAY));
+}
+
+// ================================
+// HTTP Fetch avec retry (100% maison)
+// ================================
+
+// Si tu es en Node 18+, tu peux utiliser le fetch global et virer ce import.
+async function fetchWithRetry(
+  url: string,
+  userAgent: string,
+  timeoutMs: number = REQUEST_TIMEOUT,
+  maxBodySize?: number,
+): Promise<{ html: string; status: number; contentType: string } | null> {
+  for (let attempt = 0; attempt < RETRY_COUNT; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': userAgent,
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        },
+        signal: controller.signal,
+        redirect: 'follow',
+      } as RequestInit);
+
+      clearTimeout(timeoutId);
+
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        const waitTime = retryAfter
+          ? parseInt(retryAfter) * 1000
+          : Math.pow(2, attempt) * 1000;
+        console.log(
+          `[Scraper] 429 (rate limit), attente ${waitTime}ms avant retry...`,
+        );
+        await delay(waitTime);
+        continue;
+      }
+
+      if (response.status >= 500) {
+        console.log(
+          `[Scraper] Erreur serveur (${response.status}), retry ${attempt + 1}/${RETRY_COUNT}`,
+        );
+        await delay(Math.pow(2, attempt) * 1000);
+        continue;
+      }
+
+      const contentLength = response.headers.get('content-length');
+      if (maxBodySize && contentLength && parseInt(contentLength) > maxBodySize) {
+        console.log(
+          `[Scraper] Body trop gros: ${contentLength} > ${maxBodySize}, on abandonne.`,
+        );
+        return null;
+      }
+
+      const html = await response.text();
+      const contentType = response.headers.get('content-type') || 'text/html';
+
+      return { html, status: response.status, contentType };
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log(
+          `[Scraper] Timeout pour ${url}, retry ${attempt + 1}/${RETRY_COUNT}`,
+        );
+      } else {
+        console.error(
+          `[Scraper] Erreur fetch (tentative ${attempt + 1}):`,
+          error.message,
+        );
+      }
+
+      if (attempt < RETRY_COUNT - 1) {

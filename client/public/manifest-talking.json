@@ -1,0 +1,29 @@
+{
+  "name": "Ulysse Voice",
+  "short_name": "Ulysse",
+  "description": "Mode vocal 100% mains-libres avec Ulysse",
+  "start_url": "/talking",
+  "display": "standalone",
+  "background_color": "#0f0f23",
+  "theme_color": "#7c3aed",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "fr",
+  "dir": "ltr",
+  "scope": "/talking",
+  "prefer_related_applications": false
+}

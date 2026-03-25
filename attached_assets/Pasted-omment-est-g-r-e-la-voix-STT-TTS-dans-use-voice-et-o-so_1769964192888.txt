@@ -1,0 +1,145 @@
+omment est gérée la voix (STT/TTS) dans use-voice, et où sont les points fragiles ?
+Là je m’appuie directement sur le code que tu as dans client/src/hooks/use-voice.ts (ton snapshot) + ta nouvelle conscience de code.
+
+a) Comment c’est structuré (dans ton vrai code)
+Tu as un hook useVoice() très costaud, qui gère tout le pipeline voix:
+
+États & refs principaux:
+
+isListening, isSpeaking, isProcessing, voiceState (idle | listening | processing | speaking).
+micPermission, permissionsReady, ttsUnlocked, isIOS, wakeWordActive.
+Un paquet de useRef pour:
+mediaRecorderRef, audioChunksRef, streamRef (captation micro),
+audioContextRef, analyserRef, ttsAnalyserRef (audio + VAD),
+audioQueueRef, currentAudioRef, ttsSourceRef (TTS OpenAI),
+isRecordingRef, keepListeningRef, processingRef (contrôle de flux),
+browserRecognitionRef (Web Speech API),
+iOSStateRef pour la machine à états iOS (idle | listening | restarting | disabled),
+timers : silenceTimeoutRef, restartTimeoutRef, silenceTimeoutForIOSRef.
+TTS (parle):
+
+Fonction speak(text):
+
+Si iOS + TTS pas unlock : early return.
+Si useBrowserFallback : fallbackSpeak(text) (SpeechSynthesis).
+Sinon:
+POST /api/voice/tts (OpenAI, voix "onyx", speed: 1.0).
+Récupère un Blob audio, crée un Audio, le push dans audioQueueRef.
+playNextInQueue():
+Connecte l’audio au ttsAnalyser pour mesurer l’énergie (EchoGuard).
+Met à jour isSpeakingRef, voiceState, lastSpokenText.
+Gère onended / onerror, nettoie les nodes / URL blob, enchaîne la queue.
+fallbackSpeak:
+
+Utilise window.speechSynthesis,
+Gère iOS en découpant en chunks (max 200/500 chars),
+Sélectionne une voix française,
+Enchaîne les utterance avec callbacks onstart/onend/onerror.
+STT (écoute):
+
+Deux grands modes:
+Browser SpeechRecognition (startBrowserRecognition()):
+Utilise window.SpeechRecognition || window.webkitSpeechRecognition.
+continuous = !iOS, interimResults = true, lang = "fr-FR".
+onresult:
+Agrège finalTranscript / interimTranscript.
+Appelle processTranscript(finalTranscript).
+Gère un silenceTimeoutForIOS (3s) pour stopper si plus de parole.
+onerror:
+Log, met micPermission à denied/unavailable si besoin.
+Sur iOS, peut mettre iOSState à disabled.
+onend:
+Si keepListeningRef encore true → backoff + redémarrage auto (sauf iOS disabled).
+MediaRecorder + Whisper (startListening() path fallback):
+Demande getUserMedia avec contraintes audio (echoCancellation, noiseSuppression, etc; sampleRate 16000 hors iOS).
+Crée un MediaRecorder, enregistre des sessionChunks.
+À onstop:
+Si chunks suffisants → audioBlob → sendAudioToWhisper().
+sendAudioToWhisper:
+Devine l’extension (webm/mp4/ogg/wav/mp3),
+Envoie en FormData à /api/voice/stt avec language = "fr",
+Récupère data.transcript, puis processTranscript().
+EchoGuard / filtrage d’écho:
+
+getAudioEnergy(analyser) → moyenne des fréquences.
+isEchoFeedback(transcriptEnergy):
+Si je suis en train de parler (isSpeakingRef):
+Short cooldown après fin TTS (300 ms, barge-in possible si énergie forte).
+Compare énergie de la voix utilisateur à un seuil basé sur énergie TTS (ttsEnergyThresholdRef).
+checkContentSimilarity(text):
+Compare les premiers mots du transcript avec lastSpokenText.
+analyzeEchoSuspicion(text):
+Score de suspicion entre 0 et 1 basé sur:
+cooldown,
+similarité de contenu,
+énergie audio (VAD),
+ajustements si “barge-in”.
+shouldFilterTranscript(text):
+Utilise analyzeEchoSuspicion.
+Si score ≥ 0.75 → transcript filtré (echo).
+Wake Word & “à toi”:
+
+checkForWakeWord(text) → mots type “hey ulysse / salut ulysse / iris…”.
+detectEndTrigger(text) → regex sur “à toi” à la fin.
+processTranscript(transcriptResult):
+Filtre écho si besoin.
+Gère wake word : active wakeWordActive, nettoie le texte.
+Gère trigger “à toi” :
+stoppe l’écoute (abort, clear timeouts),
+appelle onAutoSubmit avec le texte nettoyé,
+reset transcript.
+iOS specific:
+
+Gestion de iOSStateRef + logs spécifiques.
+unlockTTS() côté iOS (AudioContext, silent audio, utterance vide).
+b) Où sont les points fragiles (dans TON code concret)
+Vu ta vraie implémentation, les faiblesses potentielles se situent ici :
+
+Complexité de la gestion d’état & concurrence
+
+Tu as beaucoup de flags : isListening, isProcessing, isSpeaking, keepListeningRef, isRecordingRef, voiceStateRef, iOSStateRef, endTriggerFiredRef, etc.
+Risques:
+Deux chemins de stop/start qui se marchent dessus (MediaRecorder vs SpeechRecognition).
+Des timeouts/intervals non nettoyés dans certains cas extrêmes → comportements bizarres (ex: sur iOS, silence timeout qui stoppe alors que tu viens de recommencer).
+Amélioration possible:
+Extraire une vraie FSM centralisée (un mini reducer ou xstate-like) et éviter la “state soup”.
+Gestion du multi-mode STT (SpeechRecognition ↔ MediaRecorder)
+
+startListening():
+Tente d’abord SpeechRecognition si useBrowserFallback ou iOS.
+Sinon MediaRecorder.
+Problème classique:
+Si SpeechRecognition démarre / crashe / n’est pas disponible dans certains Chrome/Safari edge cases, la logique de fallback peut être partiellement déclenchée mais pas complètement (risque de “plus rien n’écoute”).
+Tu as déjà des protections, mais:
+il faut être sûr que quand SpeechRecognition échoue, on retombe bien sur le chemin MediaRecorder, et inversement.
+Whisper & gestion d’erreurs réseau
+
+sendAudioToWhisper():
+Si le fetch /api/voice/stt échoue (timeout, 500…), tu log, tu remets isProcessing à false… mais:
+tu ne remontes pas forcément une info claire à l’utilisateur,
+tu peux laisser l’UI “penser” que la commande vocale n’a rien fait.
+Une meilleure UX serait:
+remonter une erreur “STT indisponible” au front,
+et/ou rebasculer sur SpeechRecognition si dispo.
+VAD + silence handling (surtout iOS)
+
+Tu as deux types de timeouts:
+silence pour iOS dans SpeechRecognition (silenceTimeoutForIOSRef),
+VAD basé sur analyserRef côté MediaRecorder.
+Problème classique:
+Selon micro / environnement, les seuils (SPEECH_THRESHOLD, SILENCE_THRESHOLD) peuvent être inadéquats → coupure trop tôt, ou jamais.
+Tu as déjà du code pour ça (mais la partie est tronquée dans le snapshot).
+Ce serait un bon endroit pour:
+exposer des profils VAD plus clairs,
+logger quelques métriques pour ajuster les seuils.
+iOS: état disabled / résurrection
+
+Tu gères bien iOSStateRef = 'disabled' en cas de not-allowed ou audio-capture error.
+Mais une fois dans cet état:
+si l’utilisateur corrige ses permissions, est-ce qu’on sait se “réactiver” sans reload ?
+Aujourd’hui, tu bloques proprement (startBrowserRecognition early return), mais la “réhabilitation” dépend peut-être du refresh page.
+Si tu veux aller encore plus loin sur cette partie voix, on peut faire ensemble :
+
+un mini design FSM en texte pour useVoice (états + événements + transitions propres),
+un plan de refactor par étapes sans tout casser,
+et éventuellement une couche de télémétrie légère (logs structurés: “startListening reason=button”, “speechEnd reason=silenceTimeout”, etc.) pour ajuster tes seuils.

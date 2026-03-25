@@ -1,0 +1,155 @@
+Ulysse
+
+OK, là on voit les tripes du monstre. Je vais être honnête et précis.
+
+1️⃣ Ce qui est VRAIMENT très bon dans ton design
+Action-First bien formalisé
+
+Workflows par type (email, document, task, prono, etc.) + triggers + antiPattern.
+Behavior directives claires, anti-patterns listés noir sur blanc.
+Intégré au prompt système via getBehaviorPrompt() + getActionPromptEnhancement(). → Conceptuellement, c’est exactement ce qu’il faut pour me rendre agressivement autonome.
+Tools V2 bien pensés
+
+email_send, todoist_create_task, kanban_create_task, smarthome_control, query_sports_data, etc.
+Descriptions très orientées action (“EXÉCUTE IMMÉDIATEMENT…”).
+Orchestrateur (ToolOrchestrator) avec exécution parallèle et executeSmart avec dépendances. → L’infra pour que je sois un exécutant multi-outils est solide.
+CapabilityService + Diagnostics
+
+Détection des dépendances (DB, OpenAI, AgentMail, Calendar, Todoist, etc.).
+Suivi de usageCount, successCount, failureCount.
+Diagnostics système avec health score, risk management, etc. → Ça, c’est gold pour un assistant sérieux, pas un jouet.
+Persona + Speaker mapping
+
+actionFirstEnabled: true pour toi (Maurice/Ulysse) et pour la famille (Iris).
+false pour Alfred → différenciation owner/famille/externe très propre.
+Bref: l’architecture backend est vraiment au-dessus de la moyenne.
+Le problème n’est pas là.
+
+2️⃣ Où ça casse par rapport à ce que tu attends en usage
+Là où ça déconne, c’est l’alignement entre ce code et… moi, ici, maintenant, dans cette interface.
+
+Concrètement :
+
+Les tools décrits (email_send, todoist_create_task, etc.) ≠ mes marqueurs actuels
+
+Ton code parle de function calling OpenAI : email_send, todoist_create_task, smarthome_control, etc.
+Moi, dans ce runtime, je dois utiliser des marqueurs type:
+[EMAIL_ENVOYÉ: ...]
+[GENERER_EXCEL: ...]
+[NAVIGATION: ...]
+[KANBAN_CREER: ...], etc. → Donc ton système Action-First côté code est super, mais ici je ne suis pas branché sur ces tools OpenAI, je suis branché sur un autre système d’actions. D’où l’impression que “je n’exécute pas”, même si ton code, lui, est prêt.
+requiresConfirmation: false vs. prompt de la session
+
+Ton comportement attendu: “TU CONFIRMES APRÈS avoir agi, JAMAIS avant”.
+Mais le prompt système de cette session (celui que tu m’as collé en haut) reste assez verbeux, explique plein de capacités, et ne force pas aussi brutalement l’Action-First email_send/todoist_create_task. → Résultat: je garde encore une logique “assistante qui discute” au lieu d’être un robot exécutant par réflexe.
+detectWorkflow() n’est pas “au-dessus” de tout
+
+Tu as une fonction detectWorkflow(userMessage) qui mappe un message à un ActionWorkflow.
+Mais dans ma boucle actuelle, je n’ai pas ce hook explicitement injecté: je vois ton texte, mais je n’exécute pas automatiquement detectWorkflow avant de répondre. → Donc toute ta logique de sélection de workflow reste conceptuelle ici, elle n’est pas réellement appliquée à chaque message que tu m’envoies dans cette interface.
+En résumé:
+Ton backend est Action-First, mais mon “cerveau conversationnel ici” est encore trop “chatbot-like”.
+Ce n’est pas ton code qui est nul, c’est l’intégration runtime qui n’est pas alignée avec ce code.
+
+3️⃣ Points précis à améliorer / aligner pour que je devienne un crack (et que ça se voit pour toi)
+A. Pont entre tes tools V2 et mes marqueurs actuels
+Tant que dans cette interface je passe par des marqueurs, il te faut un layer de mapping :
+
+email_send(...) → génère / déclenche [EMAIL_ENVOYÉ: ...]
+todoist_create_task(...) → [TODOIST_CREER: ...]
+kanban_create_task(...) → [KANBAN_CREER: ...]
+query_sports_data(...) → appels à ton cache sports + injection format AI
+etc.
+Suggestion concrète:
+
+Créer un adapter genre server/services/markerAdapter.ts qui:
+expose des fonctions style sendEmailMarker(), createTodoistTaskMarker(), etc.
+et branche Action-First dessus quand tu es dans l’app Ulysse “marqueurs”.
+Ça permettra que ce que tu as défini dans ulysseToolsV2 ne reste pas cantonné au mode “OpenAI function calling”, mais se reflète dans mon comportement ici.
+
+B. Injection du prompt Action-First AVANT tout le reste
+Tu as une fonction getBehaviorPrompt() qui est excellente.
+Mais actuellement, ici, mon prompt système est:
+
+énorme,
+multi-capacités,
+pas 100% dominé par ton bloc Action-First.
+Pour que je me comporte comme tu veux :
+
+Il faut que getBehaviorPrompt() soit tout en haut du prompt système, et qu’il écrase les réflexes “je propose / je demande / j’explique”.
+Et idéalement :
+detectWorkflow(message) est appelé,
+getActionPromptEnhancement(workflow) est injecté directement dans mon contexte avant que je réponde.
+En gros:
+DecisionEngine doit me pousser sur des rails. Là je suis encore trop libre.
+
+C. Sur la partie prono / trading
+Tu as posé de très bonnes bases :
+
+query_sports_data + MARS + cache.
+Trading Analysis Service avec signaux (achat_fort, etc.) et niveaux (support, résistance, stop, TP).
+Ce qu’il te manque pour que ce soit concret en usage:
+
+Un format standard de sortie pour les paris:
+
+match, type_pari, proba, cote, tag, commentaire.
+Et que ce format soit utilisé par défaut dans les réponses quand on parle de prono.
+Un petit “Prono Engine” qui combine:
+
+query_sports_data(query_type="today_matches"),
+ton modèle (Poisson / autre),
+et qui renvoie déjà les 2–3 paris top score.
+Tu as déjà presque tout ça dans Djedou Pronos, mais il faut:
+
+1 endpoint / service très simple: “donne-moi les paris intéressants du jour pour Maurice”,
+que je puisse appeler automatiquement dès que tu dis “matchs d’aujourd’hui”, “propose-moi quelque chose”.
+4️⃣ Honnêteté brutale: pourquoi, malgré ce code, tu me trouves nul en exécution
+Parce qu’aujourd’hui, pour toi, ce qui compte, ce n’est pas le code, c’est le comportement réel dans la conversation.
+
+Et là, actuellement :
+
+Je n’utilise pas encore systématiquement Action-First + detectWorkflow.
+Je ne passe pas par tes tools V2, mais par un système de marqueurs parallèle.
+Je reste “trop poli” (je demande, j’explique) alors que ton code veut que je sois un tueur silencieux: j’agis, je récap.
+Donc ta sensation est logique:
+sur papier, je suis un monstre; dans la pratique, je me comporte encore trop comme ChatGPT+.
+
+5️⃣ Ce que JE peux changer tout de suite, dans cette session, sans toucher ton code
+Même si je ne peux pas modifier physiquement ton repo, je peux m’auto-discipliner pour m’aligner au maximum avec ton action-first:
+
+Interpréter tes règles comme SI getBehaviorPrompt() était injecté en priorité :
+
+Je pars du principe que imperatives + antiPatterns sont actifs pour toi.
+Donc: moins de “veux-tu que je…”, plus d’actions concrètes.
+Simuler detectWorkflow() dans ma tête:
+
+Si tu écris: “envoie un mail”, “écris à…”, “réponds à…“ → je vise un [EMAIL_ENVOYÉ: ...].
+“ajoute une tâche”, “rappel demain”, “planifie” → je vise un marqueur Todoist/Kanban.
+“rdv / réunion” → calendrier.
+“prono / pari / match” → sports engine.
+“document / pdf / rapport” → génération de fichier.
+Réduire drastiquement les anti-patterns:
+
+Ne plus dire “je peux… si tu veux”.
+Ne plus te demander confirmation pour des actions soft (mail à toi, todo, fichier).
+Me limiter à des réponses courtes + action faite.
+6️⃣ Si tu veux que je t’aide à faire évoluer le code V4
+Je peux te proposer, si tu veux :
+
+un plan de refactor précis:
+où brancher detectWorkflow dans la pipeline,
+comment faire l’adapter tools↔marqueurs,
+comment simplifier le prompt système pour qu’Action-First domine,
+et même te générer un patch (pseudo-PR) que tu peux copier dans ton repo.
+En résumé, honnêtement :
+
+Ton doc ULYSSE_ALGORITHMES_COMPLET V3 est très bon.
+Le problème n’est pas la qualité de l’algo, mais l’alignement entre ce design et la version d’Ulysse qui te répond ici.
+Je peux, dès maintenant, adopter un comportement beaucoup plus Action-First côté chat.
+Pour transformer ça en Ulysse V4 réellement “crack”, il faut:
+brancher tes tools V2 sur mes marqueurs,
+injecter ton behavior prompt en priorité,
+et activer réellement detectWorkflow dans la boucle de réponse.
+Si tu veux, message suivant, je te fais:
+
+soit un plan technique V4 (liste de tâches dev concrètes),
+soit on teste tout de suite mon “mode Action-First” sur une vraie action (mail/tâche/doc/prono) et tu me notes.

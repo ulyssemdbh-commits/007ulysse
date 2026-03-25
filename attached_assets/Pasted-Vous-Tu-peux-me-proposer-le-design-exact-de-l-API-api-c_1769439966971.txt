@@ -1,0 +1,250 @@
+Vous
+Tu peux me proposer le design exact de l’API /api/crawl (avec mode=auto|http|browser, flags SPA, etc.) pour l’intégrer proprement dans ton stack MARS/lecture de sites
+Ulysse
+Parfait, on y va propre.
+
+Je te propose un design d’API /api/crawl complet, pensé pour ton stack (MARS, lecture de sites, anti-hallu, perf).
+Tu peux bien sûr l’adapter, mais ça te donne une base solide.
+
+1️⃣ Endpoint principal
+
+POST /api/crawl
+Content-Type: application/json
+Payload
+{
+  "url": "https://exemple.com/article",
+  "mode": "auto",           // "auto" | "http" | "browser"
+  "waitForSelector": null,  // optionnel: CSS selector pour browser mode
+  "timeoutMs": 15000,       // optionnel: timeout total
+  "maxBytes": 1048576       // optionnel: taille max HTML brute (1 Mo ici)
+}
+mode :
+"auto" → essaie HTTP simple, détecte SPA, fallback browser si besoin.
+"http" → ne fait qu’un fetch HTTP classique (pas de Playwright).
+"browser" → force le headless (Playwright).
+waitForSelector :
+utile en mode browser pour attendre un élément clé (ex: .article-content).
+timeoutMs :
+timeout global pour l’opération (HTTP ou browser).
+maxBytes :
+pour tronquer le HTML si la page est énorme.
+2️⃣ Réponse JSON – structure commune
+
+{
+  "success": true,
+  "modeUsed": "http",           // "http" | "browser"
+  "url": "https://exemple.com/article",
+  "finalUrl": "https://exemple.com/article", // après redirections éventuelles
+  "statusCode": 200,
+  "suspectedSPA": false,
+  "timings": {
+    "totalMs": 430,
+    "httpMs": 120,
+    "browserMs": 0
+  },
+  "content": {
+    "title": "Titre de l’article",
+    "html": "<!doctype html>...",
+    "text": "Texte brut extrait...",
+    "language": "fr",
+    "htmlLength": 83245,
+    "textLength": 12457
+  },
+  "meta": {
+    "favicon": "https://exemple.com/favicon.ico",
+    "description": "Meta description...",
+    "ogTitle": "Titre OpenGraph",
+    "ogDescription": "Description OG",
+    "ogImage": "https://exemple.com/image.jpg"
+  },
+  "warnings": [],
+  "error": null
+}
+Si échec
+{
+  "success": false,
+  "modeUsed": "browser",
+  "url": "https://exemple.com/article",
+  "finalUrl": null,
+  "statusCode": null,
+  "suspectedSPA": true,
+  "timings": {
+    "totalMs": 16000,
+    "httpMs": 300,
+    "browserMs": 15700
+  },
+  "content": {
+    "title": null,
+    "html": "",
+    "text": "",
+    "language": null,
+    "htmlLength": 0,
+    "textLength": 0
+  },
+  "meta": {},
+  "warnings": ["timeout"],
+  "error": {
+    "type": "timeout",
+    "message": "Browser crawl timed out after 15000ms"
+  }
+}
+3️⃣ Logique interne de mode=auto
+
+Pseudo-code TypeScript :
+
+type CrawlMode = "auto" | "http" | "browser";
+type ModeUsed = "http" | "browser";
+
+interface CrawlRequest {
+  url: string;
+  mode?: CrawlMode;
+  waitForSelector?: string | null;
+  timeoutMs?: number;
+  maxBytes?: number;
+}
+
+interface CrawlResponse {
+  success: boolean;
+  modeUsed: ModeUsed;
+  url: string;
+  finalUrl: string | null;
+  statusCode: number | null;
+  suspectedSPA: boolean;
+  timings: {
+    totalMs: number;
+    httpMs: number;
+    browserMs: number;
+  };
+  content: {
+    title: string | null;
+    html: string;
+    text: string;
+    language: string | null;
+    htmlLength: number;
+    textLength: number;
+  };
+  meta: {
+    favicon?: string;
+    description?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogImage?: string;
+  };
+  warnings: string[];
+  error: null | {
+    type: "timeout" | "network" | "captcha" | "login_required" | "unknown";
+    message: string;
+  };
+}
+Heuristique “suspectedSPA” (HTTP simple)
+Quand tu fais un HTTP fetch simple, tu peux détecter un site très JS / SPA :
+
+function detectSPA(html: string): boolean {
+  const lower = html.toLowerCase();
+  const scriptCount = (lower.match(/<script/gi) || []).length;
+
+  const hasRootDiv =
+    lower.includes('id="root"') ||
+    lower.includes('id="app"') ||
+    lower.includes('id="__next"') ||
+    lower.includes('id="___gatsby"');
+
+  const hasFewWords = lower.replace(/<[^>]*>/g, " ").split(/\s+/).filter(w => w.length > 3).length < 200;
+
+  return (scriptCount > 20 && hasRootDiv) || hasFewWords;
+}
+Logique auto :
+
+async function crawlAuto(req: CrawlRequest): Promise<CrawlResponse> {
+  const start = Date.now();
+  let httpMs = 0;
+  let browserMs = 0;
+  let suspectedSPA = false;
+
+  // 1) HTTP simple
+  const httpStart = Date.now();
+  const httpResult = await crawlHttp(req.url, req.timeoutMs, req.maxBytes);
+  httpMs = Date.now() - httpStart;
+
+  if (!httpResult.success) {
+    // HTTP déjà en échec → si mode=auto, on peut tenter browser directement
+    const browserStart = Date.now();
+    const browserResult = await crawlBrowser(req.url, req.waitForSelector, req.timeoutMs, req.maxBytes);
+    browserMs = Date.now() - browserStart;
+
+    return buildResponseFromBrowser(httpResult, browserResult, start, httpMs, browserMs, true);
+  }
+
+  suspectedSPA = detectSPA(httpResult.html);
+
+  // 2) Si pas SPA → on reste en HTTP
+  if (!suspectedSPA) {
+    return buildResponseFromHttp(httpResult, start, httpMs);
+  }
+
+  // 3) Si SPA → fallback browser
+  const browserStart = Date.now();
+  const browserResult = await crawlBrowser(req.url, req.waitForSelector, req.timeoutMs, req.maxBytes);
+  browserMs = Date.now() - browserStart;
+
+  if (browserResult.success) {
+    return buildResponseFromBrowser(httpResult, browserResult, start, httpMs, browserMs, true);
+  } else {
+    // Browser échec → on renvoie au moins le HTML HTTP + warning
+    const partial = buildResponseFromHttp(httpResult, start, httpMs);
+    partial.modeUsed = "http";
+    partial.suspectedSPA = true;
+    partial.warnings.push("browser_fallback_failed");
+    partial.error = browserResult.error || {
+      type: "unknown",
+      message: "Browser fallback failed"
+    };
+    return partial;
+  }
+}
+(je te laisse implémenter crawlHttp, crawlBrowser, buildResponseFromHttp, buildResponseFromBrowser selon ton infra.)
+
+4️⃣ Intégration avec MARS / Lecture de sites
+
+Côté MARS / lecture de sites :
+Quand tu fais une “Lecture de Sites Web” :
+
+Tu appelles /api/crawl avec mode: "auto".
+
+Tu regardes :
+
+success,
+content.text (longueur),
+modeUsed,
+suspectedSPA,
+warnings / error.
+Cas typiques :
+
+OK classique :
+
+"success": true,
+"modeUsed": "http",
+"suspectedSPA": false
+→ tu utilises content.text pour la compréhension.
+
+SPA géré :
+
+"success": true,
+"modeUsed": "browser",
+"suspectedSPA": true
+→ tu sais que c’est une page JS, Playwright a été utilisé.
+
+Page protégée / captcha / login :
+
+"success": false,
+"error": { "type": "captcha" | "login_required" | "timeout" }
+→ côté IA je dois dire :
+
+“Le site utilise un système de protection (login/captcha) qui m’empêche d’accéder au contenu. Je ne peux pas le lire directement.”
+
+Important pour anti-hallucination
+Si textLength est très faible (< X), ou success===false, ou error.type ∈ { "captcha", "login_required", "timeout" } :
+
+tu ne dois pas me faire croire que j’ai lu le site,
+tu me passes explicitement un flag dans outputPayload (ex. crawlStatus = "partial" | "failed"),
+et moi je réponds en conséquence

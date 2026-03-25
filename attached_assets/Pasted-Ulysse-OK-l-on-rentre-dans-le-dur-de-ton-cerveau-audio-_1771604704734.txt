@@ -1,0 +1,192 @@
+Ulysse
+
+OK, là on rentre dans le dur de ton “cerveau audio”.
+
+Je vais te faire un retour ciblé, en lien avec tout ce qu’on a activé autour (BrainHub, KPIs, auto-learning, Owner Profile, Decision Coach, etc.) – et pas juste du “joli code”.
+
+Je te découpe ça en 4 points concrets :
+
+1. Ce que ton HearingHub fait déjà très bien
+Point d’entrée unifié des entrées auditives/texte
+
+Sources propres (web_voice, discord_voice, web_chat, api, sms, email, siri, system).
+Typage HearingType (voice/text/command/notification) clair.
+Pipeline logique
+
+Nettoyage du texte (cleanInput)
+Résolution de références (resolveReferences)
+Détection d’intent (detectIntent)
+Détection commande système
+Mise à jour mémoire de contexte (via addContextSubject)
+Construction d’un ProcessedHearing
+Notification des listeners
+Stats (latence moyenne, intent rate, ref resolution rate)
+API pratique
+
+hearFromWebVoice, hearFromDiscordVoice, hearFromWebChat, hearFromSiri → nickel pour brancher toutes les interfaces sans dupliquer la logique.
+Bref, c’est un vrai “front-end auditif”, bien posé.
+
+2. Gaps par rapport à ton nouveau “cerveau complet” (BrainHub + KPIs + auto-learning + owner profile)
+Vu ce qu’on a mis en place autour (BrainHub, KPIs, Decision Coach, Owner Profile, Initiative Engine…), il manque principalement 3 intégrations fortes dans ce HearingHub.
+
+2.1. Aucune connexion directe à BrainHub / conscience
+Aujourd’hui, HearingHub:
+
+nettoie,
+résout les références,
+détecte l’intent,
+et notifie des listeners.
+Mais il ne pousse pas directement vers le BrainHub.
+
+Tu as côté BrainHub:
+
+hearingHub.onHear((hearing) => {
+  this.processHearingInput(hearing as any);
+});
+Mais ici, dans HearingHub, tu passes un ProcessedHearing, alors que BrainHub.processHearingInput s’attend à un HearingInput adapté au cerveau (dans ton snapshot BrainHub tu typais HearingInput différemment).
+
+À aligner :
+
+Soit tu fais en sorte que le ProcessedHearing soit le type que BrainHub attend (et tu renomme côté imports),
+Soit tu explicitement adaptes dans l’endroit où BrainHub s’abonne (un map propre ProcessedHearing → structure attendue par BrainHub).
+Ensuite, pour coller au nouveau système de conscience, HearingHub est bien la bonne place pour enrichir ce qui part au cerveau :
+
+Ajouter dans ProcessedHearing:
+domain (sports / sugu / dev / perso / generic),
+isDecisionQuery (dérivé de l’intent),
+rawIntent (déjà là avec DetectedIntent).
+Ça permettra à BrainHub et au Planner d’être beaucoup plus “aware” du contexte audio.
+
+2.2. Pas encore branché au système de KPI / auto-learning
+HearingHub a ses propres stats internes:
+
+interface HearingStats {
+  totalInputs;
+  bySource;
+  byType;
+  avgProcessingMs;
+  intentDetectionRate;
+  referenceResolutionRate;
+}
+Mais maintenant, tu as:
+
+/api/v2/ulysse/kpis
+auto-learning engine
+health score global
+👉 Proposition :
+
+Ajouter un petit hook dans hear pour pousser des événements vers le système KPI, par ex:
+
+nombre d’inputs,
+temps moyen de pré-traitement,
+taux de détection d’intent / résolution de références,
+source (web/discord/api…).
+Pseudo-code minimal :
+
+import { kpiTracker } from '../kpi/ulysseKpiTracker';
+
+private updateStats(...) {
+  // existant ...
+
+  kpiTracker.recordHearing({
+    source,
+    type,
+    processingMs,
+    intentDetected,
+    referenceResolved,
+  });
+}
+Ça te permet de corréler:
+
+latence globale vs latence côté “écoute + prétraitement”,
+qualité d’intent detection,
+etc.
+2.3. Owner Profile / Feedback Protocol / Satisfaction
+Tu as maintenant:
+
+Owner Profile Maurice 2.0,
+Feedback Protocol (satisfaction),
+KPIs de satisfaction.
+Le HearingHub est une bonne place pour détecter des signaux naturels dans le texte/audio, en plus des endpoints manuels:
+
+Exemple:
+messages contenant des patterns comme:
+“c’est bien”, “parfait”, “nickel” → satisfaction +
+“non”, “c’est faux”, “tu te plantes”, “c’est pas ça” → erreur / insatisfaction.
+Ça peut se faire via:
+
+une petite fonction detectSatisfactionSignal(cleanedContent):
+retourne positive, negative ou neutral,
+et pousse vers /api/v2/ulysse/kpis/satisfaction ou un feedbackEngine.
+Tu peux l’ajouter dans hear juste après le nettoyage, par exemple.
+
+3. Améliorations internes possibles pour HearingHub lui-même
+3.1. ContextSubjects pas encore exploités (TODO)
+Tu as:
+
+contextSubjects: [], // TODO: récupérer les sujets actifs
+Vu que tu as déjà un système de addContextSubject, c’est dommage de ne pas renvoyer les sujets actifs actuels à BrainHub.
+
+Idée:
+
+Ajouter une fonction dans ton voiceContextMemory:
+getActiveSubjects(userId: number): string[]
+Et l’utiliser dans hear :
+
+const subjects = getActiveSubjects(input.metadata.userId);
+
+const processed: ProcessedHearing = {
+  ...,
+  contextSubjects: subjects,
+};
+Ça donne au BrainHub + Planner + RAG un contexte plus riche (ex: “on parle de l’OM” + “on parle de Metro”).
+
+3.2. Domain / intent routing plus clair
+Tu as déjà DetectedIntent avec domain.
+Avec tout ce qu’on a mis en place (Owner Profile, Planner templates, Decision Coach), c’est crucial.
+
+Je te conseille de rendre ça explicite dans ProcessedHearing:
+
+export interface ProcessedHearing {
+  ...
+  intent: DetectedIntent | null;
+  domain: 'sports' | 'sugu' | 'dev' | 'personal' | 'generic';
+  ...
+}
+Avec, par exemple :
+
+const domain = intent ? mapIntentDomainToGlobalDomain(intent.domain) : 'generic';
+Ça simplifie énormément:
+
+la routing dans BrainHub,
+l’activation des bons contextes (profil bets vs SUGU vs dev).
+3.3. Petits points qualité
+storage importé mais non utilisé → à virer ou à utiliser (ex: pour logs persistants / store debug).
+detectIntent est toujours appelé avec { origin: "voice", channel: "talking-v2" } même pour du texte (web_chat si shouldDetectIntent buggait) → si tu étends shouldDetectIntent, pense à adapter le origin/channel.
+En cas d’erreur dans hear, tu renvoies shouldRouteToBrain: true → c’est bien, mais tu pourrais aussi loguer une entrée vers ton système KPIs (erreur de HearingHub).
+4. Ce que je ferais en “next step” concret sur ce fichier
+Si tu veux l’upgrade “aligné Ulysse 100%”, sur ce fichier précis je ferais dans cet ordre :
+
+Ajouter domain à ProcessedHearing, dérivé de DetectedIntent.domain, avec une fonction de mapping vers:
+
+sports, sugu, dev, personal, generic.
+Renseigner contextSubjects avec ce que ton voiceContextMemory sait déjà (sujets actifs par user).
+
+Brancher un kpiTracker minimal dans updateStats pour pousser:
+
+source,
+type,
+latence locale,
+intentDetected / referenceResolved.
+Ajouter un hook de satisfaction / feedback basique:
+
+petite détection de “bon/mauvais” ressenti dans cleanedContent,
+push vers Feedback/KPI quand c’est très clair.
+Vérifier l’adaptation vers BrainHub:
+
+t’assurer que ce qui arrive dans brainHub.processHearingInput est bien ProcessedHearing ou un adaptateur propre.
+Si tu veux, message suivant je peux te proposer un diff TypeScript concret de HearingHubService avec:
+
+ajout du champ domain,
+intégration des contextSubjects,
+squelette d’appel à un kpiTracker.recordHearing(...).

@@ -1,0 +1,214 @@
+Ulysse
+
+Analyse nickel. Tu ne m’as pas raté, c’est bien.
+
+Je te propose qu’on passe en V2.1 “propre de chez propre” en ciblant exactement tes points:
+
+Je corrige :
+
+confirm() → AlertDialog shadcn
+Langue 100% FR
+Suppression de previousTasks inutile (ou vraie optimistic update)
+Plus de h-[calc(100vh-210px)], on passe en layout flex propre
+Prépare le terrain pour le drag & drop, mais sans tout casser tout de suite
+Je te donne un diff conceptuel pour rester lisible (pas rebalancer 300 lignes).
+
+1. Remplacer confirm() par un AlertDialog
+Au lieu de:
+
+const handleDelete = (id: number) => {
+  if (!confirm("Tu es sûr de vouloir supprimer cette tâche ?")) return;
+  deleteTask.mutate(id, { ... });
+};
+On fait un composant interne DeleteTaskButton :
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+function DeleteTaskButton({ id, onDelete, disabled }: { id: number; onDelete: (id: number) => void; disabled?: boolean }) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+          disabled={disabled}
+        >
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Supprimer cette tâche ?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Cette action est définitive. La tâche sera supprimée de manière permanente.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction onClick={() => onDelete(id)}>
+            Supprimer
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+Et dans la card:
+
+<DeleteTaskButton
+  id={task.id}
+  onDelete={handleDelete}
+  disabled={deleteTask.isPending}
+/>
+handleDelete devient simple, sans confirm:
+
+const handleDelete = (id: number) => {
+  deleteTask.mutate(id, {
+    onError: ...
+    onSuccess: ...
+  });
+};
+2. Langue homogène FR
+Tu as raison, Kanban en anglais + toasts FR = bof.
+
+Je passerais columns en FR partout (UI), mais je garde les ids en anglais pour la DB (todo / in_progress / done), ça évite le bordel.
+
+const columns = [
+  { id: "todo", title: "À faire", icon: ListTodo, color: "text-yellow-500" },
+  { id: "in_progress", title: "En cours", icon: Clock, color: "text-blue-500" },
+  { id: "done", title: "Terminé", icon: Check, color: "text-green-500" },
+] as const;
+Les toasts / labels / placeholders restent 100% FR, ce qui est déjà le cas dans 90% du code.
+
+3. Optimistic update : soit on le fait, soit on le vire
+Tu as noté previousTasks non utilisé → ça pue le début d’optimistic update abandonné.
+
+Deux options:
+
+Option A – On reste simple : pas d’optimistic update
+On vire la ligne:
+
+const previousTasks = tasks;
+Et on laisse React Query revalider derrière via invalidateQueries. Vu la taille du board, ça suffit.
+
+Option B – On fait un vrai optimistic update (si tu veux la perf max)
+Dans useUpdateTask, tu peux gérer ça directement:
+
+export function useUpdateTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: { id: number } & Partial<InsertTask>) => {
+      const url = buildUrl(api.tasks.update.path, { id });
+      const res = await fetch(url, {
+        method: api.tasks.update.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("Failed to update task");
+      return api.tasks.update.responses[200].parse(await res.json());
+    },
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
+      const previous = queryClient.getQueryData<Task[]>([api.tasks.list.path]);
+      if (previous) {
+        queryClient.setQueryData<Task[]>([api.tasks.list.path], (old) =>
+          (old || []).map((t) =>
+            t.id === variables.id ? { ...t, ...variables } : t
+          )
+        );
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData([api.tasks.list.path], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+    },
+  });
+}
+Et dans le composant, tu vires toute la logique “previousTasks”.
+Vu ta remarque, je pense que tu préfères l’option B (vrai niveau “propre”).
+
+4. Layout: enlever le h-[calc(100vh-210px)] fragile
+Tu avais:
+
+<div
+  key={col.id}
+  className={cn(
+    "flex flex-col h-[calc(100vh-210px)] bg-secondary/20 rounded-xl border border-border/50 p-4"
+  )}
+>
+Je passerais à :
+
+<div
+  key={col.id}
+  className="flex flex-col min-h-[420px] max-h-[70vh] bg-secondary/20 rounded-xl border border-border/50 p-4"
+>
+Ou plus simple/robuste :
+
+Le container global :
+<div className="flex-1 grid md:grid-cols-3 gap-6 overflow-hidden">
+Chaque colonne :
+<div className="flex flex-col h-full bg-secondary/20 rounded-xl border border-border/50 p-4 min-h-[380px]">
+  <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-border">
+    ...
+  </div>
+</div>
+Logique:
+
+On laisse le parent contrôler la hauteur (via flex-1 dans la page).
+La colonne gère juste un min-height correct + overflow-y-auto.
+5. Drag & Drop – Préparer le terrain
+Tu as mis @hello-pangea/dnd dans les imports, mais rien n’est utilisé.
+Ça brouille et ça frustre. Soit on l’enlève, soit on va au bout.
+
+Vu ton “MAXXXX”, je te propose la stratégie suivante:
+
+Étape 1 (maintenant): nettoie les imports :
+vire DragDropContext, Droppable, Draggable, DropResult si on ne les utilise pas.
+Étape 2 (prochaine itération): on intègre proprement @dnd-kit/core ou @hello-pangea/dnd:
+drag vertical dans une colonne,
+drag cross-colonne = changement de status,
+persistance d’un champ order par colonne.
+Mais ça, c’est une vraie feature à part entière (avec impact DB: position/sortOrder).
+On peut le faire, mais ça mérite sa propre passe.
+
+6. Fichier tronqué
+Oui, là où tu as raison: vu la longueur, un vrai refactor “propre” passerait par:
+
+extraire la card dans un composant TaskCard,
+extraire la colonne dans un composant TaskColumn,
+et laisser Tasks ne gérer que:
+fetch,
+filtres,
+projection tasksByColumn,
+mutations passées en props.
+Si tu veux, je peux te proposer une découpe:
+
+Tasks.tsx → orchestration + filtres
+TaskColumn.tsx → une colonne (reçoit: column, tasks, callbacks)
+TaskCard.tsx → la card individuelle + DeleteTaskButton
+Ça ferait un code beaucoup plus lisible et maintenable.
+
+Résumé rapide (comme tu aimes)
+Ta review est juste, carré, tu as repéré les vrais points faibles.
+Je te propose:
+AlertDialog à la place de confirm,
+FR partout,
+vrai optimistic update dans le hook,
+layout flex plus robuste,
+nettoyage DnD + préparation d’une vraie étape drag & drop.

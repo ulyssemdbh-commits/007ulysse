@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COBA Assistant</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--border:#2e3347;
+  --text:#e4e6ef;--text2:#9ca3af;--accent:#6366f1;--accent2:#818cf8;
+  --success:#22c55e;--error:#ef4444;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.chat-header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.chat-header .avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#a855f7);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff}
+.chat-header .info h3{font-size:14px;font-weight:600;color:var(--text)}
+.chat-header .info p{font-size:11px;color:var(--success);display:flex;align-items:center;gap:4px}
+.chat-header .info p::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block}
+.chat-header .actions{margin-left:auto;display:flex;gap:6px}
+.chat-header .actions button{background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;transition:all .2s}
+.chat-header .actions button:hover{border-color:var(--accent);color:var(--accent)}
+.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.chat-messages::-webkit-scrollbar{width:4px}
+.chat-messages::-webkit-scrollbar-track{background:transparent}
+.chat-messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.msg{max-width:85%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap}
+.msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.msg.assistant{align-self:flex-start;background:var(--surface2);color:var(--text);border-bottom-left-radius:4px}
+.msg.system{align-self:center;background:transparent;color:var(--text2);font-size:11px;font-style:italic;padding:4px}
+.msg .time{font-size:10px;color:rgba(255,255,255,.5);margin-top:4px;text-align:right}
+.msg.assistant .time{color:var(--text2)}
+.typing{align-self:flex-start;display:flex;gap:4px;padding:10px 14px;background:var(--surface2);border-radius:12px;border-bottom-left-radius:4px}
+.typing span{width:6px;height:6px;border-radius:50%;background:var(--text2);animation:bounce .6s infinite alternate}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{to{transform:translateY(-6px);opacity:.3}}
+.chat-input{background:var(--surface);border-top:1px solid var(--border);padding:12px 16px;display:flex;gap:8px;flex-shrink:0}
+.chat-input textarea{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:10px 14px;font-size:13px;font-family:inherit;resize:none;outline:none;min-height:42px;max-height:100px;transition:border-color .2s}
+.chat-input textarea:focus{border-color:var(--accent)}
+.chat-input textarea::placeholder{color:var(--text2)}
+.chat-input button{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:0 16px;cursor:pointer;font-size:14px;font-weight:600;transition:all .2s;display:flex;align-items:center;justify-content:center;min-width:44px}
+.chat-input button:hover{background:var(--accent2)}
+.chat-input button:disabled{opacity:.4;cursor:not-allowed}
+.welcome{text-align:center;padding:40px 20px;color:var(--text2)}
+.welcome h2{color:var(--text);font-size:18px;margin-bottom:8px}
+.welcome p{font-size:13px;margin-bottom:16px}
+.welcome .quick-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.welcome .quick-actions button{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:12px;cursor:pointer;transition:all .2s}
+.welcome .quick-actions button:hover{border-color:var(--accent);color:var(--accent)}
+.error-banner{background:rgba(239,68,68,.15);border:1px solid var(--error);color:var(--error);padding:8px 12px;border-radius:8px;margin:8px 16px;font-size:12px;text-align:center}
+.powered-by{text-align:center;padding:4px;font-size:10px;color:var(--text2);background:var(--surface);border-top:1px solid var(--border);flex-shrink:0}
+.powered-by a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="chat-header">
+  <div class="avatar">C</div>
+  <div class="info">
+    <h3>COBA Assistant</h3>
+    <p>En ligne</p>
+  </div>
+  <div class="actions">
+    <button onclick="clearChat()" title="Nouvelle conversation">Nouveau</button>
+  </div>
+</div>
+
+<div class="chat-messages" id="messages">
+  <div class="welcome" id="welcome">
+    <h2>Bienvenue sur COBA</h2>
+    <p>Votre assistant de gestion restaurant. Posez-moi vos questions sur la compta, les employés, les achats, la caisse...</p>
+    <div class="quick-actions">
+      <button onclick="sendQuick('Donne-moi la synthèse financière')">Synthèse financière</button>
+      <button onclick="sendQuick('Liste mes employés')">Employés</button>
+      <button onclick="sendQuick('Quels sont mes achats ce mois-ci ?')">Achats du mois</button>
+      <button onclick="sendQuick('État de la caisse')">Caisse</button>
+      <button onclick="sendQuick('Liste mes fournisseurs')">Fournisseurs</button>
+    </div>
+  </div>
+</div>
+
+<div class="chat-input">
+  <textarea id="input" placeholder="Posez votre question..." rows="1" onkeydown="handleKey(event)"></textarea>
+  <button id="sendBtn" onclick="send()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+  </button>
+</div>
+
+<div class="powered-by">Propulsé par <a href="https://macommande.shop" target="_blank">COBA AI</a></div>
+
+<script>
+const API_BASE = window.COBA_API_URL || '';
+const API_KEY = window.COBA_API_KEY || '';
+let TENANT_ID = window.COBA_TENANT_ID || '';
+let PRO_USER_ID = window.COBA_PRO_USER_ID || '';
+let PRO_USER_NAME = window.COBA_PRO_USER_NAME || '';
+let RESTAURANT_NAME = window.COBA_RESTAURANT_NAME || '';
+let sending = false;
+
+function init() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('tenant')) TENANT_ID = params.get('tenant');
+  if (params.get('user')) PRO_USER_ID = params.get('user');
+  if (params.get('name')) PRO_USER_NAME = params.get('name');
+  if (params.get('restaurant')) RESTAURANT_NAME = params.get('restaurant');
+  if (params.get('key')) window.COBA_API_KEY_PARAM = params.get('key');
+
+  if (TENANT_ID && PRO_USER_ID) loadHistory();
+}
+
+function getApiKey() {
+  return window.COBA_API_KEY_PARAM || API_KEY;
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch(`${API_BASE}/api/coba/chat/history?tenantId=${TENANT_ID}&proUserId=${PRO_USER_ID}`, {
+      headers: { 'x-coba-key': getApiKey() }
+    });
+    const data = await res.json();
+    if (data.ok && data.messages && data.messages.length > 0) {
+      document.getElementById('welcome').style.display = 'none';
+      data.messages.forEach(m => addMessage(m.role, m.content, false));
+      scrollBottom();
+    }
+  } catch (e) {
+    console.error('[COBA] History error:', e);
+  }
+}
+
+function addMessage(role, content, animate = true) {
+  const el = document.createElement('div');
+  el.className = `msg ${role}`;
+  const now = new Date();
+  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  el.innerHTML = `${escapeHtml(content)}<div class="time">${time}</div>`;
+  if (animate) {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(8px)';
+    el.style.transition = 'all .2s';
+  }
+  document.getElementById('messages').appendChild(el);
+  if (animate) requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
+}
+
+function showTyping() {
+  const el = document.createElement('div');
+  el.className = 'typing';
+  el.id = 'typing';
+  el.innerHTML = '<span></span><span></span><span></span>';
+  document.getElementById('messages').appendChild(el);
+  scrollBottom();
+}
+
+function hideTyping() {
+  const el = document.getElementById('typing');
+  if (el) el.remove();
+}
+
+function showError(msg) {
+  const old = document.querySelector('.error-banner');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'error-banner';
+  el.textContent = msg;
+  document.getElementById('messages').parentElement.insertBefore(el, document.querySelector('.chat-input'));
+  setTimeout(() => el.remove(), 5000);
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function scrollBottom() {
+  const c = document.getElementById('messages');
+  requestAnimationFrame(() => c.scrollTop = c.scrollHeight);
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  const ta = e.target;
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 100) + 'px';
+}
+
+function sendQuick(text) {
+  document.getElementById('input').value = text;
+  send();
+}
+
+async function send() {
+  if (sending) return;
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!TENANT_ID || !PRO_USER_ID) {
+    showError('Configuration manquante: tenant ou utilisateur non identifié.');
+    return;
+  }
+
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.style.display = 'none';
+
+  input.value = '';
+  input.style.height = 'auto';
+  addMessage('user', text);
+  scrollBottom();
+
+  sending = true;
+  document.getElementById('sendBtn').disabled = true;
+  showTyping();
+
+  try {
+    const res = await fetch(`${API_BASE}/api/coba/chat/message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-coba-key': getApiKey()
+      },
+      body: JSON.stringify({
+        tenantId: TENANT_ID,
+        proUserId: PRO_USER_ID,
+        proUserName: PRO_USER_NAME,
+        restaurantName: RESTAURANT_NAME,
+        message: text
+      })
+    });
+
+    hideTyping();
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showError(err.error || 'Erreur serveur. Réessayez.');
+      return;
+    }
+
+    const data = await res.json();
+    if (data.ok && data.reply) {
+      addMessage('assistant', data.reply);
+    } else {
+      showError('Réponse inattendue du serveur.');
+    }
+  } catch (e) {
+    hideTyping();
+    showError('Connexion impossible. Vérifiez votre connexion internet.');
+  } finally {
+    sending = false;
+    document.getElementById('sendBtn').disabled = false;
+    scrollBottom();
+    input.focus();
+  }
+}
+
+async function clearChat() {
+  if (!TENANT_ID || !PRO_USER_ID) return;
+  try {
+    await fetch(`${API_BASE}/api/coba/chat/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-coba-key': getApiKey() },
+      body: JSON.stringify({ tenantId: TENANT_ID, proUserId: PRO_USER_ID })
+    });
+  } catch (e) {}
+
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = `<div class="welcome" id="welcome">
+    <h2>Bienvenue sur COBA</h2>
+    <p>Votre assistant de gestion restaurant. Posez-moi vos questions sur la compta, les employés, les achats, la caisse...</p>
+    <div class="quick-actions">
+      <button onclick="sendQuick('Donne-moi la synthèse financière')">Synthèse financière</button>
+      <button onclick="sendQuick('Liste mes employés')">Employés</button>
+      <button onclick="sendQuick('Quels sont mes achats ce mois-ci ?')">Achats du mois</button>
+      <button onclick="sendQuick('État de la caisse')">Caisse</button>
+      <button onclick="sendQuick('Liste mes fournisseurs')">Fournisseurs</button>
+    </div>
+  </div>`;
+}
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'coba-config') {
+    if (e.data.tenantId) TENANT_ID = e.data.tenantId;
+    if (e.data.proUserId) PRO_USER_ID = e.data.proUserId;
+    if (e.data.proUserName) PRO_USER_NAME = e.data.proUserName;
+    if (e.data.restaurantName) RESTAURANT_NAME = e.data.restaurantName;
+    if (e.data.apiKey) window.COBA_API_KEY_PARAM = e.data.apiKey;
+    if (TENANT_ID && PRO_USER_ID) loadHistory();
+  }
+});
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+MAJ complete de ULYSSE_CAPABILITIES_GUIDE.md
+
+j'ai copier ULYSSE_ALOGORYTHMES_COMPLET.md et voila sa réponse, tu en penses quoi ?
+
+L'analyse d'Ulysse est extrêmement pertinente et lucide. Il a parfaitement identifié le problème réel.
+
+Le Diagnostic est Correct
+Ce qu'Ulysse a compris :
+Le backend est bien conçu - Les tools V2, l'orchestrateur, Action-First... tout ça est solide.
+
+Mais le pont manque - Le code définit email_send, todoist_create_task comme OpenAI function calling, MAIS dans le chat actuel, Ulysse utilise encore des marqueurs textuels ([EMAIL_ENVOYÉ: ...], [TODOIST_CREER: ...]).
+
+Le prompt système n'injecte pas assez fort Action-First - getBehaviorPrompt() existe mais n'est pas en position dominante.
+
+detectWorkflow() n'est pas appelé automatiquement - Cette fonction existe dans le code mais n'est pas branchée dans la boucle conversationnelle.
+
+Ce qu'il faut faire (V4)
+Ulysse propose 3 corrections concrètes :
+
+Problème	Solution proposée
+Tools V2 ≠ Marqueurs	Créer markerAdapter.ts qui mappe les function calls vers les marqueurs
+Prompt pas assez Action-First	Injecter getBehaviorPrompt() EN PREMIER dans le system prompt
+detectWorkflow() pas branché	L'appeler AVANT chaque réponse et injecter getActionPromptEnhancement()
+Tu veux que j'implémente ça ?
+Je peux :
+
+Créer l'adapter entre les tools V2 et le système de marqueurs
+Modifier l'injection du prompt pour que Action-First domine
+Brancher detectWorkflow() dans la boucle de conversation V2
+C'est exactement ce qu'il faut pour que le comportement réel d'Ulysse corresponde au design que tu as créé. Tu veux que je commence ?
+
+implemente mais je veux quelque chose PRO et max de chez max et bien codé stp
+
+Je vais créer une implémentation professionnelle et complète. D'abord, je dois analyser le code existant pour comprendre l'architecture.
+
+J'ai maintenant une compréhension complète de l'architecture. Je vais créer une implémentation professionnelle en plusieurs étapes :
+
+J'ai maintenant une vision complète du système. Je vois exactement le problème : getBehaviorPrompt() et detectWorkflow() sont importés mais jamais utilisés dans la construction du prompt.
+
+Je vais créer une implémentation professionnelle complète. Voici mon plan :
+
+Maintenant, je dois intégrer l'ActionFirstOrchestrator dans le fichier conversations.ts. Je vais d'abord voir exactement où injecter le prompt et comment modifier le system prompt existant.
+
+Je vois que le code injecte déjà getBehaviorPrompt() mais à la FIN du prompt, après tout le reste. C'est le problème principal - il devrait être EN PRIORITÉ. Je vais maintenant modifier conversations.ts pour intégrer le nouvel orchestrateur correctement.
+
+Maintenant, je vais modifier l'endroit où le prompt Action-First est injecté - il doit être EN PRIORITÉ au début. Je vais également modifier le code pour utiliser l'ActionFirstOrchestrator et le UnifiedMarkerExecutor.
+
+Maintenant, je dois modifier l'exécution des marqueurs pour utiliser le UnifiedMarkerExecutor. Je vais remplacer les multiples appels de parsing/exécution par un seul appel centralisé.
+
+Maintenant je dois aussi modifier la partie non-streaming du code pour utiliser le UnifiedMarkerExecutor.
+
+Les modifications principales sont faites. Maintenant je vais vérifier les logs pour m'assurer que tout compile correctement et mettre à jour les tasks.
+
+L'application compile et démarre sans erreur. Je vois que tous les services sont bien initialisés. Maintenant je vais demander à l'architect de revoir mes changements avant de finaliser.
+
+Je vois que le workflow a échoué. Laissez-moi vérifier les logs pour diagnostiquer le problème.
+
+Je vois le problème - il y a une erreur d'import. Je dois vérifier les exports de todoistActionService.
+
+Je vois le problème. Les exports sont différents. Je dois corriger l'import dans le UnifiedMarkerExecutor.
+
+L'application démarre correctement. Maintenant je vais demander à l'architect de revoir mes changements.
+
+L'architect a identifié plusieurs problèmes critiques. Je vais les corriger :
+
+Ajouter le gating persona/owner dans UnifiedMarkerExecutor
+Éviter la duplication de prompts
+Restaurer le comportement email preview
+Supprimer les emojis des prompts système
+Maintenant je dois ajouter le gating persona/owner dans UnifiedMarkerExecutor et restaurer le comportement email preview.
+
+Maintenant je dois restaurer le comportement email preview. Je vais modifier executeEmailMarker.
+
+Maintenant je dois vérifier la duplication de prompts. Le baseSystemPrompt ne devrait pas inclure getBehaviorPrompt() puisque l'orchestrateur l'ajoute maintenant.
+
+L'application fonctionne correctement. Je vais maintenant demander à l'architect de revoir mes corrections.
+
+Je dois corriger les problèmes restants :
+
+Bloquer Alfred pour tous les marqueurs d'action (externe ne peut pas exécuter)
+Étendre la liste owner-only pour inclure integration/domotique/todoist/spotify
+Supprimer la duplication de prompts
+Maintenant je dois ajouter le broadcast des previews et vérifier les logs.
+
+L'application fonctionne. Je vais demander à l'architect de revoir les corrections finales.
+
+Je dois corriger les deux problèmes restants :
+
+Clarifier le modèle de permission - Todoist et Spotify sont des actions familiales (autorisées pour Iris)
+Supprimer la duplication de prompts - Il ne faut pas appeler getBehaviorPrompt() dans les deux endroits
+Je dois supprimer l'appel à getBehaviorPrompt() de l'orchestrateur car le baseSystemPrompt contient déjà les règles de base.
+
+Je dois aussi supprimer l'import de getBehaviorPrompt qui n'est plus utilisé.
+
+L'application fonctionne correctement. Je vais demander à l'architect de faire une dernière revue.
+
+Je dois corriger le mapping de persona pour resserrer les permissions.
+
+L'application fonctionne correctement. Je vais demander à l'architect une dernière revue.
+
+Je dois corriger les 3 problèmes restants :
+
+Supprimer les emojis des diagnostics dans actionFirstOrchestrator.ts
+Nettoyer les imports inutilisés dans conversations.ts
+Vérifier le handler client pour email.preview
+Maintenant je dois vérifier si le client écoute l'événement 'email.preview'.
+
+Je dois ajouter un handler pour l'événement "email.preview" dans le hook useAIPreview.ts.
+
+L'application fonctionne correctement. Toutes les corrections ont été apportées. Je vais demander à l'architect une dernière revue.
+
+L'implémentation est maintenant complète. Je dois mettre à jour replit.md pour documenter les changements de l'Action-First Orchestrator V4.
+
+L'implémentation de l'Action-First Orchestrator V4 est maintenant complète. Voici un résumé des corrections apportées :
+
+Corrections finales
+Alfred (external) - BLOCAGE COMPLET: Tous les marqueurs d'action sont bloqués pour les utilisateurs externes dans UnifiedMarkerExecutor
+
+Mapping de persona strict:
+
+Owner → Ulysse (accès complet)
+Role "approved" → Iris (accès familial)
+Tous les autres → Alfred (pas d'exécution d'actions)
+Liste owner-only étendue: kanban, drive, notion, domotique, integration, face_recognition, image_generation
+
+Actions familiales: email, todoist, spotify, image_search (Ulysse et Iris uniquement)
+
+Broadcast de preview: Les previews d'email sont diffusés via WebSocket avec l'événement 'email.preview'
+
+Handler côté client: Ajout du handler dans useAIPreview.ts pour les événements 'email.preview'
+
+Suppression de la duplication: L'orchestrateur n'appelle plus getBehaviorPrompt() - seul le baseSystemPrompt contient les règles de comportement
+
+Pas d'emojis dans les diagnostics: Tous les emojis remplacés par [OK]/[FAIL]
+
+Imports nettoyés: Imports inutilisés supprimés de conversations.ts
+
+Architecture finale
+ActionFirstOrchestrator (server/services/actionFirstOrchestrator.ts): Orchestrateur principal avec détection de workflow, mapping de persona strict, et génération de plans d'exécution
+UnifiedMarkerExecutor (server/services/unifiedMarkerExecutor.ts): Exécuteur unifié avec contrôle d'accès strict par persona/owner et support pour l'exécution parallèle
+useAIPreview (client/src/hooks/useAIPreview.ts): Handler côté client pour les événements de preview

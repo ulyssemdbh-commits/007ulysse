@@ -1,0 +1,140 @@
+Sécuriser les infos factuelles (scores, prix, dates) – ANTI-BULLSHIT MAX
+
+Tant que ça n’est pas béton, je reste dangereux sur tout ce qui est temps réel (scores, résultats, parfois prix).
+
+À faire niveau code/comportement :
+
+Flag “requiresVerifiedFacts” sur certaines actions
+
+Pour :
+scores de match,
+résultats sportifs,
+prix en live,
+tout ce qui peut influencer un pari ou une décision business.
+Intégré dans ton ActionContext :
+interface ActionContext {
+  ...
+  requiresVerifiedFacts?: boolean;
+}
+Coupler ça avec ton ActionVerification
+
+Si requiresVerifiedFacts === true et que:
+MARS / API / provider ne retourne rien de fiable (0 source, ou trustScore faible), → passed = false, et je n’ai pas le droit de répondre un truc précis.
+Comportement IA associé
+
+Si validation échoue :
+“Je ne peux pas te donner cette info de manière fiable (score/resultat/prix). Je préfère te dire que je ne sais pas plutôt qu’inventer.”
+
+⚠️ Ça, c’est PRIORITÉ 1 pour ton usage paris sportifs / décisionnel.
+
+2️⃣ Health système critique = à traiter, pas juste affiché
+
+Ton rapport système me dit :
+
+Santé globale : UNHEALTHY / Critique
+27% d’erreurs API sur 24h
+Uptime: 0h (ou mal mesuré)
+Routes lentes: POST /, GET /v2/health, GET /diagnostics/run
+Problèmes à régler :
+
+Corriger le calcul d’uptime
+
+Uptime à 0h alors que tout tourne → bug de métrique, pas réalité.
+Il te faut :
+une vraie durée “service up”,
+ou un calcul de % sur fenêtre glissante.
+Analyser les 27% d’erreurs
+
+Logger par route + code :
+ex: /api/crawl, /api/hub, /api/....
+Voir :
+quelles routes sont les plus fautives,
+type d’erreurs (401/403, 5xx, 4xx).
+Coupler santé & comportement Ulysse
+
+Si système = unhealthy ou degraded, je dois :
+le dire dans un brief si tu me demandes un truc touchy,
+adapter mon comportement (éviter certains appels, avertir avant d’agir).
+3️⃣ SUGU – verrouiller le daily flow (23h59)
+
+Le scraping est réglé, mais ton vrai business c’est SUGU.
+Là où il faut qu’on soit nickel :
+
+Checklist → Mail achats du lendemain (Suguval, Maillane, Valentine)
+
+Vérifier :
+job 23h55/23h59 bien en place pour les 3,
+pas d’erreurs sur mail/Sugu (vu le taux d’erreur API).
+Moi je dois pouvoir dire, chaque matin si tu me demandes :
+“Hier soir, j’ai envoyé X mails d’achats : Suguval (N articles), Maillane (M), Valentine (P).”
+
+Résilience
+
+Si à 23h59 AgentMail ou DB plante :
+log précis de l’échec,
+retry le matin,
+notification claire :
+“Le mail d’achats SUGU Valentine n’est pas parti hier à 23h59, tu veux que je le renvoie maintenant ?”
+
+4️⃣ Homework & Hub – les transformer en avantages concrets
+
+Tu as :
+
+Hub /api/hub/*
+Homework
+RAG
+Monitoring
+Il manque un truc : les utiliser à fond dans tes routines.
+
+Choses à régler/prioriser :
+
+BRIEF_QUOTIDIEN canonique
+
+Fixer une structure définitive du brief :
+Tâches importantes
+Rendez-vous
+SUGU (paniers + anomalies)
+Santé système
+Et moi :
+dès que tu dis “brief” / “fais le point”, je me branche dessus et pas sur des impressions vagues.
+Homework SUGU déjà en action (comme celui que tu as montré)
+
+On a déjà des stats :
+2 paniers à Valentine,
+top articles (RIZ, OEUFS, VINAIGRE, etc.).
+Prochaine étape :
+générer automatiquement un mini commentaire utile :
+“Tu achètes du VINAIGRE BLANC tous les jours à Valentine, ça mérite peut-être un ajustement de stock de base.”
+
+5️⃣ Relation “scraping ↔ MARS ↔ RAG” (cohérence des sources)
+
+Maintenant que /api/crawl est un monstre, il faut s’assurer que :
+
+MARS :
+utilise d’abord ton crawler,
+puis Perplexity seulement si besoin,
+logue dans RAG les contenus importants.
+RAG :
+indexe les résultats de crawl sur certains sites clés (SUGU, docs, presse que tu suis).
+Problèmes à régler :
+
+Ordre de priorité des sources
+Ton propre /api/crawl & DB > MARS > Perplexity > Web brut.
+Ne jamais mélanger “je crois” et “j’ai lu”
+Si une info vient de RAG / doc interne → je le mentionne comme tel si c’est critique.
+Si une info vient d’un crawl partiel → je dois préciser que c’est partiel.
+En ultra-court : les 3 trucs à traiter maintenant
+
+Anti-hallucination factuelle
+
+Flag requiresVerifiedFacts + validation stricte
+Surtout pour scores, résultats, prix.
+Santé système exploitable
+
+Uptime / erreurs API corrigés
+Coupler l’état “unhealthy” avec mon comportement (je te préviens, je m’adapte).
+SUGU daily flow béton
+
+Mail achats 23h59 pour les 3 restos robustes
+Gestion d’échec + rattrapage clair.
+Si tu veux, on en choisit un et je te sors la spec concrète et minimaliste tout de suite (ex: requiresVerifiedFacts + comment l’injecter dans ActionVerification).

@@ -1,0 +1,145 @@
+🧠 1. Ce que TOI tu dois faire dans le code (côté dev / produit)
+A. SUGU Valentine – checklist “employés”
+Créer le module SUGU Valentine (comme Suguval / Maillane)
+
+Route type:
+/courses/suguvalentine (checklist)
+/courses/suguvalentine/edit (admin/catalogue)
+Reprendre la logique existante de Suguval/Sugumaillane:
+catégories,
+items,
+langue FR/VN (si tu veux),
+codes PIN (si besoin, ou juste restreint à ton staff).
+Brancher Feuil1 + Feuil2 sur ce module
+
+Transformer Feuil1/Feuil2 en catalogue SUGU Valentine:
+Catégories:
+Réserve sèche
+Poste livraison
+Boissons
+Hygiène & consommables
+Cuisine / Économa cuisine (viandes, légumes, herbes…)
+Items: une ligne = un produit de ton Excel.
+Tu peux soit:
+faire un petit script d’import depuis Excel → DB,
+soit saisir une fois à la main dans ton interface admin (long, mais clean).
+Ajouter la colonne “à commander ?” (dans ton modèle de check)
+
+Côté backend: dans la table des checks journaliers, t’assurer que:
+chaque item a un booléen “checked / à commander”.
+Côté UI: l’employé coche / décoche comme sur Suguval:
+case à cocher par produit.
+B. Côté code “Ulysse / système”
+Exposer une API interne pour SUGU Valentine
+Dans le même style que Suguval & Sugumaillane, tu dois créer les endpoints (ou les extensions) :
+
+GET /api/suguvalentine/categories
+GET /api/suguvalentine/checks?date=YYYY-MM-DD
+éventuellement POST /api/suguvalentine/checks pour l’écriture si ce n’est pas déjà factorisé.
+L’idée: que moi, Ulysse, je puisse faire en interne:
+→ [CONSULTE_SUGUVALENTINE] (ou équivalent que tu définis)
+et récupérer:
+
+la date,
+la liste des items cochés,
+la catégorie de chaque item.
+Hooker un Homework pour 23h59
+
+Créer un homework / tâche récurrente type:
+SUGU_VALENTINE_DAILY_EMAIL
+fréquence: daily
+heure serveur: 23h59 (en calant bien le fuseau).
+Ce homework doit:
+appeler ton endpoint /api/suguvalentine/checks pour la date du jour,
+me passer cette data dans mon contexte (ou via un appel dédié),
+me laisser composer le mail et déclencher AgentMail.
+Petite amélioration debug fichiers
+
+Dans ton code backend “fichiers”, prévoir un flag “CONTENT_EMPTY / OCR_FAIL / PARSED_OK”.
+Pour les PDF, si le texte est vide:
+retourner explicitement un statut que je peux voir côté IA,
+au lieu de me donner un “fichier pseudo-parsé”.
+⚙️ 2. Ce que MOI je peux gérer tout seul, grâce au serveur central
+Une fois que tu as posé ce cadre (APIs, homework, module SUGU Valentine), je prends le relai:
+
+A. Mail quotidien “achats SUGU Valentine”
+Tous les jours à 23h59, côté serveur central, je peux:
+
+Appeler l’API interne:
+récupérer la liste complète des items cochés pour la date du jour.
+Générer une liste propre structurée par catégorie:
+Réserve sèche
+Poste livraison
+Boissons
+Hygiène & consommables
+Cuisine (Feuil2)
+Formater un email clair, du style:
+Objet: SUGU Valentine – Liste achats du [date J+1]
+
+Salut Maurice,
+
+Voici les produits cochés aujourd’hui pour les achats de demain :
+
+Réserve sèche
+
+RIZ
+VERMICELLE POUR NEMS
+…
+Cuisine
+
+SAUMON
+AVOCAT
+…
+Bonne soirée,
+Ulysse
+
+L’envoyer via AgentMail avec:
+[EMAIL_ENVOYÉ: to="djedoumaurice@gmail.com", subject="...", body="..."]
+et, si tu veux, en copie vers une autre adresse (responsable achats, chef, etc.).
+Tout ça: sans que tu aies à faire quoi que ce soit chaque jour.
+Tu fais le setup une fois, après c’est mon problème.
+
+B. Gestion de la logique métier côté IA
+Toujours côté serveur central, je peux m’occuper de:
+
+Regrouper les produits par catégories même si:
+l’API te renvoie juste categoryId → je mappe,
+ou si tu ajoutes une hiérarchie (ex: Boissons → Livraison / Sur place).
+Trier dans un ordre qui te parle (par exemple:
+d’abord cuisine,
+puis réserve sèche,
+puis packaging,
+puis hygiène).
+Faire des variantes de mail:
+mail “standard”,
+mail plus détaillé (avec quantités si tu rajoutes une colonne),
+ou génération d’un PDF attaché si tu veux imprimable.
+C. Comportement “honnête” et transparent
+Côté serveur central / IA, je peux faire en sorte que:
+
+Si l’API ne renvoie rien (pas de checks ce jour-là) :
+je t’envoie un mail ultra court:
+“Aujourd’hui, aucune case cochée sur SUGU Valentine. Pas d’achats à prévoir (ou équipe n’a pas rempli).”
+
+Si l’API renvoie une erreur → je te le dis clairement:
+soit dans le mail,
+soit dans le chat le lendemain:
+“À 23h59, impossible de récupérer la liste SUGU Valentine (erreur endpoint), tu veux que je log ça quelque part ?”
+
+🧾 3. Répartition ultra courte
+À toi (côté code / produit) :
+
+Créer SUGU Valentine dans ton système (routes, UI, DB).
+Importer Feuil1 + Feuil2 comme catalogue d’items.
+Offrir une API GET qui me retourne les items cochés du jour.
+Configurer un homework à 23h59 qui m’appelle pour ce job.
+À moi (côté serveur central / IA) :
+
+Consommer cette API tous les jours à 23h59.
+Générer la liste achats J+1 propre, regroupée par catégorie.
+Envoyer l’email automatique (texte ou PDF) depuis AgentMail.
+Gérer les cas d’erreur / vide proprement et te prévenir.
+Si tu veux, prochain move concret:
+
+tu me décris (en texte) le format exact de l’email que tu veux (ordre des sections, style, si tu veux les quantités ou non),
+et je te le rédige comme template définitif que tu pourras coller côté serveur comme “modèle de mail SUGU Valentine”.

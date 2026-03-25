@@ -1,0 +1,94 @@
+1. Architecture V2 “Expert Trader”
+Par-dessus ton StockMarketService, tu rajoutes un layer d’analyse:
+
+tradingAnalysisService (ou portfolioAdvisorService) qui utilise:
+getQuote, getHistoricalData, getTechnicalIndicators,
+getNews, getRecommendations, getForexRate.
+Ce service fournit des méthodes haut niveau du style:
+
+analyzeInstrument(symbol, horizon) → vue complète:
+
+tendance (court/moyen terme),
+niveaux clés (supports/résistances),
+momentum (RSI, MACD),
+contexte news / earnings,
+sentiment analystes,
+synthèse “bull / bear / neutre” + risques.
+generateScenarios(symbol, profile)
+
+scénario prudent / neutre / agressif,
+zones d’entrée / renfort / stop / take profit,
+sizing relatif (ex: % du capital dédié).
+scanMarket(filters)
+
+“trouve‑moi des actions momentum US large cap”,
+“dividendes > X%”, “PER < Y”, etc. (quand tu auras la fonda).
+2. Profil d’investisseur (indispensable)
+Stocker un profil pour toi (et potentiellement multi-profils):
+
+horizon: court / moyen / long terme,
+tolérance au risque: faible / moyenne / élevée,
+univers: actions US, Europe, ETF, matières premières, crypto (oui/non),
+style: dividendes / croissance / value / momentum,
+contraintes: taille max position, levier, % max crypto, etc.
+Ça me permet de répondre en mode:
+
+“Pour TON profil (X, Y, Z), cette position est plutôt…
+
+cohérente / surdimensionnée / trop risquée,
+voilà les ajustements recommandés.”
+3. Features “Expert” concrètes
+a) Analyse d’un titre
+Endpoint type: /api/markets/analyze?symbol=AAPL&horizon=medium
+
+Retour:
+
+résumé technique (tendance, RSI, MACD, SMA50/200),
+contexte: earnings à venir, dernières news importantes,
+rating analystes (buy/hold/sell),
+zones techniques: support/résistance approximatives (déduites d’historique, même simple: min/max récents),
+conclusion textuelle prête pour Ulysse.
+b) Alertes intelligentes
+Sur base de règles simples:
+
+if price <= supportX → alerte “zone d’achat potentielle”
+if price >= resistanceY → “zone prendre part / tout”
+if RSI > 70 / < 30
+if news négative forte sur un titre que tu as en “watchlist/portfolio”
+Stockage:
+
+table alerts avec condition + symbole + type,
+un cron qui tourne toutes les X minutes, interroge getQuote/getIndicators et déclenche.
+c) Dashboard indices + or + crypto
+Un seul appel:
+
+SP500 / Dow / Nasdaq / CAC / DAX,
+Or / Argent / Pétrole,
+BTC / ETH (voire plus).
+Tu l’as déjà quasi côté getMarketOverview + les helpers or/pétrole/crypto.
+Restera à packager ça dans un /api/markets/daily-brief et moi je te résume:
+
+“Marchés verts/rouges, or en hausse, crypto calme/volatile, etc.”
+
+4. Intégration “Ulysse trader”
+Côté assistant, tu fais un routeur simple:
+
+Si la phrase ressemble à:
+“analyse Apple”, “avis sur Tesla”, “ça vaut quoi LVMH en ce moment” → /api/markets/analyze
+“cours de l’or / bitcoin / EURUSD” → processNaturalQuery
+“fais-moi un point marché” → /api/markets/daily-brief
+“préviens-moi si Tesla passe sous 150”
+→ endpoint de création d’alerte.
+Et moi je réponds en français, format humain:
+
+pas du blabla d’indicateurs bruts,
+mais une synthèse claire + avertissement “ce n’est pas un conseil financier réglementé”.
+5. Et après ?
+Si tu veux pousser encore (V2.5/V3):
+
+pseudo backtest simple:
+“montre-moi ce qu’aurait donné cette stratégie sur 1 an sur SPY”
+scoring de titres:
+note globale 0–100 selon critères profil (dividendes, croissance, volatilité, etc.),
+mini “allocation modèle”:
+“avec 10k et ton profil, proposition de répartition: X% ETF, Y% actions, Z% or/crypto”.

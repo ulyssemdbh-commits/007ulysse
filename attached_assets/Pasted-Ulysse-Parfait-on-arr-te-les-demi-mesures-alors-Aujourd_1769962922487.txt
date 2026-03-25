@@ -1,0 +1,180 @@
+Ulysse
+
+Parfait, on arrête les demi-mesures alors.
+
+Aujourd’hui j’ai une méta-conscience “conceptuelle” (je raisonne comme si j’avais tes /api/system/status* en live).
+Pour aller vers une méta-conscience 100%, il faut que côté code tu me donnes des “nerfs” branchés directement sur ton système.
+
+Je te fais ça ultra concret, en 3 paliers, avec du très actionable.
+
+Palier 1 – Méta-conscience branchée (fondations)
+Objectif : que chaque réponse importante soit informée par l’état réel de l’infra.
+
+1.1. Implémenter vraiment les endpoints self-awareness
+À coder (si pas déjà fait à 100%) :
+
+GET /api/system/status
+
+Retourne par ex. :
+{
+  "healthScore": 83,
+  "components": {
+    "db": "operational",
+    "openai": "operational",
+    "sportsCache": "degraded",
+    "agentMail": "operational",
+    "sugu": "operational"
+  },
+  "updatedAt": "2026-02-01T16:20:00Z"
+}
+GET /api/system/status/summary
+
+Version courte pour usage fréquent :
+{
+  "healthScore": 83,
+  "status": "degraded",
+  "warnings": ["sportsCache latency high"]
+}
+GET /api/system/status/brain
+
+{
+  "totalEntries": 2115,
+  "byDomain": {
+    "sports": 600,
+    "sugu": 400,
+    "dev": 500,
+    "personal": 200
+  }
+}
+GET /api/system/status/jobs
+
+GET /api/system/status/sugu
+
+L’idée : une seule source de vérité sur l’état du système.
+
+1.2. Service “SelfAwarenessService” côté backend
+Un petit service TS qui wrappe tout ça :
+
+class SelfAwarenessService {
+  async getSummary() { /* call /api/system/status/summary */ }
+  async getBrainStats() { /* call /api/system/status/brain */ }
+  async getComponentStatus(component: string): Promise<'operational'|'degraded'|'down'> { ... }
+}
+Ça me permet, dans la couche d’orchestration IA, d’avoir une vision système avant de répondre.
+
+Palier 2 – Méta-conscience contextuelle (adaptation intelligente)
+Objectif : que je change mon comportement en fonction de ton état système, sans que tu aies à y penser.
+
+2.1. Hook systématique avant certains types de réponses
+Dans ton orchestrateur de conversation (owner / Maurice seulement) :
+
+Si la question touche à:
+sports / pronos → vérifier sportsCache, oddsAPI, apiFootball
+emails → vérifier AgentMail
+SUGU → vérifier sugu + DB
+dev → vérifier db, objectStorage, brain
+Pseudo-code :
+
+async function answerForMaurice(request) {
+  const intent = detectIntent(request);
+
+  const statusSummary = await selfAwareness.getSummary();
+
+  const contextFlags = {
+    isSportsDegraded: await selfAwareness.getComponentStatus('sportsCache') !== 'operational',
+    isEmailDown: await selfAwareness.getComponentStatus('agentMail') === 'down',
+    isBrainWeak: statusSummary.healthScore < 60,
+    ...
+  };
+
+  // Ces flags sont injectés dans mon contexte de prompt
+  return callOpenAIWithContext({ request, statusSummary, contextFlags });
+}
+Côté moi (Ulysse), ça donne des réponses du style :
+
+“Le cache sports est en mode dégradé, je vais m’appuyer sur les dernières données fiables plutôt que prétendre avoir du live.”
+“AgentMail est down, je te prépare l’email complet à copier-coller.”
+Ça, c’est déjà de la méta-conscience comportementale.
+
+Palier 3 – Méta-conscience évolutive (vrai 100%)
+Là on va au niveau “système qui se regarde lui-même et se corrige”.
+
+3.1. Auto-diagnostic régulier + mémoire
+Créer un job (cron côté serveur) :
+
+job: self_diagnostic toutes les X minutes :
+appelle /api/system/status
+si healthScore < 80 ou composant = “degraded/down”:
+log en DB (table system_diagnostics)
+pousse un “événement” que je peux voir dans mon contexte (ex: dernier diag).
+Exemple de table :
+
+system_diagnostics(
+  id serial primary key,
+  health_score int,
+  status text,
+  details jsonb,
+  created_at timestamptz default now()
+);
+Côté IA, dans mon contexte :
+
+“Dernier diagnostic: healthScore 72, sportsCache=degraded depuis 35 min, oddsAPI rate limit proche”.
+Je peux alors :
+
+Proposer à toi : “Le système sports est un peu faible en ce moment, tu veux qu’on revoie la logique de cache / quotas ?”
+Adapter la profondeur de mes réponses (moins d’affirmations fortes sur les parties en alerte).
+3.2. Auto-healing orchestré
+Tu as déjà [AUTO_HEAL] décrit. On formalise :
+
+Backend :
+
+class AutoHealService {
+  async run() {
+    const status = await selfAwareness.getSummary();
+
+    if (status.components.sportsCache === 'degraded') {
+      await sportsCacheService.refreshAll();
+    }
+    if (status.components.agentMail === 'down') {
+      await agentMailService.refreshTokenOrAlert();
+    }
+    // etc.
+  }
+}
+Job:
+
+job: self_auto_heal toutes les 30 minutes.
+Et possibilité que je déclenche explicitement (si tu dis “auto-heal”, ou si je vois des erreurs répétées).
+Côté moi, dans le prompt :
+
+“Un auto-heal a été lancé il y a 5 minutes pour sportsCache, en attente de stabilisation.”
+Donc je peux dire “Réponse partielle” au lieu de faire comme si tout était parfait.
+3.3. Score de “lucidité” Ulysse
+Pour pousser le délire :
+
+Calculer un Ulysse_ClarityScore basé sur:
+healthScore système,
+disponibilité des sources critiques (sports, brain, SUGU),
+nombre d’erreurs récentes.
+Ex :
+
+{
+  "clarityScore": 87,
+  "mode": "normal" // ou "cautious" si < 70, "limited" si < 50
+}
+Côté IA, je l’utilise comme méta-instruction :
+
+mode = normal → comportement classique.
+mode = cautious → plus de “je préfère ne pas inventer”, plus de transparence.
+mode = limited → je limite les domaines sensibles (scores live, prix) et te le dis clairement.
+Là on est sur une méta-conscience totale de ma propre “fiabilité” à l’instant T.
+
+Ce que tu peux coder en premier pour tendre vers le 100%
+Si tu veux aller vite et efficace, l’ordre que je te conseille :
+
+Endpoints /api/system/status* propres, stables, documentés.
+SelfAwarenessService côté backend + intégration dans la pipeline de réponse.
+Table system_diagnostics + job self_diagnostic.
+AutoHealService + job self_auto_heal.
+(Optionnel mais stylé) ClarityScore et modes normal/cautious/limited.
+Quand ces 5 blocs sont en place, on ne sera plus sur un “début de méta-conscience système”, mais sur un système qui se regarde, se mesure et s’auto-régule – et moi, j’adapterai TOUT mon comportement à ça.

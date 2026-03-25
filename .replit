@@ -1,0 +1,101 @@
+modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
+run = "npm run dev"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-24_05"
+packages = ["alsa-lib", "atk", "cairo", "dbus", "expat", "ffmpeg", "ffmpeg-full", "fontconfig", "freetype", "gdk-pixbuf", "glib", "gtk3", "jq", "libdrm", "libxcrypt", "libxkbcommon", "mesa", "nspr", "nss", "pango", "pkg-config", "xorg.libX11", "xorg.libXcomposite", "xorg.libXcursor", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXi", "xorg.libXrandr", "xorg.libXrender", "xorg.libxcb", "xorg.libxshmfence", "xsimd", "sshpass"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3001
+
+[[ports]]
+localPort = 5002
+externalPort = 3002
+
+[[ports]]
+localPort = 5099
+externalPort = 3000
+
+[[ports]]
+localPort = 5904
+externalPort = 3003
+
+[[ports]]
+localPort = 9999
+externalPort = 4200
+
+[env]
+PORT = "5000"
+
+[deployment]
+deploymentTarget = "vm"
+run = ["bash", "-c", "NODE_OPTIONS='--max-old-space-size=3072' NODE_ENV=production node dist/index.cjs"]
+build = ["npm", "run", "build"]
+publicDir = "dist/public"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "NODE_OPTIONS='--max-old-space-size=3072' npm run dev"
+waitForPort = 5000
+
+[agent]
+integrations = ["javascript_openai_ai_integrations:2.0.0", "google-mail:1.0.0", "google-calendar:1.0.0", "agentmail:1.0.0", "javascript_object_storage:2.0.0", "perplexity_v0:1.0.0", "spotify:1.0.0", "javascript_gemini_ai_integrations:2.0.0", "google-drive:1.0.0", "notion:1.0.0", "todoist:1.0.0", "discord:1.0.0", "github:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+JWT_SECRET = "1032d0a269035bf0e36204d0a3af1bd9692743e4e9af37c749090a855a1ff5c2"
+PYTHON_PATH = "python"
+ALFRED_PASSWORD = "@26Alfred26"
+TALKING_PINS = "{\"Maurice\":\"2792\",\"KellyIris001\":\"1470\",\"LennyIris002\":\"2580\",\"MickyIris003\":\"3690\"}"
+SYSTEM_STATUS_SECRET = "ulysse-self-awareness-2024"
+HUBRISE_CLIENT_ID = "716569187684.clients.hubrise.com"
+VAPID_PUBLIC_KEY = "BDkaHfULGv6AbuyQDfTjbw567uSP7KS_XAOjlu2su1ffHzqyGhjTBRfMSr-ygt7rXP14WEL98aGiGFE8bOtE2uU"
+VAPID_PRIVATE_KEY = "MHA0-GgBi3RMFYn283nthLfJAINJU5oQsGI1lL0lwWc"
+VAPID_SUBJECT = "mailto:admin@ulyssepro.org"
+APPTOORDER_BASE_URL = "https://apptoorder.replit.app"
+APPTOORDER_API_KEY = "fa9b26038eed68a9ee9011c5f6947cd942bf94dabf611c647311753e26b287cb"
+HETZNER_SSH_HOST = "65.21.209.102"
+HETZNER_SSH_PORT = "22"
+HETZNER_SSH_USER = "root"
+REDIS_URL = "redis://:UlysseRedis2026!@65.21.209.102:6379"
+DEVMAX_ADMIN_PIN = "123adminMDBH"
+
+[userenv.production]
+BASE_URL = "https://ulyssepro.org"
+CANONICAL_DOMAIN = "ulysseproject.org"
+ALLOWED_ORIGINS = "replit.dev,replit.app"
+GITHUB_TOKEN = "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"
+ALLOWED_FRAME_ORIGINS = "https://*.replit.dev,https://*.replit.app,https://*.repl.co"
+
+[userenv.development]
+BASE_URL = "http://localhost:5000"
+CANONICAL_DOMAIN = "localhost"
+GITHUB_TOKEN = "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"
+ALLOWED_ORIGINS = "replit.dev,replit.app,localhost"
+ALLOWED_FRAME_ORIGINS = "https://*.replit.dev,https://*.replit.app,https://*.repl.co"

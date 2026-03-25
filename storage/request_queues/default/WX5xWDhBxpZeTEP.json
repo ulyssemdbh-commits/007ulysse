@@ -1,0 +1,9 @@
+{
+	"id": "WX5xWDhBxpZeTEP",
+	"json": "{\"id\":\"WX5xWDhBxpZeTEP\",\"url\":\"https://fr.wikipedia.org/wiki/Olympique_de_Marseille\",\"loadedUrl\":\"https://fr.wikipedia.org/wiki/Olympique_de_Marseille\",\"uniqueKey\":\"https://fr.wikipedia.org/wiki/Olympique_de_Marseille\",\"method\":\"GET\",\"noRetry\":false,\"retryCount\":0,\"errorMessages\":[],\"headers\":{},\"userData\":{\"depth\":0,\"__crawlee\":{\"state\":4}},\"handledAt\":\"2026-01-27T01:21:17.676Z\"}",
+	"method": "GET",
+	"orderNo": null,
+	"retryCount": 0,
+	"uniqueKey": "https://fr.wikipedia.org/wiki/Olympique_de_Marseille",
+	"url": "https://fr.wikipedia.org/wiki/Olympique_de_Marseille"
+}

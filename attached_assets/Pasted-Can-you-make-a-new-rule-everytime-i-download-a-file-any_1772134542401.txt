@@ -1,0 +1,36 @@
+Can you make a new rule, everytime i download a file (any file) in /suguval, an email is automaticly send to my accoutant x.markassuza@eyssautier.com with a copy of the file attached.
+
+J'ai tout ce qu'il faut. Je modifie directement le endpoint de téléchargement pour envoyer l'email automatiquement après chaque download, de façon asynchrone (sans bloquer le téléchargement) :
+
+Vérifions les logs pour s'assurer qu'il n'y a pas d'erreurs TypeScript :
+
+L'app tourne stablement. Voici ce qui se passe maintenant à chaque téléchargement de fichier dans /suguval :
+
+Automatiquement et en arrière-plan (sans ralentir le téléchargement) :
+
+L'email est envoyé à x.markassuza@eyssautier.com depuis le compte Ulysse (ulysse@agentmail.to)
+Objet : [SUGU Valentine] {Catégorie} — {nom_du_fichier}
+Corps : récapitulatif clair avec nom du fichier, catégorie, fournisseur (si renseigné), date du document, et date de téléchargement
+Pièce jointe : le fichier complet (PDF, image, etc.)
+Si l'envoi de l'email échoue pour une raison quelconque (réseau, etc.), le téléchargement lui-même n'est pas affecté — l'erreur est juste loggée côté serveur.
+
+Optimized Agent memory
+ulysse utilise gmail
+
+D'accord, il faut utiliser Gmail plutôt qu'AgentMail. Laissez-moi vérifier comment Gmail est utilisé dans le projet :
+
+Je vois le pattern — la même logique OAuth de Google Calendar peut fonctionner pour Gmail. Je vais créer un service Gmail pour envoyer depuis le compte Gmail d'Ulysse :
+
+Maintenant je mets à jour le endpoint de download pour utiliser Gmail en priorité, avec AgentMail en fallback si besoin :
+
+Voilà. Maintenant, vérifions les logs pour s'assurer que le serveur a bien rechargé sans erreur :
+
+Tout est en place. Voici ce qui a été fait :
+
+Nouveau service Gmail créé (googleMailService.ts) — utilise le même mécanisme OAuth Google que le calendrier, via l'intégration google-mail déjà connectée.
+
+Logique d'envoi mise à jour pour chaque téléchargement dans /suguval :
+
+Tente d'envoyer via Gmail (compte Google d'Ulysse) avec le fichier en pièce jointe
+Fallback automatique vers AgentMail si Gmail échoue pour une raison quelconque
+L'email arrive donc depuis le compte Gmail d'Ulysse à x.markassuza@eyssautier.com, avec le document attaché et toutes les métadonnées (catégorie, fournisseur, date).

@@ -1,0 +1,172 @@
+Ulysse
+
+Ok, là tu veux juste qu’on arrête de tourner autour du pot et qu’on exploite vraiment cette URL côté code.
+
+Je t’ai donné l’architecture “universelle” juste avant. Maintenant je vais te montrer comment l’utiliser spécifiquement pour ParionsSport LDC pour extraire proprement les matchs + cotes depuis :
+
+https://www.enligne.parionssport.fdj.fr/paris-football/coupes-d-europe/championsleague
+
+Je pars sur Node/TypeScript + Playwright, avec parsing HTML (ou JSON si dispo).
+
+1. Scraper générique (rappel rapide)
+On réutilise l’orchestrateur que je t’ai donné :
+
+// src/scraper.ts
+import { HttpFetcher } from "./httpFetcher";
+import { BrowserFetcher } from "./browserFetcher";
+import { detectBlock } from "./blockDetection";
+
+export interface ScrapeResult {
+  url: string;
+  html: string;
+  from: "http" | "browser";
+}
+
+export class UniversalScraper {
+  private http: HttpFetcher;
+  private browser: BrowserFetcher;
+
+  constructor() {
+    this.http = new HttpFetcher();
+    this.browser = new BrowserFetcher();
+  }
+
+  async scrape(url: string, opts?: { forceBrowser?: boolean; waitSelector?: string; }): Promise<ScrapeResult> {
+    if (!opts?.forceBrowser) {
+      const res = await this.http.fetch(url);
+      const block = detectBlock(res.html, res.status);
+      if (!block.blocked && res.status >= 200 && res.status < 400) {
+        return { url: res.url, html: res.html, from: "http" };
+      }
+    }
+    const bRes = await this.browser.fetch(url, { waitForSelector: opts?.waitSelector ?? "body" });
+    const block2 = detectBlock(bRes.html, bRes.status);
+    if (block2.blocked) {
+      throw new Error(`Blocked by protection: ${block2.reason ?? "unknown"}`);
+    }
+    return { url: bRes.url, html: bRes.html, from: "browser" };
+  }
+}
+2. Extraction spécifique ParionsSport Champions League
+Sur ParionsSport, les matchs sont rendus en HTML avec une structure du genre (à adapter selon l’HTML réel, mais l’idée est là) :
+
+<div class="event-row">
+  <div class="team home">Manchester City</div>
+  <div class="team away">Galatasaray</div>
+  <button class="odd odd-1">1.20</button>
+  <button class="odd odd-n">5.50</button>
+  <button class="odd odd-2">8.00</button>
+</div>
+On va utiliser cheerio pour parser.
+
+a) Définir le modèle de données
+// src/models.ts
+export interface MatchOdds {
+  competition: string;      // "Ligue des Champions"
+  homeTeam: string;
+  awayTeam: string;
+  odds1: number | null;
+  oddsN: number | null;
+  odds2: number | null;
+}
+b) Parser HTML ParionsSport
+// src/parionssportParser.ts
+import * as cheerio from "cheerio";
+import { MatchOdds } from "./models";
+
+export function parseChampionsLeague(html: string): MatchOdds[] {
+  const $ = cheerio.load(html);
+  const results: MatchOdds[] = [];
+
+  // À ajuster selon le DOM réel :
+  // inspecte la page dans ton navigateur et adapte les sélecteurs ici
+  const rows = $("[data-test='event-row'], .event-row, .pari-event-row");
+
+  rows.each((_, el) => {
+    const row = $(el);
+
+    const homeTeam =
+      row.find("[data-test='event-home-team-name'], .team-home, .event-row__participant--home").text().trim();
+    const awayTeam =
+      row.find("[data-test='event-away-team-name'], .team-away, .event-row__participant--away").text().trim();
+
+    if (!homeTeam || !awayTeam) {
+      return;
+    }
+
+    // Les cotes 1N2 – adapter les classes / data-attrs en fonction du HTML réel
+    const odd1Text =
+      row.find("[data-selection='1'], [data-outcome='1'], .odd-1").first().text().replace(",", ".").trim();
+    const oddNText =
+      row.find("[data-selection='N'], [data-outcome='N'], .odd-n").first().text().replace(",", ".").trim();
+    const odd2Text =
+      row.find("[data-selection='2'], [data-outcome='2'], .odd-2").first().text().replace(",", ".").trim();
+
+    const odds1 = odd1Text ? Number(odd1Text) : null;
+    const oddsN = oddNText ? Number(oddNText) : null;
+    const odds2 = odd2Text ? Number(odd2Text) : null;
+
+    results.push({
+      competition: "Ligue des Champions",
+      homeTeam,
+      awayTeam,
+      odds1: isNaN(Number(odds1)) ? null : odds1,
+      oddsN: isNaN(Number(oddsN)) ? null : oddsN,
+      odds2: isNaN(Number(odds2)) ? null : odds2
+    });
+  });
+
+  return results;
+}
+3. Script principal : scrape + parse cette URL
+// src/index.ts
+import { UniversalScraper } from "./scraper";
+import { parseChampionsLeague } from "./parionssportParser";
+
+const URL = "https://www.enligne.parionssport.fdj.fr/paris-football/coupes-d-europe/championsleague";
+
+async function main() {
+  const scraper = new UniversalScraper();
+
+  console.log("Scraping:", URL);
+  const res = await scraper.scrape(URL, {
+    // au besoin, mets un sélecteur plus précis, genre un conteneur d'événements
+    waitSelector: "body"
+  });
+
+  console.log("Fetched from:", res.from, "→", res.url);
+
+  const matches = parseChampionsLeague(res.html);
+
+  console.log(`Found ${matches.length} matches:`);
+  for (const m of matches) {
+    console.log(
+      `${m.homeTeam} – ${m.awayTeam} | 1=${m.odds1} N=${m.oddsN} 2=${m.odds2}`
+    );
+  }
+
+  // Ici tu peux:
+  // - sauvegarder en JSON
+  // - générer tes combinés avec les cotes réelles
+}
+
+main().catch(err => {
+  console.error("ERROR:", err);
+  process.exit(1);
+});
+Pour lancer :
+
+npx ts-node src/index.ts
+4. Limites réalistes (sans bullshit)
+Si FDJ ajoute un mur Cloudflare costaud + captcha, ton code ne pourra pas “magiquement” le casser. Tu pourras au mieux :
+passer par des proxies propres,
+ralentir / randomiser les requêtes,
+ou… arrêter là, parce que passer certains niveaux de protection = terrain très borderline légalement.
+Pour la plupart des sites classiques, cette stack (axios + Playwright + détection blocage + parsing HTML) est largement suffisante.
+5. Ce que tu peux faire maintenant
+Tu prends ce code,
+tu ajustes les sélecteurs cheerio en regardant l’HTML réel de ParionsSport LDC,
+tu as ensuite une extraction fiable des matchs + cotes depuis ton URL Champions League, exploitable pour :
+tes combinés,
+du value-betting,
+des rapports PDF, etc.
