@@ -2,7 +2,7 @@
 
 ## Presentation
 
-Ulysse est un assistant IA personnel full-stack concu pour Maurice. Il combine gestion de projets, automatisation restaurant (SUGU Valentine & Sugumaillane), intelligence football et paris sportifs (Djedou Pronos), integration DevOps GitHub, assistant vocal, et un systeme multi-persona (Ulysse / Iris / Alfred).
+Ulysse est un assistant IA personnel full-stack concu pour Maurice. Il combine gestion de projets, automatisation restaurant (SUGU Valentine & Sugumaillane), intelligence football et paris sportifs (Djedou Pronos), integration DevOps GitHub, assistant vocal, et un systeme multi-persona (Ulysse / Iris / Alfred). Ulysse a vocation a se devellopper pour s'approcher d'une vraie AI autonome, On integrera bientot edition 3D avec imprimante 3D, interface Casque VR et encore plus.
 
 Le systeme fonctionne de maniere autonome 24/7 avec des jobs planifies, une intelligence proactive, et des capacites d'auto-guerison.
 
