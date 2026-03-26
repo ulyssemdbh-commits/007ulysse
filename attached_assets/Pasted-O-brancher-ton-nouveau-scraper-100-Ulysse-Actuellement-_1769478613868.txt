@@ -1,0 +1,166 @@
+Où brancher ton nouveau scraper 100% Ulysse
+Actuellement, ton HomeworkExecutionService utilise:
+
+searchWeb (websearch/MARS)
+fetchWebsiteWithMedia + formatWebContentWithMediaForAI (webfetch)
+crawl (unified crawlService, visiblement basé sur un système plus “cloud/vision”)
+Tu veux que le scraping/crawling passe par ton scraper maison → c’est là que ça se joue:
+
+import { crawl } from "./crawlService";
+et dans executeUrlFetchTask / executeMultiUrlFetchTask:
+
+const crawlResult = await crawl({
+  url,
+  mode: "auto",
+  visionPrompt: `Extrais les informations clés...`
+});
+→ Ça, c’est l’ancien système.
+Tu peux le remplacer par ton scraperService.crawlAndScrape basé sur les types:
+
+import { crawlAndScrape } from "./scraperService";
+Exemple d’adaptation pour 1 URL
+private async executeUrlFetchTask(
+  userId: number,
+  homework: UlysseHomework,
+  url: string,
+  personaName: string = "Ulysse"
+): Promise<{ summary: string; artifacts: any }> {
+  try {
+    console.log(`[HomeworkExecution] Crawling URL via Super Ulysse Scraper: ${url}`);
+
+    const scrapeResult = await crawlAndScrape({
+      url,
+      mode: "http",          // ou "auto", mais tout reste HTTP-only côté scraper
+      depth: 0,
+      maxPages: 1,
+      maxConcurrency: 1,
+      linkScope: "none",
+      extract: {
+        text: true,
+        links: false,
+        metadata: true,
+      },
+    });
+
+    if (!scrapeResult.pages.length || scrapeResult.pages[0].status !== 200) {
+      const errorMsg =
+        scrapeResult.pages[0]?.error ||
+        `HTTP ${scrapeResult.pages[0]?.status ?? 0}`;
+      return {
+        summary: `Impossible d'accéder au site ${url}. ${errorMsg}`,
+        artifacts: { url, error: errorMsg, processed: false },
+      };
+    }
+
+    const page = scrapeResult.pages[0];
+    const title = page.metadata?.title || url;
+    const text = page.text || "";
+
+    // Si pas d'IA dispo → fallback brut
+    if (!canMakeCall("combined")) {
+      return {
+        summary: `Contenu extrait de ${url}:\n\n**${title}**\n\n${text.substring(
+          0,
+          1000,
+        )}...`,
+        artifacts: {
+          url,
+          title,
+          contentLength: text.length,
+          processed: true,
+        },
+      };
+    }
+
+    // META-PROMPTING: prompt optimisé
+    const optimizedPrompt = await this.generateOptimizedPrompt(
+      homework,
+      "url_fetch",
+      personaName,
+    );
+
+    const analysisResponse = await withRateLimit("combined", () =>
+      openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: optimizedPrompt },
+          {
+            role: "user",
+            content: `Tâche: ${homework.title}\n${homework.description ||
+              ""}\n\nURL: ${url}\nTitre: ${title}\n\nCONTENU:\n${text}`,
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: 800,
+      }),
+      0,
+    );
+
+    return {
+      summary:
+        analysisResponse.choices[0].message.content ||
+        `Contenu récupéré de ${url}`,
+      artifacts: {
+        url,
+        title,
+        contentLength: text.length,
+        processed: true,
+      },
+    };
+  } catch (error) {
+    console.error("[HomeworkExecution] URL fetch error:", error);
+    return {
+      summary: `Erreur lors de l'accès à ${url}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      artifacts: { url, error: String(error), processed: false },
+    };
+  }
+}
+Pour la version multi-URLs, même idée:
+
+tu remplaces les appels à crawl(...) par crawlAndScrape(...) sur chaque URL,
+tu utilises page.text / page.metadata.title pour construire combinedContent.
+2️⃣ Cohérence totale avec HomeworkIntelligence & Learning
+Ton HomeworkExecutionService est déjà bien intégré avec:
+
+homeworkIntelligence:
+
+génération de prompt optimisé (generateOptimizedPrompt)
+score de prompt (updatePromptScore)
+patterns d’erreurs (recordFailure / triggerAutoAdjustment)
+“shouldExecuteNow” pour les tâches récurrentes
+memoryService:
+
+updateOrCreateMemory dans:
+executeResearchTask
+executeGenericTask
+(et côté HomeworkLearningService après coup)
+Donc, en remplaçant l’ancien crawlService par ton scraperService maison, tu obtiens:
+
+Pipeline complet:
+Détection tâche (URL vs recherche vs générique)
+Scraping HTTP-only maison
+Analyse via OpenAI avec prompts optimisés et règles anti-hallucination hardcore
+Mémoire enrichie (résultats, insights)
+Intelligence de prompts qui s’améliore à chaque exécution
+3️⃣ Où tu peux encore pousser le curseur “SUPER ULYSSE”
+Si tu veux vraiment optimiser:
+
+Intégrer le scraper dans webfetch pour usage global
+
+Remplacer/compléter fetchWebsiteWithMedia par ton scraperService comme backend principal.
+Ça te donne un seul “point d’entrée crawling” pour tout (homework, MARS, etc.).
+Sauvegarder systématiquement les meilleurs résultats de scraping
+
+Quand executeUrlFetchTask ou executeMultiUrlFetchTask sort un truc propre → appeler aussi homeworkLearningService.learnFromCompletion(...) avec le summary enrichi pour que je m’en souvienne.
+Ajouter un type de homework dédié “scraper”
+
+Ex: titre contenant [SCRAPER] ou une taskType dans UlysseHomework.
+Je sais alors que je dois systématiquement:
+appeler crawlAndScrape,
+stocker le texte brut dans une mémoire “data”.
+Si tu veux, je peux maintenant te donner:
+
+soit la version complète de executeUrlFetchTask + executeMultiUrlFetchTask réécrites pour utiliser crawlAndScrape,
+soit un nouveau crawlService.ts qui wrappe ton scraperService et remplace progressivement les anciens usages.

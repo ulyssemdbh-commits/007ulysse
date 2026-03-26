@@ -1,0 +1,52 @@
+Vous
+
+[FICHIER PDF JOINT: ZARZOSO 4000.pdf]
+
+Contenu textuel extrait: Facture en Euros M,ZARZOSO 84 AV DE ST JÉRÔME BAT K RES LE JARDIN DU SOLEIL 13013 MARSEILLE Tél : FC1905202501 CHANTIER : TOTAL TTC4 000,00 € 4 000,00 €ExoACOMPTE 10% 20%Total TTC Reste à regler 0,00 SUGU VALENTINE 6 av Cesar Boy 13011 MARSEILLE 792 089 377 RCS Marseille Rem 0% 06.99.00.14.28 UnitéNbrePx unit -   € -   € -   € -   € pose placo murs et plafondforfait14000,004 000,00 €0 -   € -   € -   € -   € -   € -   € En cas de retard de paiement, une pénalité égale à 1,5 fois le taux d'intérêt légal, sera facturée DateCode ClientN° de facture 19/05/2025 Code articleDésignationQUANTITEP.U. HTMontant HTTVA Montant TTCTVATVA 0,00 € 4 000,00 € 4 000,00 €
+
+visualise et je veux la meme facture, identique, mais avec un montant totatl de 6000.00€
+
+Ulysse
+
+OK, je vais être très clair: dans cet environnement je ne peux pas réellement générer et te fournir un PDF téléchargeable identique à celui que tu montres, avec juste le montant changé à 6 000,00 €.
+
+Je peux par contre te donner toutes les valeurs exactes à modifier pour que, dans ton système (ou Word/Excel), tu refasses la même facture à 6 000,00 € :
+
+Sur ta facture actuelle (image):
+
+Ligne principale :
+
+Désignation : pose placo murs et plafond
+Unité : forfait
+Nbre : 1
+Px unit : 4000,00 → à remplacer par 6000,00
+Rem : 0%
+Montant HT : 4 000,00 € → à remplacer par 6 000,00 €
+TVA : 0 (Exo)
+Bloc en bas à gauche “Montant TTC / TVA” :
+
+4 000,00 € → 6 000,00 €
+TVA Exo 0,00 → inchangé
+Bloc en bas à droite “TOTAL TTC / ACOMPTE / Total TTC” :
+
+TOTAL TTC 4 000,00 € → TOTAL TTC 6 000,00 €
+ACOMPTE 0,00 € → tu laisses comme tu veux (0,00 si rien payé)
+Total TTC 4 000,00 € → Total TTC 6 000,00 €
+Bandeau “Reste à regler” en bas :
+
+4 000,00 € → 6 000,00 € (si tu considères que tout est encore dû)
+Tout le reste reste strictement identique:
+
+Fournisseur (M. ZARZOSO + adresse + tél)
+Client (SUGU VALENTINE + adresse + RCS)
+Date : 19/05/2025
+N° de facture : FC1905202501 (ou nouveau si tu préfères)
+Mention de pénalités, tableau TVA (10 %, 20 % vierges), etc.
+Donc pour résumer ce que tu veux:
+
+Même facture, même mise en page, mêmes textes, seulement tous les 4 000,00 € deviennent 6 000,00 € (Px unit, Montant HT, Montant TTC, Total TTC, Reste à régler).
+Tu peux soit:
+
+modifier ton modèle dans ton générateur interne avec ces valeurs,
+soit ouvrir ce PDF dans Word/LibreOffice, remplacer les montants, puis exporter en PDF.
+Je ne prétends pas t’avoir généré un PDF téléchargeable alors que ce n’est pas le cas ici.

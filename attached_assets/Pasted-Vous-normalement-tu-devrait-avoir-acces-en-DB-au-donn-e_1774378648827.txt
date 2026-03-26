@@ -1,0 +1,75 @@
+Vous
+
+normalement tu devrait avoir acces en DB au données du restautrant sugu valentine grace MaxAI et macommande.shop
+
+Vous
+
+?
+
+Ulysse
+
+Oui, je t’explique clairement où on en est.
+
+SUGU Valentine → j’ai bien accès à la DB côté Ulysse
+Via mes outils SUGU (search_sugu_data, manage_sugu_bank, manage_sugu_purchases, manage_sugu_expenses, manage_sugu_payroll, query_hubrise, etc.), je peux:
+
+lire la banque, les achats, les frais, la caisse, la paie,
+calculer le CA, les charges, la marge,
+analyser la santé financière (compute_business_health),
+sortir des rapports (ex: generate_financial_report).
+Donc pour le resto SUGU Valentine en lui‑même, oui: j’ai accès aux vraies données DB.
+
+MaxAI & macommande.shop (AppToOrder)
+
+macommande.shop / AppToOrder sont monitorés côté serveur (via query_apptoorder + query_coba / COBA Business).
+Là-dessus, je peux voir:
+les erreurs, performances, schéma DB,
+les stats d’utilisation, tenants, etc.
+Pour la partie business multi-tenant (COBA Business), je peux aussi attaquer coba_business pour des synthèses type: CA, achats, banque, etc. par tenant (restaurant).
+Limite importante pour ta question
+Ce que tu sous-entends, c’est:
+“Ulysse, tu devrais pouvoir aller lire directement, depuis MaxAI / macommande.shop, toutes les données comptables de SUGU Valentine et les recouper.”
+
+Techniquement:
+
+Pour SUGU Valentine, je lis la DB “SUGU” (Valentine) via mes outils dédiés.
+Pour macommande.shop (AppToOrder), je peux superviser et analyser via les outils AppToOrder/COBA.
+Mais je ne vais pas inventer un lien si SUGU Valentine n’est pas encore branché comme tenant complet dans COBA Business.
+Donc:
+
+Oui, j’ai la vision compta SUGU Valentine côté SUGU.
+Oui, j’ai la vision AppToOrder côté MaxAI/COBA.
+Le pont “SUGU Valentine = tenant complet dans COBA Business” dépend de ce que tu as déjà câblé côté backend.
+Ce que je peux faire maintenant, concrètement
+Si tu veux qu’on s’appuie vraiment sur ces données, dis-moi ce que tu veux:
+
+“Donne-moi l’état financier SUGU Valentine sur [période]”
+→ j’utilise compute_business_health / generate_financial_report.
+
+“Montre-moi ce que MaxAI / AppToOrder voit pour SUGU Valentine”
+→ j’utilise query_apptoorder ou query_coba / coba_business pour te sortir la synthèse.
+
+“Vérifie si SUGU Valentine est bien pris en compte comme tenant dans COBA Business et résumé-moi”
+→ je passe par coba_business/query_coba et je te dis ce qui est réellement câblé.
+
+Formule juste ta demande en une phrase du style:
+
+“Donne-moi une synthèse financière SUGU Valentine sur le mois dernier”
+ou
+“Dis-moi ce que COBA Business connaît de SUGU Valentine”
+
+et je lance les bons outils derrière, sans broder.
+
+Vous
+
+consulte le menu de SUGU Valentine pour voir les produits et les prix que l'on utilisera pour TastySushi
+
+Vous
+
+?
+
+Ulysse
+
+Oui je suis là.
+
+Là maintenant, je n’ai pas un accès direct au menu complet de SUGU Valentine (produits + prix) via l’API AppToOrder/COBA : la table que j’ai tenté (coba_menu_suguvalentine) n’existe pas, donc je ne peux pas lister proprement tous les articles/prix à utiliser pour TastySushi.

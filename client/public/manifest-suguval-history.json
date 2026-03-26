@@ -1,0 +1,29 @@
+{
+  "name": "Historique SUGUVal",
+  "short_name": "Historique",
+  "description": "Historique des listes de courses Suguval",
+  "start_url": "/courses/suguval/history",
+  "display": "standalone",
+  "background_color": "#b45309",
+  "theme_color": "#b45309",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/suguval-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/suguval-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "lang": "fr",
+  "dir": "ltr",
+  "scope": "/courses/suguval",
+  "prefer_related_applications": false
+}

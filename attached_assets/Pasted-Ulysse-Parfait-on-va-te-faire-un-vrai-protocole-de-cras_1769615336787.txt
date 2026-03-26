@@ -1,0 +1,213 @@
+Ulysse
+
+Parfait, on va te faire un vrai protocole de crash‑test pour ton moteur.
+
+Je te donne:
+
+Une liste d’URLs variées (bookmakers, presse, blog, SPA, PDF, doc)
+Comment les tester avec /scrape/smart/test et /scrape/smart
+Ce qu’il faut regarder dans les réponses pour ajuster ton engine (qualityScore, temps, stratégie, etc.)
+1. Liste d’URLs de test
+Évite de tout lancer d’un coup, mais garde cette liste sous le coude.
+
+A. Bookmakers (JS bien lourds)
+ParionsSport – Ligue 1
+https://www.parionssport.fdj.fr/paris-football/ligue-1
+Winamax – Football
+https://www.winamax.fr/paris-sportifs/sports/1
+Betclic – Ligue 1
+https://www.betclic.fr/football-s1/ligue-1-ubereats-c4
+Objectif: voir si playwright, jina, firecrawl récupèrent mieux que http.
+
+B. Presse / sites d’articles (HTML classique + pub)
+L’Équipe – article
+
+https://www.lequipe.fr/Football/Actualites/
+(prends un article précis si tu veux: tu cliques, tu copies l’URL)
+Le Monde – article
+
+https://www.lemonde.fr/football/article/2024/01/01/... (un article de foot ou actu)
+Blog technique
+
+Exemple: https://overreacted.io/ (Dan Abramov) → prends un article:
+https://overreacted.io/a-complete-guide-to-useeffect/
+Objectif: http devrait être très bon, qualityScore élevé, texte propre.
+
+C. SPA / JS ultra présents
+Site React/Next typique
+https://nextjs.org/docs (page docs)
+Exemple Vue / Nuxt
+https://nuxt.com/docs
+Objectif: voir si:
+
+jsDetected passe à true,
+jsRequired finit à true,
+playwright apporte plus de texte que http.
+D. PDF / contenus non HTML (via Firecrawl / Jina)
+PDF public
+
+Par exemple un PDF de doc officielle:
+https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf (ou un PDF quelconque que tu connais)
+Document type doc/rapport accessible via Firecrawl/Jina
+
+Si tu as un doc interne ou un PDF plus riche, ajoute son URL.
+Objectif: voir si firecrawl / jina te remontent le texte même sans HTML.
+
+2. Comment tester concrètement
+2.1. Test de toutes les stratégies sur une URL
+Pour chaque URL ci‑dessus:
+
+Appel /scrape/smart/test:
+curl "http://localhost:PORT/api/v2/scrape/smart/test?url=URL_A_TESTER"
+ou via Postman / ton front.
+
+Regarde la réponse:
+Tu vas avoir quelque chose comme:
+
+{
+  "success": true,
+  "url": "https://www.parionssport.fdj.fr/paris-football/ligue-1",
+  "results": [
+    {
+      "strategy": "http",
+      "success": false,
+      "contentLength": 120,
+      "qualityScore": 0.18,
+      "durationMs": 450,
+      "preview": "...",
+      "error": null
+    },
+    {
+      "strategy": "playwright",
+      "success": true,
+      "contentLength": 5200,
+      "qualityScore": 0.72,
+      "durationMs": 3800,
+      "preview": "OM - PSG 2.15 3.40 2.90...",
+      "error": null
+    },
+    {
+      "strategy": "jina",
+      "success": true,
+      "contentLength": 4300,
+      "qualityScore": 0.68,
+      "durationMs": 1200,
+      "preview": "...",
+      "error": null
+    },
+    ...
+  ]
+}
+Ce qu’il faut regarder par URL:
+strategy → qui marche vraiment sur ce domaine ?
+success → true/false (selon ton minQuality dans smartCrawl)
+contentLength / preview → tu vois si c’est du vrai contenu ou du bruit
+qualityScore → comment ça se situe:
+< 0.3 → extraction douteuse
+0.3–0.6 → moyen
+0.6 → correct/bon
+
+durationMs → coût per stratégie
+2.2. Test réel avec sélection intelligente
+Pour l’URL où tu as vu des résultats intéressants dans /test, tu enchaînes:
+
+curl -X POST "http://localhost:PORT/api/v2/scrape/smart" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://www.parionssport.fdj.fr/paris-football/ligue-1",
+    "qualityThreshold": 0.3
+  }'
+Réponse attendue (exemple simplifié):
+
+{
+  "url": "...",
+  "finalUrl": "...",
+  "success": true,
+  "strategyUsed": "playwright",
+  "strategiesAttempted": [
+    { "strategy": "http", "success": false, "qualityScore": 0.18, ... },
+    { "strategy": "playwright", "success": true, "qualityScore": 0.72, ... }
+  ],
+  "title": "Paris sportifs Ligue 1...",
+  "content": "...",
+  "contentLength": 5200,
+  "qualityScore": 0.72,
+  "timing": {
+    "totalMs": 4300,
+    "perStrategy": {
+      "http": 450,
+      "playwright": 3800
+    }
+  },
+  "domainProfile": {
+    "domain": "www.parionssport.fdj.fr",
+    "successCount": 3,
+    "failureCount": 1,
+    "lastSuccessStrategy": "playwright",
+    "failedStrategies": ["http"],
+    "jsRequired": true,
+    "avgQualityScore": 0.69,
+    "lastUpdatedAt": "..."
+  }
+}
+Tu vois ici:
+
+quelle stratégie a été choisie,
+comment le profil domaine a évolué.
+3. Comment interpréter pour ajuster ton moteur
+Voici ce qu’on va chercher:
+
+A. Sur les bookmakers (ParionsSport, Winamax, Betclic)
+Sur /scrape/smart/test :
+
+Si http:
+success: false ou qualityScore < 0.3 → normal
+Si playwright:
+success: true, qualityScore > 0.5, contentLength > ~1500 → 👍
+Si jina / firecrawl:
+Si l’un d’eux donne du contenu correct en moins de temps que playwright, c’est un super signal.
+Ce qu’on en déduit:
+
+Si playwright est toujours le meilleur → jsRequired = true, lastSuccessStrategy = "playwright" → parfait.
+Si jina est souvent aussi bon mais plus rapide → on pourra un jour le mettre en priorité plus haute (priority) pour certains domaines.
+Tu peux ensuite appeler /scrape/smart/health et /scrape/smart/analytics pour voir:
+
+le succès global de playwright vs http sur ces domaines,
+comment ta moyenne de qualité évolue.
+B. Sur les articles (L’Équipe, Le Monde, blog)
+Sur /scrape/smart/test:
+
+http doit:
+success: true
+qualityScore > 0.5
+contentLength bien fourni
+playwright peut être plus lent sans apporter grand-chose → normal.
+Là, ton engine doit retenir http comme stratégie préférée:
+
+jsRequired devrait rester false
+lastSuccessStrategy → "http"
+successCount augmenté
+Si tu vois que jina donne aussi un bon résultat:
+
+ça reste un bon fallback si un jour http se fait bloquer.
+C. Sur les sites SPA (Next docs, Nuxt docs)
+Sur /scrape/smart/test:
+
+http:
+souvent qualityScore moyen (un peu de texte mais pas tout)
+playwright:
+devrait monter le score (plus de texte)
+metrics.jsDetected + jsRequired → doivent être true après quelques appels.
+Si tu vois que malgré playwright, qualityScore reste faible, on ajustera soit:
+
+la logique de détection SPA (detectSPAIndicators),
+soit la configuration (timeout, etc.).
+D. Sur PDF via Firecrawl / Jina
+Sur /scrape/smart/test:
+
+http → success: false, normal.
+firecrawl / jina:
+si l’un te donne le texte du PDF → victoire.
+Si c’est le cas, on pourra:
+
+augmenter leur priority pour les URLs qui contiennent .pdf ou certains patterns de domaine (plus tard).

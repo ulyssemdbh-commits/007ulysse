@@ -1,0 +1,116 @@
+Ulysse
+
+Pour ton usage actuel, ce routeur est propre et fonctionne.
+Je te propose juste une version “Core Ulysse” un peu plus robuste, sans changer ton API.
+
+Points que j’améliore :
+
+Typage explicite de (req as any).userId → éviter le cast sauvage partout.
+Vérif de userId présent (au cas où un middleware d’auth saute).
+Gestion d’erreur homogène (pas de throw err brut qui remonte au process).
+Validation plus safe de projectId / id (NaN → 400).
+Voici une version améliorée, complète, plug & play :
+
+import { Router, Request, Response } from "express";
+import { storage } from "../storage";
+import { api } from "@shared/routes";
+import { z } from "zod";
+
+const router = Router();
+
+// Étendre le type Request pour userId (injecté par ton middleware auth)
+interface AuthedRequest extends Request {
+  userId?: number;
+}
+
+function getUserId(req: AuthedRequest): number {
+  if (!req.userId || typeof req.userId !== "number") {
+    // Ici on peut soit throw, soit retourner 401
+    // On choisit de throw pour être catché par le middleware global d'erreur
+    throw new Error("UNAUTHENTICATED: userId missing on request");
+  }
+  return req.userId;
+}
+
+router.get(api.tasks.list.path.replace("/api", ""), async (req: AuthedRequest, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const projectIdParam = req.query.projectId;
+    const projectId =
+      typeof projectIdParam === "string" && projectIdParam.trim() !== ""
+        ? Number(projectIdParam)
+        : undefined;
+
+    if (projectIdParam && (isNaN(Number(projectIdParam)) || projectId! < 0)) {
+      return res.status(400).json({ message: "Invalid projectId" });
+    }
+
+    const tasks = await storage.getTasks(userId, projectId);
+    return res.json(tasks);
+  } catch (err) {
+    console.error("[Tasks] GET list error:", err);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+router.post(api.tasks.create.path.replace("/api", ""), async (req: AuthedRequest, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const input = api.tasks.create.input.parse(req.body);
+    const task = await storage.createTask({ ...input, userId });
+    return res.status(201).json(task);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({
+        message: err.errors[0]?.message || "Validation error",
+        field: err.errors[0]?.path?.join(".") || undefined,
+      });
+    }
+    console.error("[Tasks] POST create error:", err);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+router.patch(api.tasks.update.path.replace("/api", ""), async (req: AuthedRequest, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const id = Number(req.params.id);
+    if (isNaN(id) || id <= 0) {
+      return res.status(400).json({ message: "Invalid task id" });
+    }
+
+    const input = api.tasks.update.input.parse(req.body);
+    const task = await storage.updateTask(id, userId, input);
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    return res.json(task);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({
+        message: err.errors[0]?.message || "Validation error",
+        field: err.errors[0]?.path?.join(".") || undefined,
+      });
+    }
+    console.error("[Tasks] PATCH update error:", err);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+router.delete(api.tasks.delete.path.replace("/api", ""), async (req: AuthedRequest, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const id = Number(req.params.id);
+    if (isNaN(id) || id <= 0) {
+      return res.status(400).json({ message: "Invalid task id" });
+    }
+
+    await storage.deleteTask(id, userId);
+    return res.status(204).send();
+  } catch (err) {
+    console.error("[Tasks] DELETE error:", err);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+export default router;

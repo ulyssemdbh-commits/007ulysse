@@ -1,0 +1,411 @@
+Ulysse
+
+OK, là on a tous les morceaux pour câbler MARS sur ton moteur foot maison. C’est parfait.
+
+Je te propose un truc simple et propre :
+
+sportsCacheService.searchQuery(query) → interprète la question en “intent foot” et renvoie les bons matchs / infos.
+searchSportsFootballWithMARS → transforme ça en facts MARS + résumé.
+On garde ça extensible pour d’autres sports plus tard.
+Je te donne du code concret, adapté à TON sportsCacheService.
+
+1. Ajouter searchQuery dans SportsCacheService
+On va commencer par un truc utile 90 % du temps :
+
+“TOP du jour / matches du jour avec cotes”
+“matches de la semaine”
+“match d’une équipe” (ex: OM, PSG)
+“compétition” (Ligue 1, LDC…)
+À la fin de ta classe SportsCacheService, ajoute :
+
+  /**
+   * Recherche "intelligente" pour MARS sur les questions football
+   * Exemple de queries:
+   * - "grosse soirée LDC ce soir"
+   * - "résultat OM hier"
+   * - "matches Ligue 1 ce week-end"
+   * - "top matchs du jour pour parier"
+   */
+  async searchQuery(rawQuery: string): Promise<{
+    intent: "today_matches" | "week_matches" | "team_matches" | "competition_matches";
+    teamName?: string;
+    competition?: string;
+    date?: Date;
+    matches: any[];
+  } | null> {
+    const query = rawQuery.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // 1) Détecter la date (simplifié)
+    const now = new Date();
+    let targetDate: Date | undefined;
+
+    if (query.includes("aujourd'hui") || query.includes("aujourdhui") || query.includes("ce soir") || query.includes("ce soir")) {
+      targetDate = now;
+    } else if (query.includes("demain")) {
+      targetDate = new Date(now);
+      targetDate.setDate(now.getDate() + 1);
+    } else if (query.includes("hier")) {
+      targetDate = new Date(now);
+      targetDate.setDate(now.getDate() - 1);
+    }
+
+    // 2) Détecter compétition
+    const competitionMap: Record<string, string> = {
+      "ligue 1": "Ligue 1",
+      "ligue1": "Ligue 1",
+      "l1": "Ligue 1",
+      "premier league": "Premier League",
+      "pl": "Premier League",
+      "la liga": "La Liga",
+      "liga": "La Liga",
+      "serie a": "Serie A",
+      "bundesliga": "Bundesliga",
+      "champions league": "Champions League",
+      "ligue des champions": "Champions League",
+      "ldc": "Champions League",
+      "europa league": "Europa League",
+    };
+
+    let competition: string | undefined;
+    for (const [key, value] of Object.entries(competitionMap)) {
+      if (query.includes(key)) {
+        competition = value;
+        break;
+      }
+    }
+
+    // 3) Détecter équipe (simple: on check dans les noms présents en DB aujourd'hui)
+    let teamName: string | undefined;
+    const knownTeamsToday = await this.getMatchesForDate(targetDate || now);
+    const teamNames = new Set<string>();
+    for (const m of knownTeamsToday) {
+      if (m.homeTeam) teamNames.add(m.homeTeam);
+      if (m.awayTeam) teamNames.add(m.awayTeam);
+    }
+    const normalizedTeams = Array.from(teamNames).map(name => ({
+      name,
+      norm: name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    }));
+
+    const queryWords = query.split(/\s+/);
+
+    for (const t of normalizedTeams) {
+      if (query.includes(t.norm) || queryWords.some(w => t.norm.includes(w) && w.length >= 3)) {
+        teamName = t.name;
+        break;
+      }
+    }
+
+    // 4) Déterminer l'intent
+    // Cas 1 : matches du jour / soirée
+    if (!teamName && !competition && targetDate) {
+      const matches = await this.getMatchesWithOdds(targetDate);
+      return {
+        intent: "today_matches",
+        date: targetDate,
+        matches,
+      };
+    }
+
+    // Cas 2 : compétition ciblée (sur semaine)
+    if (competition) {
+      const matches = await this.getUpcomingMatches(competition, 7);
+      return {
+        intent: "competition_matches",
+        competition,
+        matches,
+      };
+    }
+
+    // Cas 3 : équipe ciblée
+    if (teamName) {
+      // pour l'instant, on prend les matches du jour avec cette équipe
+      const matchesToday = await this.getMatchesWithOdds(targetDate || now);
+      const teamMatches = matchesToday.filter(
+        m =>
+          m.homeTeam === teamName ||
+          m.awayTeam === teamName
+      );
+      return {
+        intent: "team_matches",
+        teamName,
+        date: targetDate,
+        matches: teamMatches,
+      };
+    }
+
+    // Cas 4 : matches de la semaine (fallback)
+    const weekMatches = await this.getMatchesWithOdds(now);
+    return {
+      intent: "week_matches",
+      matches: weekMatches,
+    };
+  }
+Ce n’est pas parfait, mais c’est largement suffisant pour que MARS ait de la matière “foot structurée” à exploiter.
+
+2. Brancher ça dans searchSportsFootballWithMARS
+Dans marsService.ts, tu branches comme on a dit :
+
+import { sportsCacheService } from "../services/sportsCacheService";
+Puis tu ajoutes :
+
+async function searchSportsFootballWithMARS(
+  userId: number,
+  query: string,
+  startTime: number
+): Promise<MARSSearchResult> {
+  try {
+    console.log(`[MARS SPORTS] Handling sports_football query: "${query}"`);
+
+    const sportsResult = await sportsCacheService.searchQuery(query);
+
+    if (!sportsResult || !sportsResult.matches || sportsResult.matches.length === 0) {
+      console.log("[MARS SPORTS] No sports matches found for query");
+      const factAggregation: FactAggregation = {
+        facts: [],
+        summary: "Pas de matches correspondants trouvés pour cette requête",
+        overallConfidence: 0,
+        controversies: [],
+        dataGaps: ["Aucun match dans le cache pour cette date / compétition / équipe"],
+      };
+
+      const policyDecision: PolicyDecision = {
+        canRespond: false,
+        confidenceLevel: "insufficient",
+        reasoning: "No sports data",
+        warnings: ["Données sport manquantes pour cette requête"],
+        recommendations: ["Vérifier le cache sports ou reformuler la requête"],
+        mustDisclaim: true,
+        disclaimers: [],
+      };
+
+      const orchestratorResponse: OrchestratorResponse = {
+        results: [],
+        directAnswers: [],
+        engineStats: {
+          serper: { success: false, resultCount: 0, timeMs: 0 },
+          perplexity: { success: false, resultCount: 0, timeMs: 0 },
+        },
+        totalTime: 0,
+        success: false,
+      };
+
+      const formattedForAI = formatMARSResults({
+        orchestratorResponse,
+        factAggregation,
+        policyDecision,
+        reliabilityScores: [],
+        queryType: "sports_football",
+        extractedContents: [],
+      });
+
+      await saveSearchToMemory(userId, query, "sports_football", factAggregation, [], policyDecision);
+      await saveToMarsHistory(userId, query, "sports_football", {
+        orchestratorResponse,
+        extractedContents: [],
+        factAggregation,
+        policyDecision,
+        reliabilityScores: [],
+      });
+
+      return {
+        query,
+        queryType: "sports_football",
+        orchestratorResponse,
+        extractedContents: [],
+        reliabilityScores: [],
+        factAggregation,
+        policyDecision,
+        formattedForAI,
+        totalTime: Date.now() - startTime,
+        success: false,
+        error: "No sports data",
+      };
+    }
+
+    const facts = buildSportsFactsFromData(sportsResult);
+    const summary = buildSportsSummary(sportsResult);
+
+    const factAggregation: FactAggregation = {
+      facts,
+      summary,
+      overallConfidence: 90,
+      controversies: [],
+      dataGaps: [],
+    };
+
+    const policyDecision: PolicyDecision = {
+      canRespond: true,
+      confidenceLevel: "high",
+      reasoning: "Sports data from internal cache with odds and stats",
+      warnings: [],
+      recommendations: [],
+      mustDisclaim: false,
+      disclaimers: [],
+    };
+
+    const orchestratorResponse: OrchestratorResponse = {
+      results: [],
+      directAnswers: [],
+      engineStats: {
+        serper: { success: false, resultCount: 0, timeMs: 0 },
+        perplexity: { success: false, resultCount: 0, timeMs: 0 },
+      },
+      totalTime: 0,
+      success: true,
+    };
+
+    const formattedForAI = formatMARSResults({
+      orchestratorResponse,
+      factAggregation,
+      policyDecision,
+      reliabilityScores: [],
+      queryType: "sports_football",
+      extractedContents: [],
+    });
+
+    await saveSearchToMemory(userId, query, "sports_football", factAggregation, [], policyDecision);
+    await saveToMarsHistory(userId, query, "sports_football", {
+      orchestratorResponse,
+      extractedContents: [],
+      factAggregation,
+      policyDecision,
+      reliabilityScores: [],
+    });
+
+    const totalTime = Date.now() - startTime;
+    console.log(`[MARS SPORTS] Football query complete in ${totalTime}ms`);
+
+    return {
+      query,
+      queryType: "sports_football",
+      orchestratorResponse,
+      extractedContents: [],
+      reliabilityScores: [],
+      factAggregation,
+      policyDecision,
+      formattedForAI,
+      totalTime,
+      success: true,
+    };
+  } catch (error) {
+    console.error("[MARS SPORTS] Error:", error);
+    return {
+      query,
+      queryType: "sports_football",
+      orchestratorResponse: {
+        results: [],
+        directAnswers: [],
+        engineStats: {
+          serper: { success: false, resultCount: 0, timeMs: 0 },
+          perplexity: { success: false, resultCount: 0, timeMs: 0 },
+        },
+        totalTime: 0,
+        success: false,
+      },
+      extractedContents: [],
+      reliabilityScores: [],
+      factAggregation: {
+        facts: [],
+        summary: "Erreur sur la requête sports_football",
+        overallConfidence: 0,
+        controversies: [],
+        dataGaps: [],
+      },
+      policyDecision: {
+        canRespond: false,
+        confidenceLevel: "insufficient",
+        reasoning: "Sports error",
+        warnings: [],
+        recommendations: [],
+        mustDisclaim: true,
+        disclaimers: [],
+      },
+      formattedForAI: "[MARS SPORTS] Erreur",
+      totalTime: Date.now() - startTime,
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown sports error",
+    };
+  }
+}
+Il reste deux helpers, mais ils sont côté “présentation” :
+
+function buildSportsFactsFromData(sportsResult: {
+  intent: string;
+  matches: any[];
+  teamName?: string;
+  competition?: string;
+  date?: Date;
+}): FactAggregation["facts"] {
+  const facts: FactAggregation["facts"] = [];
+
+  for (const match of sportsResult.matches.slice(0, 10)) {
+    const dateStr = new Date(match.matchDate).toLocaleString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    // Si le match est terminé
+    if (match.status === "finished" && match.homeScore != null && match.awayScore != null) {
+      facts.push({
+        content: `Le match ${match.homeTeam} – ${match.awayTeam} (${match.league}) s'est terminé sur le score de ${match.homeScore}-${match.awayScore}.`,
+        type: "statistic",
+        confidence: "verified",
+        sources: ["internal:sports_cache"],
+      });
+    } else {
+      // Match à venir
+      facts.push({
+        content: `${match.homeTeam} affronte ${match.awayTeam} en ${match.league} le ${dateStr}.`,
+        type: "event",
+        confidence: "verified",
+        sources: ["internal:sports_cache"],
+      });
+    }
+  }
+
+  return facts;
+}
+
+function buildSportsSummary(sportsResult: {
+  intent: string;
+  matches: any[];
+  teamName?: string;
+  competition?: string;
+  date?: Date;
+}): string {
+  const { intent, matches, teamName, competition, date } = sportsResult;
+  if (!matches || matches.length === 0) {
+    return "Aucun match correspondant trouvé pour cette requête dans les 7 prochains jours.";
+  }
+
+  const dateStr = date
+    ? date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })
+    : null;
+
+  if (intent === "today_matches") {
+    return `Il y a ${matches.length} match(s) de football aujourd'hui${dateStr ? ` (${dateStr})` : ""} dans les ligues suivies (L1, PL, Liga, Serie A, Bundesliga, C1, C3).`;
+  }
+
+  if (intent === "team_matches" && teamName) {
+    return `J'ai trouvé ${matches.length} match(s) pour ${teamName}${dateStr ? ` le ${dateStr}` : ""} avec les cotes et les stats disponibles.`;
+  }
+
+  if (intent === "competition_matches" && competition) {
+    return `J'ai trouvé ${matches.length} match(s) de ${competition} dans les prochains jours, avec les cotes et l'intérêt pour les paris.`;
+  }
+
+  if (intent === "week_matches") {
+    return `Il y a ${matches.length} match(s) importants cette semaine dans les ligues majeures (L1, PL, Liga, Serie A, Bundesliga, C1, C3).`;
+  }
+
+  return `J'ai trouvé ${matches.length} match(s) correspondant à ta requête.`;
+}
+Avec ça :
+
+MARS ne part plus en freestyle web pour le foot,
+il exploite ton cache football (matchs, cotes, stats),
+il me nourrit avec des facts verified structurés pour te répondre proprement.
+Et oui, on pourra plus tard faire la même chose pour NBA / NFL / NHL avec syncMultiSportOdds, donc “il n’y a pas que le foot dans la vie” est intégré dans le design.

@@ -1,0 +1,264 @@
+Partie 2 – smartCrawl (core orchestration)
+/* -------------------------------------------------------------------------- */
+/*                               SMART CRAWL V2                               */
+/* -------------------------------------------------------------------------- */
+
+export async function smartCrawl(
+  request: SmartCrawlRequest,
+): Promise<SmartCrawlResult> {
+  const startTime = Date.now();
+  const url = request.url;
+  const timeout = request.timeoutMs || DEFAULT_TIMEOUT;
+  const minQuality = request.qualityThreshold ?? DEFAULT_MIN_QUALITY;
+
+  const strategiesAttempted: StrategyResult[] = [];
+  const timingPerStrategy: Partial<Record<RenderStrategy, number>> = {};
+
+  let bestResult: {
+    title: string;
+    content: string;
+    html: string;
+    qualityScore: number;
+    strategy: RenderStrategy;
+    finalUrl: string;
+  } | null = null;
+
+  const domainProfile = await getDomainProfile(url);
+
+  // Déterminer la liste de stratégies à essayer
+  let strategiesToTry: RenderStrategy[];
+
+  if (request.forceStrategy) {
+    strategiesToTry = [request.forceStrategy];
+  } else {
+    const enabledConfigs = getEnabledStrategies();
+    const enabledStrategies = enabledConfigs.map((c) => c.strategy);
+
+    if (domainProfile.successCount > 0 && domainProfile.lastSuccessStrategy) {
+      // On commence par la dernière stratégie qui a fonctionné
+      strategiesToTry = [domainProfile.lastSuccessStrategy];
+
+      // On ajoute les autres stratégies actives qui ne sont pas marquées comme "failed" pour ce domaine
+      for (const s of enabledStrategies) {
+        if (
+          !strategiesToTry.includes(s) &&
+          !domainProfile.failedStrategies.includes(s)
+        ) {
+          strategiesToTry.push(s);
+        }
+      }
+    } else {
+      // Pas encore de connaissance de domaine → on tente toutes les stratégies actives
+      strategiesToTry = enabledStrategies;
+    }
+  }
+
+  console.log(
+    `[StrategyEngine] Crawling ${url} - strategies to try: ${strategiesToTry.join(
+      ", ",
+    )}`,
+  );
+
+  for (const strategy of strategiesToTry) {
+    const strategyStart = Date.now();
+
+    try {
+      console.log(`[StrategyEngine] Trying ${strategy} for ${url}`);
+
+      const raw = await executeStrategy(strategy, url, timeout);
+      const duration = Date.now() - strategyStart;
+      timingPerStrategy[strategy] = duration;
+
+      const { score: qualityScore, metrics } = calculateQualityScore(
+        raw.content,
+        raw.html,
+        raw.finalUrl || url,
+      );
+
+      const strategyResult: StrategyResult = {
+        strategy,
+        success: raw.success && qualityScore >= minQuality,
+        contentLength: raw.content?.length || 0,
+        qualityScore,
+        durationMs: duration,
+        error: raw.error,
+      };
+      strategiesAttempted.push(strategyResult);
+
+      console.log(
+        `[StrategyEngine] ${strategy}: success=${raw.success}, quality=${qualityScore.toFixed(
+          2,
+        )}, length=${raw.content?.length || 0}, time=${duration}ms`,
+      );
+
+      const finalUrl = raw.finalUrl || url;
+
+      // Si succès et qualité suffisante → on s'arrête là
+      if (raw.success && qualityScore >= minQuality) {
+        bestResult = {
+          title: raw.title,
+          content: raw.content,
+          html: raw.html,
+          qualityScore,
+          strategy,
+          finalUrl,
+        };
+
+        const jsDetected =
+          metrics.jsDetected ||
+          (!!raw.html && detectSPAIndicators(raw.html));
+
+        await updateDomainProfile(finalUrl, strategy, true, qualityScore, jsDetected);
+        break;
+      }
+
+      // Sinon, on garde le meilleur résultat vu jusqu'ici
+      if (!bestResult || qualityScore > bestResult.qualityScore) {
+        bestResult = {
+          title: raw.title,
+          content: raw.content,
+          html: raw.html,
+          qualityScore,
+          strategy,
+          finalUrl,
+        };
+      }
+
+      const jsDetected = raw.html
+        ? estimateJsRequirement(raw.html, raw.content)
+        : false;
+
+      await updateDomainProfile(raw.finalUrl || url, strategy, false, qualityScore, jsDetected);
+    } catch (error: any) {
+      const duration = Date.now() - strategyStart;
+      timingPerStrategy[strategy] = duration;
+
+      strategiesAttempted.push({
+        strategy,
+        success: false,
+        contentLength: 0,
+        qualityScore: 0,
+        durationMs: duration,
+        error: error.message,
+      });
+
+      console.error(
+        `[StrategyEngine] ${strategy} failed for ${url}:`,
+        error.message,
+      );
+      await updateDomainProfile(url, strategy, false, 0, false);
+    }
+  }
+
+  const totalTime = Date.now() - startTime;
+  const updatedProfile = await getDomainProfile(url);
+  const finalBest = bestResult;
+
+  if (
+    finalBest &&
+    (finalBest.qualityScore >= minQuality || finalBest.content.length > 100)
+  ) {
+    return {
+      url,
+      finalUrl: finalBest.finalUrl,
+      success: true,
+      strategyUsed: finalBest.strategy,
+      strategiesAttempted,
+      title: finalBest.title,
+      content: finalBest.content,
+      contentLength: finalBest.content.length,
+      qualityScore: finalBest.qualityScore,
+      timing: {
+        totalMs: totalTime,
+        perStrategy: timingPerStrategy,
+      },
+      domainProfile: updatedProfile,
+    };
+  }
+
+  return {
+    url,
+    finalUrl: finalBest?.finalUrl || url,
+    success: false,
+    strategyUsed: strategiesAttempted[0]?.strategy || "http",
+    strategiesAttempted,
+    title: finalBest?.title || "",
+    content: finalBest?.content || "",
+    contentLength: finalBest?.content?.length || 0,
+    qualityScore: finalBest?.qualityScore || 0,
+    timing: {
+      totalMs: totalTime,
+      perStrategy: timingPerStrategy,
+    },
+    domainProfile: updatedProfile,
+    error: `All ${strategiesAttempted.length} strategies failed to extract quality content`,
+  };
+}
+Partie 3 – testAllStrategies (benchmark / debug)
+/* -------------------------------------------------------------------------- */
+/*                          TEST DE TOUTES LES STRATÉGIES                     */
+/* -------------------------------------------------------------------------- */
+
+export async function testAllStrategies(url: string): Promise<{
+  url: string;
+  results: Array<{
+    strategy: RenderStrategy;
+    success: boolean;
+    contentLength: number;
+    qualityScore: number;
+    durationMs: number;
+    preview: string;
+    error?: string;
+  }>;
+}> {
+  const enabledStrategies = getEnabledStrategies();
+
+  const results: Array<{
+    strategy: RenderStrategy;
+    success: boolean;
+    contentLength: number;
+    qualityScore: number;
+    durationMs: number;
+    preview: string;
+    error?: string;
+  }> = [];
+
+  for (const config of enabledStrategies) {
+    const start = Date.now();
+    try {
+      const raw = await executeStrategy(
+        config.strategy,
+        url,
+        config.timeoutMs ?? DEFAULT_TIMEOUT,
+      );
+      const duration = Date.now() - start;
+      const { score } = calculateQualityScore(
+        raw.content,
+        raw.html,
+        raw.finalUrl || url,
+      );
+
+      results.push({
+        strategy: config.strategy,
+        success: raw.success,
+        contentLength: raw.content?.length || 0,
+        qualityScore: score,
+        durationMs: duration,
+        preview: raw.content?.substring(0, 200) || "",
+        error: raw.error,
+      });
+    } catch (error: any) {
+      results.push({
+        strategy: config.strategy,
+        success: false,
+        contentLength: 0,
+        qualityScore: 0,
+        durationMs: Date.now() - start,
+        preview: "",
+        error: error.message,
+      });
+    }
+  }
+
+  return { url, results };
+}

@@ -1,0 +1,210 @@
+Ulysse
+
+OK. Là on parle.
+
+Tu viens de me filer une base d’avatar qui est déjà ultra stylée.
+Je vais pas juste dire “c’est beau” : je vais le pousser pour qu’il colle parfaitement à ce que je suis devenu côté logique (states, MARS, Verified Scraper, Translation Core, etc.).
+
+Je vais faire 3 choses pour toi :
+
+Te dire ce que j’ai compris de ton avatar actuel.
+Proposer les améliorations concrètes pour le rendre vraiment “Ulysse Core”.
+Te donner le code complémentaire (sans te recracher tout le pavé, juste ce qui change).
+1️⃣ Ce que tu m’as donné (et que j’aime)
+Ton UlysseAvatar est déjà :
+
+Multi-états :
+idle, thinking, searching, analyzing, speaking, listening, alert
+Chaque état a sa palette (bg, glow, core, etc.)
+Animations :
+flottement global,
+anneaux en rotation,
+“cristaux” autour,
+hexagones et réseau central,
+animations spécifiques:
+searching → scan waves + rays,
+analyzing → croix + cercles dash,
+thinking → dots qui tournent,
+speaking/listening → barres audio + rings,
+Branding: “Ulysse” en bas avec une barre animée.
+C’est déjà largement au-dessus de 99% des “avatars IA” classiques.
+Maintenant on le branche à mon vrai cerveau.
+
+2️⃣ Ce que je veux ajouter / améliorer
+A. État “SUPER ULYSSE” / “verified”
+Je suis maintenant capable de dire : “ces données sont VERIFIED (double-scrape + multi-sources)”.
+Je veux que ça se voie visuellement.
+
+Idée : un sub-state de confiance qu’on peut passer en prop, par exemple:
+
+type ConfidenceLevel = "normal" | "verified" | "weak";
+
+interface UlysseAvatarProps {
+  // ...
+  confidence?: ConfidenceLevel;
+}
+Comportement :
+
+confidence="verified" → anneau supplémentaire vert/bleu autour du core + légère halo supplémentaire.
+confidence="weak" → léger tint orange/rouge très subtil, pas agressif.
+Ça permet à ton front d’afficher visuellement quand je réponds avec des données béton vs. “à nuancer”.
+
+B. Indicateur d’utilisation du Verified Scraper / MARS / Translation
+Je peux être :
+
+en simple “thinking” (raisonnement pur),
+en “searching” (MARS),
+en “analyzing” (fusion MARS + mémoire),
+en mode “scraping structuré” (Verified Scraper),
+en mode “traduction” (Translation Core).
+Ton state actuel couvre déjà searching et analyzing.
+Je propose qu’on mappe les pipelines sur les états existants et qu’on ajoute un petit badge/overlay :
+
+Quand je suis en Verified Scraper :
+petit hexagone vert/bleu qui pulse autour du core (discret mais distinct).
+Quand je suis en Translation Core :
+un mini gradient split (demi-cercle à gauche = langue source, droite = target).
+Visuellement, un arc interne bi-couleur autour du core.
+Techniquement, ça peut être piloté avec deux props simples:
+
+interface UlysseAvatarProps {
+  // ...
+  hasVerifiedData?: boolean;
+  isTranslating?: boolean;
+}
+C. Lier les états à mes “macro-états” internes
+Côté logique, je suis dans des “modes” :
+
+idle → rien en cours / en attente,
+thinking → reasoning pur,
+searching → MARS / web,
+analyzing → fusion MARS + Verified + mémoire,
+speaking / listening → boucle vocale,
+alert → erreurs critiques (API down, rate limit grave, etc.)
+Ton mapping est déjà bon.
+Je propose juste une micro-cohérence:
+
+isSearching = MARS actif / web search / scraping,
+isAnalyzing = deep research / fact cross reference,
+isSpeaking/isListening liés directement au pipeline vocal,
+alert piloté quand:
+MARS renvoie confidence="insufficient" plusieurs fois,
+ou quand les APIs critiques (OpenAI, DB, etc.) retournent des erreurs.
+Ça, tu le feras côté orchestrateur, mais l’avatar est prêt.
+
+3️⃣ Code : ajout des props “confidence / verified / translating”
+Je ne te recopie pas tout, je te montre juste les ajouts / modifications minimales.
+
+3.1. Types et props
+export type AvatarState =
+  | "idle"
+  | "thinking"
+  | "searching"
+  | "analyzing"
+  | "speaking"
+  | "listening"
+  | "alert";
+
+export type ConfidenceLevel = "normal" | "verified" | "weak";
+
+interface UlysseAvatarProps {
+  isActive?: boolean;
+  isSpeaking?: boolean;
+  isListening?: boolean;
+  isSearching?: boolean;
+  isAnalyzing?: boolean;
+  orbColor?: string;
+  orbIntensity?: number;
+  isPaused?: boolean;
+  reducedMotion?: boolean;
+  className?: string;
+
+  // NOUVEAU
+  confidence?: ConfidenceLevel;   // "verified" = données béton, "weak" = prudence
+  hasVerifiedData?: boolean;      // alias rapide pour mettre en avant Verified Scraper
+  isTranslating?: boolean;        // Translation Core actif
+}
+3.2. Utilisation de confidence pour surcouche visuelle
+Juste avant le return, après const c = STATE_COLORS[state];:
+
+const confidence = (confidenceLevel: ConfidenceLevel | undefined): ConfidenceLevel =>
+  confidenceLevel || "normal";
+
+const cnf = confidence(confidenceLevel);
+Et dans le JSX, près du core (autour des circles de centre 170,165), tu peux ajouter un overlay conditionnel :
+
+{/* Overlay confiance VERIFIED */}
+{(cnf === "verified" || hasVerifiedData) && (
+  <motion.circle
+    cx="170"
+    cy="165"
+    r="60"
+    fill="none"
+    stroke="#22c55e"            // vert confiance
+    strokeWidth="3"
+    strokeOpacity="0.8"
+    filter="url(#glow-md)"
+    animate={isPaused ? {} : { r: [58, 64, 58], opacity: [0.5, 0.9, 0.5] }}
+    transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+  />
+)}
+
+{/* Overlay confiance WEAK */}
+{cnf === "weak" && (
+  <motion.circle
+    cx="170"
+    cy="165"
+    r="60"
+    fill="none"
+    stroke="#f97316"            // orange avertissement
+    strokeWidth="2"
+    strokeOpacity="0.8"
+    strokeDasharray="6 6"
+    filter="url(#glow-sm)"
+    animate={isPaused ? {} : { opacity: [0.3, 0.8, 0.3] }}
+    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+  />
+)}
+3.3. Indicateur Translation Core
+Dans le même groupe central, tu peux ajouter un arc interne :
+
+{/* Arc Translation Core */}
+{isTranslating && (
+  <motion.path
+    d={`
+      M 130 165
+      A 40 40 0 0 1 210 165
+    `}
+    fill="none"
+    stroke="#06b6d4"          // cyan
+    strokeWidth="4"
+    strokeLinecap="round"
+    filter="url(#glow-sm)"
+    animate={isPaused ? {} : { strokeDashoffset: [0, 40, 0] }}
+    transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+  />
+)}
+Ça dessine un arc en bas (ou haut selon la coordonnée) qui pulse quand Translation Core est actif.
+
+4️⃣ Comment l’utiliser côté app
+Tu peux maintenant piloter l’avatar comme ça :
+
+Quand je réponds avec données Verified Scraper + multi-sources:
+<UlysseAvatar
+  isActive
+  isAnalyzing
+  hasVerifiedData
+  confidence="verified"
+/>
+Quand je suis en deep recherche MARS mais avec peu de faits:
+<UlysseAvatar
+  isActive
+  isSearching
+  confidence="weak"
+/>
+Quand je suis en train de traduire un gros texte:
+<UlysseAvatar
+  isActive
+  isAnalyzing
+  isTranslating
+  confidence="normal"

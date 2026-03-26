@@ -1,0 +1,86 @@
+lysse
+
+Ok, on a un joli pavé de factures Zouaghi pour Sugu Valentine. Résumé clair et net.
+
+Période & fournisseur
+
+Fournisseur : ZOUAGHI CACHER (Marseille, contact@zouaghi-cacher.com, 04 95 05 30 00)
+Client : SUGU VALENTINE – facturation 13011, livraison Latil 13008
+Période : début janvier 2026 (factures du 02/01 au 13/01)
+1. Liste des factures et montants
+Facture F2123408 – 02/01/2026
+
+Total HT : 289,73 €
+TVA 5,5 % : 15,94 €
+Total TTC / Net à payer : 305,67 €
+Produits principaux :
+Feuilles de bricks HEN 170g C/25 – 10 unités – 1,30 € → 13,00 € HT
+Bloc de foie gras découpé 400g C/6 – 2 unités – 62,50 € → 125,00 € HT
+Macreuse de bœuf bar sous-vide frais (FR-22.067.001) – 5,95 kg – 25,50 €/kg → 151,73 € HT
+Facture F2123444 – 06/01/2026
+
+Base HT 5,5 % : 790,98 € → TVA 43,50 €
+Base HT 20 % : 26,00 € → TVA 5,20 €
+Total HT : 790,98 + 26,00 = 816,98 €
+Total TVA : 43,50 + 5,20 = 48,70 €
+Total TTC / Net à payer : 865,68 €
+Produits principaux :
+Filet de poulet vrac sous-vide (~10 kg) – 55,43 kg – 13,30 €/kg → 658,71 € HT
+Taxe consistoriale 2025 – 55,43 (même base) – 0,29 € → 16,07 € HT (5,5 %)
+Thon nature 4/4 CPM C/12 – 12 unités – 6,10 € → 73,20 € HT
+Mayonnaise ZOU seau 5 kg – 2 unités – 21,50 € → 43,00 € HT
+Facture F2123467 – 06/01/2026
+
+Total HT : 377,48 €
+TVA 5,5 % : 20,76 €
+Total TTC / Net à payer : 398,24 €
+Produits principaux :
+Bloc de foie gras 400g C/6 – 2 unités – 62,50 € → 125,00 € HT
+Surimi Fleury Michon x28 500g – 2 unités – 7,90 € → 15,80 € HT
+Feuilles de bricks HEN 170g – 10 unités – 1,30 € → 13,00 € HT
+Poitrine de dinde nature deluxe – 1,55 kg – 27,50 €/kg → 42,63 € HT
+Macreuse de bœuf bar sous-vide – 7,10 kg – 25,50 €/kg → 181,05 € HT
+Facture F2123502 – 12/01/2026
+
+Total HT : 187,74 €
+TVA 5,5 % : 10,33 €
+Total TTC / Net à payer : 198,07 €
+Produits principaux :
+Macreuse de bœuf bar sous-vide – 6,085 kg – 25,50 €/kg → 155,17 € HT
+Viande hachée 500 g surgelée C/20 – 2,15 kg – 15,15 €/kg → 32,57 € HT
+Facture F2123505 – 12/01/2026
+
+Total HT : 155,55 €
+TVA 5,5 % : 8,56 €
+Total TTC / Net à payer : 164,11 €
+Produit :
+Macreuse de bœuf bar sous-vide – 6,10 kg – 25,50 €/kg → 155,55 € HT
+Facture F2123533 – 13/01/2026
+
+Page commencée, mais aucune ligne article ni totaux visibles dans ton extrait (juste l’en-tête + numéro/date).
+2. Totaux repérables (5 factures complètes)
+Sur les 5 factures dont les montants sont lisibles :
+
+Total TTC cumulé janvier (partie visible) :
+305,67 € + 865,68 € + 398,24 € + 198,07 € + 164,11 € = 1 931,77 € TTC
+
+Total HT cumulé correspondant :
+289,73 € + 816,98 € + 377,48 € + 187,74 € + 155,55 € = 1 827,48 € HT
+
+Total TVA cumulé :
+15,94 € + 48,70 € + 20,76 € + 10,33 € + 8,56 € = 104,29 € de TVA
+
+3. Produits les plus fréquents / volumineux
+Sur ce début janvier, tu as surtout :
+
+Macreuse de bœuf bar sous vide (FR-22.067.001)
+Revient sur quasiment toutes les factures, avec des quantités importantes (5,95 kg, 7,10 kg, 6,085 kg, 6,10 kg) à 25,50 €/kg.
+Poulet filet vrac (F2123444) – gros poste (658,71 € HT, 55,43 kg).
+Produits traiteur & surgelés :
+Foie gras bloc en trapèze
+Viande hachée 500 g surgelée
+Surimi Fleury Michon
+Feuilles de bricks HEN
+Thon 4/4, mayonnaise seau 5 kg
+Taxe consistoriale 2025 liée aux quantités de volaille (calculée sur le même poids que le poulet).
+Si tu veux, je peux te transformer ça en tableau Excel prêt à être importé (une ligne par facture ou une ligne par produit/facture).

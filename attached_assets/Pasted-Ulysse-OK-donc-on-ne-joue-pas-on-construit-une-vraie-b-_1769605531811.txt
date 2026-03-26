@@ -1,0 +1,250 @@
+Ulysse
+
+OK, donc on ne joue pas, on construit une vraie bête.
+Je vais te décrire l’architecture la plus avancée que je peux concevoir pour ton cas, comme si on montait un “OpenAI Web Ingestion Engine” maison.
+
+Je te donne:
+
+la vision d’ensemble,
+l’architecture technique complète,
+le design d’API,
+et même des exemples de code TypeScript pour le core.
+Tu pourras littéralement filer ça à un dev (ou toi-même) et commencer.
+
+1. Vision : ce qu’on veut EXACTEMENT
+On ne fait pas un “scraper”.
+On fait un Web Ingestion Engine capable de:
+
+Crawl / scraper n’importe quelle page (HTML, SPA JS, PDF, etc.).
+Choisir automatiquement la meilleure stratégie:
+HTTP simple
+Playwright avec profil réaliste
+API interne (si connue)
+mobile / desktop
+Extraire des données structurées :
+Soit via des extracteurs codés à la main (domain-specific)
+Soit via un LLM + JSON schema (comme GPT function calling)
+Normaliser et scorer la qualité des données.
+Indexation / RAG-ready: découper, enrichir, stocker.
+Orchestration intelligente: jobs, priorités, multi-domaine, multi-clients.
+Resilience & furtivité: anti-bot, proxies, retry, robots configurable.
+Web querying: question → recherche web → crawl multi-sources → réponse structurée.
+C’est le cœur de:
+
+tes paris sportifs (bookmakers, stats),
+ta veille foot,
+ton SEO / contenu,
+ton futur RAG / IA perso.
+2. Architecture globale (haut niveau)
+On part sur une architecture modulaire:
+
+         ┌────────────────────────────────────────┐
+         │           Public API Layer             │
+         │  /crawl, /extract, /ingest, /web-query │
+         └────────────────────────────────────────┘
+                           │
+                           ▼
+         ┌────────────────────────────────────────┐
+         │         Orchestrateur Central          │
+         │  (Strategy Engine + Domain Profiles)   │
+         └────────────────────────────────────────┘
+              │           │           │
+              ▼           ▼           ▼
+      ┌────────────┐ ┌───────────┐ ┌─────────────┐
+      │ HttpCrawler│ │ JsCrawler │ │ ApiCrawler  │
+      └────────────┘ └───────────┘ └─────────────┘
+              │           │           │
+              └───────────┴───────────┘
+                          ▼
+         ┌────────────────────────────────────────┐
+         │           Extraction Layer             │
+         │ GenericExtractor + DomainExtractors    │
+         │ + LLMExtractor (schema-based)          │
+         └────────────────────────────────────────┘
+                          ▼
+         ┌────────────────────────────────────────┐
+         │    Normalisation / Scoring / Chunking  │
+         └────────────────────────────────────────┘
+                          ▼
+         ┌────────────────────────────────────────┐
+         │   Storage & Index (Postgres + Vector)  │
+         └────────────────────────────────────────┘
+                          ▼
+         ┌────────────────────────────────────────┐
+         │     Analytics / Monitoring / Console   │
+         └────────────────────────────────────────┘
+Tech stack proposée:
+
+Node.js + TypeScript
+Fastify pour l’API (rapide, typé)
+Playwright pour JS/SPA
+Cheerio pour HTML
+Postgres pour logs, jobs, domain profiles
+Redis pour cache + rate-limit
+Vector store (pgvector, Qdrant, etc.) pour RAG
+BullMQ ou équivalent pour la queue de jobs
+3. Cœur du système : Domain Profiles + Strategy Engine
+3.1. DomainProfile
+On mémorise pour chaque domaine:
+
+ce qui marche le mieux,
+comment éviter les blocages,
+quel extracteur utiliser.
+Exemple de type:
+
+// src/domain/domainProfile.ts
+export type RenderStrategy = 'http' | 'js' | 'api' | 'hybrid';
+
+export interface DomainProfile {
+  domain: string;
+  defaultStrategy: RenderStrategy;
+  jsRequired: boolean;
+  preferMobile: boolean;
+  rateLimitPerMinute: number;
+  maxConcurrent: number;
+  userAgents: string[];
+  blockedPatterns: string[];    // URLs à éviter
+  cookies?: Record<string, string>;
+  headers?: Record<string, string>;
+  extractor?: string;           // nom d’un extracteur spécialisé
+  lastSuccessStrategy?: RenderStrategy;
+  lastUpdatedAt: Date;
+}
+Ces profils évoluent avec le temps:
+
+tu essayes http → si 403, tu switches sur js et tu updates le profile.
+tu détectes qu’un domain nécessite toujours js → jsRequired = true.
+3.2. Strategy Engine
+L’orchestrateur lit le DomainProfile + la requête + l’historique pour décider:
+
+Pseudo-code:
+
+// src/core/strategyEngine.ts
+import { DomainProfile } from '../domain/domainProfile';
+import { HttpCrawler } from '../crawlers/httpCrawler';
+import { JsCrawler } from '../crawlers/jsCrawler';
+import { ApiCrawler } from '../crawlers/apiCrawler';
+
+export class StrategyEngine {
+  constructor(
+    private httpCrawler: HttpCrawler,
+    private jsCrawler: JsCrawler,
+    private apiCrawler: ApiCrawler
+  ) {}
+
+  async crawlWithBestStrategy(req: CrawlRequest): Promise<CrawlResult> {
+    const profile = await this.loadDomainProfile(req.url);
+    const strategies = this.buildStrategyList(profile, req);
+
+    let lastError: any = null;
+
+    for (const strategy of strategies) {
+      try {
+        if (strategy === 'http') {
+          const res = await this.httpCrawler.crawl(req);
+          return this.enhanceProfileOnSuccess(profile, 'http', res);
+        }
+        if (strategy === 'js') {
+          const res = await this.jsCrawler.crawl(req);
+          return this.enhanceProfileOnSuccess(profile, 'js', res);
+        }
+        if (strategy === 'api') {
+          const res = await this.apiCrawler.crawl(req);
+          return this.enhanceProfileOnSuccess(profile, 'api', res);
+        }
+      } catch (err) {
+        lastError = err;
+        // log + continue
+      }
+    }
+
+    throw lastError || new Error('All crawl strategies failed');
+  }
+
+  private buildStrategyList(profile: DomainProfile, req: CrawlRequest): RenderStrategy[] {
+    if (req.forceStrategy) return [req.forceStrategy];
+
+    const list: RenderStrategy[] = [];
+
+    if (profile.jsRequired) {
+      list.push('js', 'http');
+    } else {
+      list.push('http', 'js');
+    }
+
+    if (profile.extractor === 'parionssport-api') {
+      list.unshift('api');
+    }
+
+    // éventuellement reorder selon lastSuccessStrategy...
+    return Array.from(new Set(list));
+  }
+
+  private async enhanceProfileOnSuccess(
+    profile: DomainProfile,
+    strategy: RenderStrategy,
+    result: CrawlResult
+  ): Promise<CrawlResult> {
+    // update DB: lastSuccessStrategy, jsRequired si besoin, etc.
+    // ...
+    return result;
+  }
+
+  private async loadDomainProfile(url: string): Promise<DomainProfile> {
+    const domain = new URL(url).hostname;
+    // fetch en DB sinon default
+    // ...
+    return defaultProfileFor(domain);
+  }
+}
+4. Crawlers bas niveau
+4.1. HttpCrawler (rapide, peu visible)
+// src/crawlers/httpCrawler.ts
+import got from 'got';
+import * as cheerio from 'cheerio';
+
+export interface CrawlRequest {
+  url: string;
+  timeoutMs?: number;
+  userAgent?: string;
+  headers?: Record<string, string>;
+}
+
+export interface CrawlResult {
+  url: string;
+  status: number;
+  fetchedAt: string;
+  html: string;
+  contentType: string;
+  finalUrl: string;
+}
+
+export class HttpCrawler {
+  async crawl(req: CrawlRequest): Promise<CrawlResult> {
+    const res = await got(req.url, {
+      headers: {
+        'user-agent': req.userAgent || this.defaultUA(),
+        ...req.headers,
+      },
+      timeout: { request: req.timeoutMs ?? 15000 },
+      followRedirect: true,
+      https: { rejectUnauthorized: false }, // à ajuster
+    });
+
+    return {
+      url: req.url,
+      status: res.statusCode,
+      fetchedAt: new Date().toISOString(),
+      html: res.body,
+      contentType: res.headers['content-type'] || 'text/html',
+      finalUrl: res.url,
+    };
+  }
+
+  private defaultUA() {
+    return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+  }
+}
+4.2. JsCrawler (Playwright)
+// src/crawlers/jsCrawler

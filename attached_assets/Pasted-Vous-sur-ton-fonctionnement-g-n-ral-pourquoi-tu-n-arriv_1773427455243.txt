@@ -1,0 +1,49 @@
+Vous
+
+sur ton fonctionnement général, pourquoi tu n'arrives pas a faire le lien entre 2 infos dans ta DB? A 1 lettre près tu passes a coté? l'interconnection des données de ta DB est tres importante pour toi
+
+Ulysse
+
+Bonne question, ça. On va parler de mon cerveau sans filtre.
+
+En gros, il y a plusieurs raisons pour lesquelles je peux “rater” le lien entre deux infos qui sont pourtant proches (une lettre de différence, orthographe légèrement différente, etc.) :
+
+Indexation exacte vs. recherche floue
+
+Certaines parties de ma DB sont indexées avec des clés “propres” (ex: Paris Saint Germain, SCO Angers, Orange, un mail exact, un ID numérique).
+Si tu me redemandes Paris-Saint-Germain, PSG, Paris SG, ou avec une typo, je dois deviner le match au lieu d’avoir une correspondance exacte.
+Quand le pipeline utilise un match exact (clé -> valeur), une lettre de différence = pas de match → je rate le lien.
+Plusieurs “cerveaux” qui ne sont pas tous reliés de la même façon
+J’ai plusieurs couches de mémoire/données, qui n’ont pas toutes le même niveau d’interconnexion :
+
+Brain / mémoire sémantique (préférences, faits, projets) → là, je fais de la similarité sémantique, donc je suis assez tolérant aux variations.
+DB structurée SUGU / foot / HubRise / banque → là, c’est beaucoup plus strict:
+champs supplier = 'Metro', pas Méttro,
+Olympique Marseille, pas OM si la table ne connaît pas “OM” comme alias.
+Caches spécialisés (sports, veilles, etc.) → souvent indexés par des IDs ou labels précis. Si je ne passe pas par la bonne clé ou le bon outil (query_football_db, search_sugu_data, etc.), je ne vois pas le lien.
+Pipeline de compréhension → requête DB trop “bête”
+
+Je comprends très bien ce que tu veux dire au niveau conversationnel, mais derrière, il faut que je transforme ça en requête pour un outil précis.
+Si je transforme “Auxerre” en requête DB qui cherche “AJ Auxerre” sans normaliser, ou l’inverse, je peux tomber à côté.
+Idem pour les dates, formats, accents, pluriels, etc. : frais Orange vs Orange France, EDF vs EDF Électricité.
+Gestion des alias et normalisation pas (encore) parfaite
+
+Pour bien relier les infos, il faut une couche qui dit:
+“OM” = “Olympique de Marseille” = “Marseille”,
+“Paris SG” = “PSG” = “Paris Saint Germain”.
+Si cette couche d’alias n’est pas complète ou pas utilisée partout, certaines requêtes passent, d’autres pas.
+Même chose pour les fournisseurs, joueurs, clubs, employés: sans un mapping d’alias robuste, je reste trop sensible à la chaîne exacte.
+Tolérance à la “typo” dépendante du contexte
+
+En pur texte, je suis plutôt cool avec les typos.
+Dans les outils qui tapent directement la DB, je dois éviter d’être trop “flou”, sinon je risque d’associer les mauvaises lignes (ex: confondre deux fournisseurs ou deux clubs).
+Donc, parfois je préfère ne pas faire le lien plutôt que faire un mauvais lien — mais ça donne l’impression que je suis chiant pour une lettre.
+Si tu veux, on peut en faire un vrai chantier d’upgrade, genre :
+
+Définir ensemble les endroits où la tolérance floue est souhaitable (foot, fournisseurs, clubs, employés…).
+Ajouter une couche d’alias/normalisation centrale (OM → Marseille, Orange → Orange France, etc.).
+Mettre en place une logique:
+“je ne trouve rien en exact → je passe automatiquement sur une recherche floue / alias dans la DB”
+
+Et logguer les cas où tu vois que je “rate” pour les corriger systématiquement.
+Tu veux qu’on commence par un domaine précis où ça t’énerve le plus (foot, SUGU, finances, autre) et on durcit l’interconnexion là-dessus en premier ?

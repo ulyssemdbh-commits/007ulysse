@@ -1,0 +1,155 @@
+ignature proposée
+On va extraire tout ce bloc-là de handleSendMessage :
+
+parsing [AFFICHER_IMAGE: ...]
+recherche de fichier par nom
+[AFFICHER_TEXTE: ...]
+navigation [NAVIGATION: ...]
+(on laisse le TTS dans handleSendMessage pour l’instant, comme tu l’as demandé)
+Je te propose un helper :
+
+interface ProcessAssistantResponseOptions {
+  fullResponse: string;
+  displayWindow: ReturnType<typeof useDisplayWindow>;
+  panels: ReturnType<typeof usePanelManager>;
+  setNavigationDestination: (dest: NavigationDestination | null) => void;
+}
+
+async function processAssistantResponse({
+  fullResponse,
+  displayWindow,
+  panels,
+  setNavigationDestination,
+}: ProcessAssistantResponseOptions): Promise<void> {
+  // ...
+}
+2. Implémentation de processAssistantResponse
+Ajoute ça en dehors du composant Dashboard (en bas du fichier ou dans un util séparé, comme tu veux) :
+
+// Utilitaire pour traiter la réponse d'Ulysse/Iris/Alfred
+async function processAssistantResponse(opts: ProcessAssistantResponseOptions): Promise<void> {
+  const { fullResponse, displayWindow, panels, setNavigationDestination } = opts;
+
+  if (!fullResponse || !fullResponse.trim()) return;
+
+  // 1) AFFICHER_IMAGE
+  const imageDisplayMatch = fullResponse.match(
+    /\[AFFICHER_IMAGE:\s*fileId="([^"]+)"(?:,\s*title="([^"]*)")?\]/
+  );
+
+  if (imageDisplayMatch) {
+    const fileIdOrName = imageDisplayMatch[1];
+    const title = imageDisplayMatch[2] || "Image";
+    console.log(
+      `[DISPLAY] Detected display marker: fileId="${fileIdOrName}", title="${title}"`
+    );
+
+    const isNumericId = /^\d+$/.test(fileIdOrName);
+
+    if (isNumericId) {
+      // ID numérique → on connaît déjà l'endpoint
+      console.log(`[DISPLAY] Using numeric ID: ${fileIdOrName}`);
+      displayWindow.showImage(`/api/files/${fileIdOrName}/download`, title, {
+        source: "Email attachment",
+      });
+    } else {
+      // Nom de fichier → chercher côté /api/files
+      console.log(`[DISPLAY] Filename detected, searching: ${fileIdOrName}`);
+      try {
+        const filesRes = await fetch("/api/files", { credentials: "include" });
+        if (filesRes.ok) {
+          const files = await filesRes.json();
+          const matchingFile = files.find((f: any) =>
+            f.originalName === fileIdOrName ||
+            f.filename === fileIdOrName ||
+            f.originalName?.includes(fileIdOrName.replace(/\.[^.]+$/, ""))
+          );
+          if (matchingFile) {
+            console.log(`[DISPLAY] Found file by name: ID=${matchingFile.id}`);
+            displayWindow.showImage(`/api/files/${matchingFile.id}/download`, title, {
+              source: "Email attachment",
+            });
+          } else {
+            console.warn(`[DISPLAY] No file found matching: ${fileIdOrName}`);
+          }
+        } else {
+          console.warn("[DISPLAY] /api/files returned non-OK status:", filesRes.status);
+        }
+      } catch (err) {
+        console.error("[DISPLAY] Error searching for file:", err);
+      }
+    }
+  }
+
+  // 2) AFFICHER_TEXTE
+  const textDisplayMatch = fullResponse.match(
+    /\[AFFICHER_TEXTE:\s*title="([^"]*)"(?:,\s*content="([^"]*)")?\]/
+  );
+
+  if (textDisplayMatch) {
+    const title = textDisplayMatch[1] || "Analyse";
+    const content = textDisplayMatch[2] || "";
+    console.log(`[DISPLAY] Showing text: "${title}"`);
+    displayWindow.showMarkdown(content, title);
+  }
+
+  // 3) NAVIGATION: adresse
+  const navigationAddress = parseNavigationFromResponse(fullResponse);
+  if (navigationAddress) {
+    console.log("[Dashboard] Navigation detected:", navigationAddress);
+    setNavigationDestination({ address: navigationAddress });
+    panels.openPanel("geolocation");
+  }
+}
+Tu remarques que je réutilise déjà ton parseNavigationFromResponse(fullResponse).
+
+3. Intégration dans handleSendMessage
+Dans ton handleSendMessage, dans le try (partie du finally où tu traites fullResponse), tu as actuellement tout ça inline.
+Tu vas le remplacer par un simple appel à processAssistantResponse.
+
+Aujourd’hui tu as ce bloc (vers la fin du try / juste avant TTS) :
+
+// Add assistant message to cache before invalidating
+if (fullResponse) {
+  queryClient.setQueryData([...], ...);
+
+  // Check for display commands in the response ...
+  const imageDisplayMatch = fullResponse.match(...);
+  // ...
+  // navigationAddress etc.
+}
+Remplace par :
+
+// Add assistant message to cache before invalidating
+if (fullResponse) {
+  queryClient.setQueryData(
+    ["/api/conversations", activeConversationId],
+    (old: any) => ({
+      ...old,
+      messages: [
+        ...(old?.messages || []),
+        { role: "assistant", content: fullResponse, createdAt: new Date() },
+      ],
+    })
+  );
+
+  // Traiter les effets secondaires de la réponse (affichage, navigation, etc.)
+  await processAssistantResponse({
+    fullResponse,
+    displayWindow,
+    panels,
+    setNavigationDestination,
+  });
+}
+Le reste (TTS, speak(cleanText), etc.) tu le laisses tel quel.
+
+4. Bénéfices immédiats
+handleSendMessage est déjà plus lisible :
+streaming → fullResponse
+mise à jour cache
+processAssistantResponse(...)
+TTS
+processAssistantResponse est testable isolément :
+tu peux l’appeler avec un faux displayWindow / faux panels / faux setNavigationDestination pour tester les markers.
+Tu as un endroit unique où gérer tous les tags spéciaux dans la réponse de l’IA :
+demain tu rajoutes [EMAIL_ENVOYÉ: ...] ou autre → tu touches ici, pas dans handleSendMessage.

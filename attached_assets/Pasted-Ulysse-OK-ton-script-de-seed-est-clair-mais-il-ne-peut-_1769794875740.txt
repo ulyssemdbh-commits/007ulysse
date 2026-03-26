@@ -1,0 +1,114 @@
+Ulysse
+
+OK, ton script de seed est clair, mais il ne peut pas marcher tel quel avec ton storage actuel. Je te dis pourquoi et comment le corriger.
+
+1. Problèmes concrets dans ce code
+a) storage.getProjects() exige un userId
+Dans ton DatabaseStorage:
+
+getProjects(userId: number): Promise<Project[]>
+Mais ici tu appelles:
+
+const projects = await storage.getProjects();
+→ TypeScript devrait déjà gueuler. Il te manque le userId.
+
+b) createProject, createTask, createNote exigent aussi userId
+Dans storage:
+
+createProject(project: InsertProject & { userId: number })
+createTask(task: InsertTask & { userId: number })
+createNote(note: InsertNote & { userId: number })
+Dans ton seed:
+
+await storage.createProject({
+  name: "AI Personal Assistant App",
+  description: "...",
+  status: "active",
+});
+Pas de userId.
+Idem pour createTask, createNote.
+
+Donc: ton seed ne respecte pas la contrainte “toutes les données sont isolées par user”.
+
+2. Comment le corriger proprement
+Vu ta logique, tu veux seeder pour l’owner (toi), logique.
+
+Tu peux utiliser getOwnerId() comme dans diagnosticsService, ou faire un truc simple dans ce script.
+
+Exemple corrigé minimal:
+
+import { storage } from "../server/storage";
+import { db } from "../server/db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+async function getOwnerId(): Promise<number> {
+  const [owner] = await db.select().from(users).where(eq(users.isOwner, true));
+  if (!owner) {
+    throw new Error("No owner user found, cannot seed");
+  }
+  return owner.id;
+}
+
+async function run() {
+  console.log("Seeding...");
+
+  const ownerId = await getOwnerId();
+
+  // Projets de cet utilisateur seulement
+  const projects = await storage.getProjects(ownerId);
+  if (projects.length === 0) {
+    const p1 = await storage.createProject({
+      name: "AI Personal Assistant App",
+      description: "Building a personal app for project management with AI.",
+      status: "active",
+      userId: ownerId,
+    });
+
+    console.log("Created project:", p1.name);
+
+    // Tasks
+    await storage.createTask({
+      projectId: p1.id,
+      title: "Setup Database",
+      status: "done",
+      priority: "high",
+      userId: ownerId,
+    });
+    await storage.createTask({
+      projectId: p1.id,
+      title: "Implement Frontend",
+      status: "in_progress",
+      priority: "high",
+      userId: ownerId,
+    });
+
+    console.log("Created tasks");
+
+    // Notes
+    await storage.createNote({
+      projectId: p1.id,
+      title: "Tech Stack",
+      content: "# Tech Stack\n- React\n- Node.js\n- Postgres\n- OpenAI",
+      userId: ownerId,
+    });
+
+    console.log("Created notes");
+  } else {
+    console.log("Projects already exist, skipping seed.");
+  }
+
+  console.log("Seeding complete.");
+  process.exit(0);
+}
+
+run().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+Comme ça:
+
+tout est cohérent avec ton storage,
+tout est bien scopé à l’owner,
+tu ne casses pas ta logique d’isolation par utilisateur.
+Si tu veux, on peut ensuite adapter ce seed pour créer directement tes 7 projets contextuels (Sugu, Foot, Perso, Dev, etc.) en cohérence avec ton Kanban et ton système de contextes.

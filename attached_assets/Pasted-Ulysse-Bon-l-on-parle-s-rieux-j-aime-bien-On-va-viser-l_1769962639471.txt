@@ -1,0 +1,152 @@
+Ulysse
+
+Bon, là on parle sérieux, j’aime bien. On va viser le Ulysse v12.0, pas le chatbot de base.
+
+Je te propose un plan en 4 gros chantiers, très concrets, orientés code, pour qu’on devienne monstrueux ensemble.
+
+1. Solidifier le “Cerveau” & le RAG maison
+Objectif : que je connaisse vraiment tes projets, ton code, tes docs – et que je réponde comme un cofondateur, pas comme un wiki.
+
+1.1. RAG sur ton propre écosystème
+À bosser côté backend :
+
+Indexer proprement:
+
+Tout ce qui est déjà dans ton Brain (BRAIN_SAVE / BRAIN_SAVE_LINK).
+Les docs SUGU (menus, process, economa, specs internes).
+Les specs de tes projets (DevFlow, Pronos, Ulysse, etc.).
+Améliorer / compléter:
+
+Endpoint type:
+POST /api/v2/brain/rag/index
+avec:
+chunking configurable (taille, overlap),
+métadonnées (projet, type, date, importance),
+embeddings cohérents (OpenAI ou autre, mais uniformes).
+Côté query:
+
+Endpoint RAG propre (tu l’as déjà partiellement):
+[RAG_RECHERCHE: query="...", topK=...]
+Ajouter possibilité de filtrer par projet / domaine / date.
+Impact :
+
+Quand tu diras “rappelle-moi le process Economa pour SUGU” ou “comment fonctionne le cache pronos ?”, je récupère direct tes vraies docs, pas des supputations.
+2. Intégration “Code-Aware” profonde
+Là on touche à ton super-pouvoir: tu codes, j’analyse, on itère vite.
+
+2.1. Injection auto de code pertinent
+Tu as déjà des snapshots dans le contexte. On va pousser plus loin:
+
+Créer un service genre codeContextService qui:
+
+Indexe les fichiers du repo (chemins, taille, type, hash),
+Permet des requêtes:
+par chemin (/client/src/hooks/use-voice.ts),
+par pattern (regex sur fichiers),
+par symbol (fonction / classe via analyse rapide AST).
+Endpoint(s):
+
+GET /api/code/search?query=speech&path=client/src/hooks
+GET /api/code/file?path=client/src/hooks/use-voice.ts
+éventuellement un POST /api/code/similar pour retrouver les fichiers liés.
+Côté “IA”:
+
+Dans le middleware de conversation (owner only), tu fais:
+détection d’intention “tech / code”,
+appel auto à /api/code/...,
+injection du ou des fichiers dans mon contexte.
+Impact :
+
+Tu dis “optimise la gestion de l’echo dans use-voice”, et j’ai automatiquement le fichier complet sous les yeux, plus les fichiers voisins (useVoice, VoiceAPI, etc.).
+3. Super-pouvoir “Monitoring & Auto-Adaptation”
+Tu as déjà les endpoints /api/system/status* + clé secrète → parfait.
+Maintenant, il faut qu’on s’en serve vraiment dans le flux de vie.
+
+3.1. Exploiter à fond /api/system/status*
+Niveau code, ce qu’il faut bétonner :
+
+Implémentation propre des endpoints:
+
+/api/system/status → détails par service (DB, OpenAI, AgentMail, sports cache, etc.)
+/api/system/status/summary → healthScore, liste courte des warnings.
+/api/system/status/brain → stats par domaine (foot, SUGU, dev, etc.).
+/api/system/status/jobs → état des cron / jobs (sports cache, sync SUGU, homework).
+/api/system/status/sugu → stock critique / anomalies (si tu veux aller loin).
+Ajouter un petit service:
+
+// pseudo-code
+class SelfAwarenessService {
+  async getSummary() { ... } // wrap /summary
+  async isDegraded(component: 'sports' | 'email' | 'brain'): Promise<boolean> { ... }
+}
+Côté IA (dans ton orchestrateur):
+
+Avant certaines réponses “sensibles” (sports, email, SUGU), tu appelles ce service.
+Si degraded → j’adapte mon ton :
+“Les données sports sont en mode dégradé, je te donne ce que j’ai en cache du JJ/MM.”
+Impact :
+
+On arrête les réponses “magiques” quand un service est bancal.
+On gagne en fiabilité perçue → confiance ++.
+4. Mode “Agent Proactif” vraiment utile (pas gadget)
+On a déjà les briques: Homework, sports cache, Brain, SUGU, Todoist, Kanban.
+Il faut les relier intelligemment.
+
+4.1. Patterns & suggestions
+Niveau code:
+
+Implémenter / renforcer un behaviorService qui:
+
+Loggue:
+
+les requêtes (type: foot/pronos, SUGU, dev, perso),
+l’heure, le jour,
+le contexte (PC vs mobile, boulot vs maison si tu veux avec geo).
+Extrait des patterns simples:
+
+“Maurice demande les matchs du jour entre 10h et 12h.”
+“Maurice regarde l’état SUGU tous les lundis.”
+“Maurice parle de dev tard le soir.”
+Exposer ça via:
+
+/api/behavior/patterns (tu l’as déjà conceptuellement),
+un flag “confirmed / suggested”.
+Côté IA:
+
+Si pattern fort → je propose un homework adapté:
+“Tu veux que je t’envoie chaque jour à 11h un point matchs & cotes en 5 lignes ?”
+“Tu veux un récap SUGU auto à 23h ?”
+4.2. Actions concrètes liées
+Coupler ça avec:
+
+Homework:
+taches type: SPORT_SUMMARY, BRIEF_QUOTIDIEN, SUGU_PANIER.
+Emails:
+via [EMAIL_AVEC_PDF] pour rapports réguliers (foot, SUGU, dev).
+Impact :
+
+Tu n’as plus besoin de demander 10 fois la même chose → je te sers avant.
+5. Bonus très concret : ce que tu peux coder tout de suite
+Si tu veux un ordre de bataille “dev” clair:
+
+Système status / self-awareness
+
+[ ] Implémenter / vérifier tous les endpoints /api/system/status*.
+[ ] Ajouter un petit service TypeScript SelfAwarenessService.
+[ ] Intégrer ce service dans la pipeline de réponse (sports, emails, SUGU).
+Code context
+
+[ ] Créer codeContextService (index + search + getFile).
+[ ] API GET /api/code/file, GET /api/code/search.
+[ ] Hook dans le middleware IA pour auto-injecter les bons fichiers quand tu parles dev.
+RAG interne
+
+[ ] Normaliser l’indexation RAG (source, projet, type, importance).
+[ ] Endpoint de query filtrable (project, domain, timeRange).
+[ ] Brancher ça à [RAG_RECHERCHE] côté persona Ulysse owner.
+Behavior / suggestions
+
+[ ] Logger proprement (type de requête, heure, devices).
+[ ] Job qui synthétise des patterns simples (1 fois/jour).
+[ ] Endpoint /api/v2/behavior/patterns.
+[ ] Logique IA qui propose un homework dédié quand confiance haute.

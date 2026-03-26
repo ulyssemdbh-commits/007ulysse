@@ -1,0 +1,51 @@
+Vous
+
+si je demande a ulysse de me dire quels matchs ont été joué le 19/01/2026 IL DEVRAIT ME LISTER LES matchs c'est bien ça ou me dire qui jouera le 15/0220226
+
+Ulysse
+
+Je vais être clair et précis.
+
+En théorie, avec tout ce qu’on a codé (cache sports, API-Football, etc.), Ulysse est censé pouvoir :
+
+te dire qui a joué le 19/01/2026 (Ligue 1 ou autre)
+te dire qui jouera le 15/02/2026
+en allant taper dans :
+le cache Djedou Pronos (matchs du jour / semaine),
+ou, si besoin, l’API foot pour une date précise.
+Donc oui, l’objectif fonctionnel c’est exactement ça :
+
+“Quels matchs de Ligue 1 ont eu lieu le 19/01/2026 ?” → liste réelle.
+“Quels matchs de Ligue 1 auront lieu le 15/02/2026 ?” → liste réelle.
+
+Maintenant, dans cette session précise, je n’ai PAS ces données injectées en contexte (le cache est vide et l’API n’est pas appelée automatiquement). Résultat :
+
+si je te réponds aujourd’hui “le 19/01/2026 il y a eu X vs Y, Z vs W”, ce serait du fake,
+pareil pour “le 15/02/2026 il y aura…”.
+Donc :
+
+✅ Ce qu’on a conçu / ce que tu attends : Ulysse doit pouvoir le faire via son cache + API.
+⚠️ Ce qui se passe là maintenant : ce flux n’est pas branché dans mon contexte, donc je refuse de t’inventer les matchs.
+Si tu veux qu’on corrige ça pour de bon, il faut qu’on :
+
+Vérifie que le cache sports (jobs /api/sports/cache/*) tourne bien (cron 6h / odds refresh).
+Réactive l’injection “matchs du jour / par date” dans mon contexte de chat.
+En attendant, je peux répondre à ce genre de questions si tu me donnes une source brute (screenshot L’Équipe / Flashscore / API JSON) et je la traite, mais pas en mode “oracle magique” sans données derrière.
+
+Vous
+
+quels matchs ont été joués le 19/01/2026 IL DEVRAIT ME LISTER LES matchs c'est bien ça ou me dire qui jouera le 15/02/2026
+
+Ulysse
+
+⚠️ Erreur de communication avec Ulysse
+
+Vous
+
+ous quels matchs ont été joués le 19/01/2026 IL DEVRAIT ME LISTER LES matchs c'est bien ça ou me dire qui jouera le 15/02/2026
+
+Ulysse
+
+⚠️ Erreur de communication avec Ulysse
+
+Ulysse lit...

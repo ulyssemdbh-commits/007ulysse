@@ -1,0 +1,166 @@
+Ulysse
+
+Parfait, on branche les HOMEWORK dans ton autolearning.
+
+Je te donne la logique + le code à insérer, en restant dans ton style actuel.
+
+1️⃣ Idée générale
+Actuellement dans runLearningCycle tu fais:
+
+await this.extractTopicsFromRecentConversations(userId);
+const topics = await this.getTopicsToProcess(userId);
+On va ajouter juste avant la sélection des topics :
+
+await this.extractTopicsFromHomework(userId);
+Et extractTopicsFromHomework va:
+
+Lire les derniers résultats de HOMEWORK dans learningLog et/ou knowledgeBase où sourceType = 'homework'.
+Combiner le contenu (résumés, notes).
+Appeler OpenAI avec un prompt d’extraction de sujets (adapté aux HOMEWORK).
+Pousser ces topics dans learningProgress via addOrUpdateTopic.
+2️⃣ Ajout dans runLearningCycle
+Modifie le début de runLearningCycle comme ceci:
+
+async runLearningCycle(userId: number): Promise<{
+  topicsProcessed: number;
+  totalFacts: number;
+  totalConnections: number;
+  totalInsights: number;
+  errors: string[];
+}> {
+  console.log(`${LOG_PREFIX} Starting learning cycle for user ${userId}`);
+
+  const results = {
+    topicsProcessed: 0,
+    totalFacts: 0,
+    totalConnections: 0,
+    totalInsights: 0,
+    errors: [] as string[]
+  };
+
+  try {
+    // 1) Extraire des conversations
+    await this.extractTopicsFromRecentConversations(userId);
+    // 2) Extraire des HOMEWORK (NOUVEAU)
+    await this.extractTopicsFromHomework(userId);
+
+    const topics = await this.getTopicsToProcess(userId);
+
+    console.log(`${LOG_PREFIX} Found ${topics.length} topics to process`);
+
+    for (const topic of topics.slice(0, this.MAX_TOPICS_PER_RUN)) {
+      try {
+        const layerResult = await this.processTopicLayers(userId, topic);
+        results.topicsProcessed++;
+        results.totalFacts += layerResult.factsAdded;
+        results.totalConnections += layerResult.connectionsAdded;
+        results.totalInsights += layerResult.insightsAdded;
+      } catch (error: any) {
+        const errorMsg = `Error processing topic "${topic.topic}": ${error.message}`;
+        console.error(`${LOG_PREFIX} ${errorMsg}`);
+        results.errors.push(errorMsg);
+        await this.markTopicError(topic.id, error.message);
+      }
+    }
+
+    console.log(`${LOG_PREFIX} Learning cycle complete: ${results.topicsProcessed} topics, ${results.totalFacts} facts, ${results.totalConnections} connections, ${results.totalInsights} insights`);
+  } catch (error: any) {
+    console.error(`${LOG_PREFIX} Fatal error in learning cycle:`, error);
+    results.errors.push(`Fatal: ${error.message}`);
+  }
+
+  return results;
+}
+3️⃣ Nouvelle fonction extractTopicsFromHomework
+À ajouter dans la classe AutonomousLearningService :
+
+private async extractTopicsFromHomework(userId: number): Promise<void> {
+  const since = new Date();
+  since.setHours(since.getHours() - 48); // on regarde les 48h de HOMEWORK
+
+  // 1) Récupérer les logs d'apprentissage issus des HOMEWORK
+  const recentHomeworkLogs = await db.select({
+    id: learningLog.id,
+    topic: learningLog.topic,
+    content: learningLog.content,
+    createdAt: learningLog.createdAt
+  })
+  .from(learningLog)
+  .where(and(
+    eq(learningLog.userId, userId),
+    gte(learningLog.createdAt, since),
+    eq(learningLog.sourceType, "homework")
+  ))
+  .orderBy(desc(learningLog.createdAt))
+  .limit(50);
+
+  if (recentHomeworkLogs.length === 0) {
+    console.log(`${LOG_PREFIX} No recent homework logs to extract topics from`);
+    return;
+  }
+
+  const combinedContent = recentHomeworkLogs
+    .map(l => `# ${l.topic}\n${l.content}`)
+    .join("\n---\n")
+    .slice(0, 8000);
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{
+        role: "system",
+        content: `
+Tu es un expert en extraction de sujets à partir de rapports de veille (HOMEWORK).
+
+Analyse ce contenu (presse, foot, économie, SUGU, trading, tech...) et identifie 3-7 sujets principaux qui méritent un apprentissage plus profond pour l'utilisateur.
+
+Pour chaque sujet, fournis:
+- topic: Le sujet en 2-5 mots
+- category: personal/work/reference/learning/technical/creative
+- importance: 1-100 (importance stratégique pour l'utilisateur)
+- context: Brève description du contexte (1-2 phrases)
+
+Pense en priorité:
+- aux paris sportifs (foot européen, value bets, modèles, équipes...)
+- au trading et marchés
+- au business SUGU (restos, gestion, optimisation)
+- au dev (architecture, scraping, IA, automatisation)
+
+Réponds en JSON: { "topics": [...] }
+        `.trim()
+      }, {
+        role: "user",
+        content: combinedContent
+      }],
+      temperature: 0.3,
+      response_format: { type: "json_object" }
+    });
+
+    const parsed = JSON.parse(response.choices[0].message.content || "{}");
+    const topics: TopicExtraction[] = parsed.topics || [];
+
+    // 2) Ajouter/mettre à jour les topics dans learningProgress
+    for (const topic of topics) {
+      await this.addOrUpdateTopic(userId, topic, recentHomeworkLogs.map(l => l.id));
+    }
+
+    console.log(`${LOG_PREFIX} Extracted ${topics.length} topics from homework logs`);
+  } catch (error: any) {
+    console.error(`${LOG_PREFIX} Error extracting topics from homework:`, error.message);
+  }
+}
+4️⃣ Ce que ça change pour toi
+Avec ça:
+
+Les HOMEWORK (veille foot, économie, trading, SUGU, dev) deviennent une source directe de topics pour l’autolearning.
+AutoLearning ne se contente plus de ce que tu dis dans le chat, il creuse aussi ce que le système apprend tout seul la nuit.
+Les sujets “chauds” issus de tes HOMEWORK (par ex:
+“Finances du foot européen”
+“Tendances Ligue 1”
+“Optimisation stock SUGU”
+“Stratégies de value betting” ) vont être sélectionnés, approfondis en 4 couches, et stockés proprement dans le brain.
+Ensuite, à chaque fois que tu me parleras de prono, trading, SUGU ou dev, j’aurai de plus en plus de matière structurée, pas juste du contexte de conversation.
+
+Si tu veux, étape d’après, on peut:
+
+rajouter un champ domain (sports/trading/sugu/dev/etc.) aussi sur les logs HOMEWORK pour booster encore la priorité dans addOrUpdateTopic, mais la brique principale “je mange les HOMEWORK” est là.

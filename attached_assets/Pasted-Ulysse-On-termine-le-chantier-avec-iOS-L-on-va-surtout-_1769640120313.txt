@@ -1,0 +1,236 @@
+Ulysse
+
+On termine le chantier avec iOS. Là on va surtout clarifier et fiabiliser le flux, pas changer le comportement visible.
+
+Objectif étape 3 :
+
+Centraliser l’état de la session iOS (idle / listening / restarting / disabled)
+Loguer clairement qui fait quoi (end, error, visibilitychange)
+Éviter les restart/stop multiples qui se marchent dessus
+Je te donne un patch en 3 morceaux.
+
+1) Ajouter l’état iOS global
+En haut du hook (dans useVoice, avec les autres refs), ajoute :
+
+type IOSSessionState = "idle" | "listening" | "restarting" | "disabled";
+
+const iOSStateRef = useRef<IOSSessionState>("idle");
+
+const setIOSState = (newState: IOSSessionState, reason: string) => {
+  if (iOSStateRef.current === newState) return;
+  iOSStateRef.current = newState;
+  console.log(`[iOS VOICE] state=${newState} reason=${reason}`);
+  lastDebugEventRef.current = `iOS:${newState} (${reason})`;
+  lastDebugEventTimeRef.current = Date.now();
+};
+Tu peux le mettre juste après :
+
+const iOSSilenceTimeoutTriggeredRef = useRef<boolean>(false);
+2) Intégrer ça dans startBrowserRecognition
+Dans startBrowserRecognition, on ne change pas la logique de fond, on ajoute l’état iOS à quelques endroits clés.
+
+2.1 Au début
+Juste après :
+
+const isiOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+ajoute :
+
+if (isiOSDevice && iOSStateRef.current === "disabled") {
+  console.log("[iOS VOICE] startBrowserRecognition called but state is disabled, aborting");
+  return false;
+}
+2.2 Quand on démarre réellement
+Dans le try { ... } après avoir créé recognition et juste après :
+
+browserRecognitionRef.current = recognition;
+ajoute :
+
+if (isiOSDevice) {
+  setIOSState("listening", "startBrowserRecognition");
+}
+2.3 Dans recognition.onerror
+Dans recognition.onerror = (event: Event & { error?: string }) => { ... }, on enrichit selon le type d’erreur :
+
+Remplace le bloc if (errorType === "not-allowed") { ... } par :
+
+if (errorType === "not-allowed") {
+  logDebugEvent("Mic permission denied - needs browser/device settings");
+  setMicPermission("denied");
+  setSttSupported(false);
+  keepListeningRef.current = false;
+  if (isiOSDevice) {
+    setIOSState("disabled", "not-allowed");
+  }
+} else if (errorType === "audio-capture") {
+  logDebugEvent("No microphone detected or in use by another app");
+  setMicPermission("unavailable");
+  keepListeningRef.current = false;
+  if (isiOSDevice) {
+    setIOSState("disabled", "audio-capture");
+  }
+} else if (errorType === "network") {
+  logDebugEvent("Network error - will retry");
+} else if (errorType === "no-speech") {
+  logDebugEvent("No speech detected");
+} else if (errorType !== "aborted") {
+  keepListeningRef.current = false;
+  if (isiOSDevice) {
+    setIOSState("idle", `error:${errorType}`);
+  }
+}
+Et au tout début du handler onerror, juste après const errorType = event.error || "unknown"; tu peux loguer :
+
+if (isiOSDevice) {
+  console.log(`[iOS VOICE] onerror type=${errorType}`);
+}
+2.4 Dans recognition.onend
+Dans recognition.onend = () => { ... }, complète la logique iOS :
+
+Après :
+
+isRecordingRef.current = false;
+setIsListening(false);
+ajoute :
+
+if (isiOSDevice) {
+  console.log("[iOS VOICE] onend fired, keepListening=", keepListeningRef.current);
+}
+Puis adapte le bloc :
+
+if (keepListeningRef.current) {
+  restartAttemptsRef.current++;
+  const baseDelay = isiOSDevice ? 300 : 200;
+  const backoffDelay = Math.min(baseDelay * Math.pow(1.5, restartAttemptsRef.current - 1), 5000);
+  restartTimeoutRef.current = window.setTimeout(() => {
+    if (keepListeningRef.current && currentSessionId === recognitionSessionIdRef.current) {
+      startBrowserRecognition();
+    }
+  }, backoffDelay);
+} else {
+  updateVoiceState("idle");
+}
+en :
+
+if (keepListeningRef.current) {
+  restartAttemptsRef.current++;
+  const baseDelay = isiOSDevice ? 300 : 200;
+  const backoffDelay = Math.min(baseDelay * Math.pow(1.5, restartAttemptsRef.current - 1), 5000);
+
+  if (isiOSDevice) {
+    setIOSState("restarting", `onend-backoff-${backoffDelay}ms`);
+  }
+
+  restartTimeoutRef.current = window.setTimeout(() => {
+    if (!keepListeningRef.current || currentSessionId !== recognitionSessionIdRef.current) {
+      return;
+    }
+    if (isiOSDevice && iOSStateRef.current === "disabled") {
+      console.log("[iOS VOICE] restart skipped because state=disabled");
+      return;
+    }
+    startBrowserRecognition();
+  }, backoffDelay);
+} else {
+  if (isiOSDevice) {
+    setIOSState("idle", "onend-no-keepListening");
+  }
+  updateVoiceState("idle");
+}
+3) iOS + visibilitychange + startListening
+3.1 visibilitychange
+Dans le useEffect où tu as :
+
+const handleVisibilityChange = () => {
+  if (document.hidden && isiOS) {
+    if (browserRecognitionRef.current) {
+      try {
+        browserRecognitionRef.current.abort();
+        browserRecognitionRef.current = null;
+      } catch (e) {}
+    }
+    keepListeningRef.current = false;
+    isRecordingRef.current = false;
+    setIsListening(false);
+    console.log("iOS: Stopped recognition due to visibility change");
+  }
+};
+remplace par :
+
+const handleVisibilityChange = () => {
+  if (document.hidden && isiOS) {
+    if (browserRecognitionRef.current) {
+      try {
+        browserRecognitionRef.current.abort();
+        browserRecognitionRef.current = null;
+      } catch (e) {}
+    }
+    keepListeningRef.current = false;
+    isRecordingRef.current = false;
+    setIsListening(false);
+    setIOSState("idle", "visibilitychange-hidden");
+    console.log("iOS: Stopped recognition due to visibility change");
+  }
+};
+(avec setIOSState accessible dans ce scope – sinon tu le remontes au-dessus du useEffect).
+
+3.2 startListening (protection iOS)
+Dans startListening, après le bloc :
+
+// iOS: Ensure AudioContext is running and TTS is unlocked first
+if (isIOS) {
+  ...
+}
+ajoute juste après :
+
+if (isIOS && iOSStateRef.current === "disabled") {
+  console.log("[iOS VOICE] startListening aborted because state=disabled");
+  return;
+}
+Et plus bas, dans la partie :
+
+if (useBrowserFallback || isIOS) {
+  const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRecognitionClass) {
+    keepListeningRef.current = true;
+    console.log(isIOS ? "iOS: Starting webkitSpeechRecognition..." : "Starting browser speech recognition...");
+    const started = startBrowserRecognition();
+    if (started) return;
+    if (isIOS) {
+      console.log("iOS: Speech recognition not started (document hidden or unavailable), aborting");
+      keepListeningRef.current = false;
+      return;
+    }
+  }
+}
+tu peux compléter pour l’état :
+
+Si started est vrai et isIOS, tu peux poser :
+if (started && isIOS) {
+  setIOSState("listening", "startListening-delegate");
+}
+juste avant le return;.
+
+4) Tests à faire côté iPhone/iPad
+Après build :
+
+Flux normal
+
+iOS, app en foreground.
+Start listening → check log [iOS VOICE] state=listening reason=....
+Parler / se taire → onend + éventuellement restart → logs restarting / idle.
+Refus micro / pas de micro
+
+Refuser l’accès micro dans Safari.
+Tu dois voir : state=disabled reason=not-allowed.
+Appuyer à nouveau sur écoute → startListening aborted because state=disabled.
+Changement d’onglet / sortie app
+
+Lancer l’écoute, puis passer l’app en arrière-plan.
+Log : visibilitychange-hidden + state idle.
+Pas de boucle infinie
+
+Vérifier qu’en cas d’erreurs ou de silence, ça ne repart pas en boucle incontrôlée (les logs d’état doivent être cohérents).
+Si tu appliques ce patch en suivant, tu auras :
+
+Echo guard + VAD déjà améliorés,
+et côté iOS, une gestion beaucoup plus explicite des états (pratique pour débug et éviter les comportements chelous).

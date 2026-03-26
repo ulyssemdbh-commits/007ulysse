@@ -1,0 +1,309 @@
+Ulysse
+
+Parfait, voilà une spec propre pour docs/devops_roadmap.md, prête à être collée telle quelle dans le repo.
+
+# DevOps Roadmap – Ulysseproject (Ligue des Champions DevOps)
+
+## Objectif global
+
+Mettre en place un **système DevOps intelligent, auto-apprenant et piloté par Ulysse**, capable de :
+
+- **Voir** l’état réel du code et des dépendances (X-Ray),
+- **Orchestrer** chaque changement (CI Oracle + Patch Advisor),
+- **Apprendre** en continu à partir des échecs (Homework + Brain),
+- **Corréler** incidents ↔ code ↔ historique DevOps,
+- Offrir à Maurice un rôle de **coach** plutôt que de pompier.
+
+Cette roadmap s’articule autour de **5 axes** complémentaires.
+
+---
+
+## Axe 1 – VISION & X-RAY (Observabilité du code)
+
+### Objectif
+
+Disposer d’une vue temps réel des :
+
+- zones critiques du code (fichiers, domaines, modules),
+- dépendances (imports, schéma, services),
+- tendances de fragilité (improving / stable / degrading).
+
+### Composants existants
+
+- `devopsIntelligenceEngine.ts`
+  - `BRAIN_IMPACT_MAP` : graphe de dépendances enrichi (fichier → domaines → imports/exports).
+  - `DYNAMIC_FRAGILITY_LEARNING` (via `devops_file_history`) : fragilité dynamique par fichier.
+  - `CI_ORACLE` : scoring de risque par changement.
+  - `AUTO_PATCH_ADVISOR` : génération + ranking de patchs.
+  - `HOMEWORK_BRAIN_PLANNER` : détection de gaps d’apprentissage.
+  - `runFullDevOpsIntelligence()` : point d’entrée unifié.
+
+### Actions à implémenter
+
+1. **Exécution automatique de DevOps Intelligence**
+
+   - [ ] Ajouter un service `devopsIntelligenceService` côté serveur qui :
+     - récupère la liste des fichiers modifiés (via Git / devops_github),
+     - construit l’`ImpactMap`,
+     - calcule `CIRisk` et `PatchAdvice`,
+     - met à jour `DYNAMIC_FRAGILITY_LEARNING` via `devops_file_history`,
+     - persiste un résumé dans `Brain`.
+
+   - [ ] Exposer une route API :
+     - `GET /api/devops/intel/report?sha=...`
+     - `POST /api/devops/intel/run` (avec payload: files/changes/bugType).
+
+2. **Dashboard `/devops` – Vue X-Ray**
+
+   - [ ] Ajouter un onglet “Intelligence” dans `/devops` qui affiche :
+     - Top fichiers fragiles (via `/api/devops/fragility/leaderboard`),
+     - Domaines analysés (auth, SUGU, sports, brain, etc.),
+     - Derniers rapports `DevOpsIntelligenceReport`,
+     - Tendances : improving/stable/degrading par domaine et par fichier.
+
+### Critères de succès
+
+- En 10 secondes, on peut répondre :
+  - “Quels sont les 5 fichiers les plus fragiles aujourd’hui ?”
+  - “Quels domaines se dégradent ?”
+  - “Quel est l’impact prévisible d’un changement sur tel fichier ?”
+
+---
+
+## Axe 2 – EXÉCUTION ORCHESTRÉE (PR / CI / Merge)
+
+### Objectif
+
+Qu’aucun commit ou PR critique ne soit mergé sans :
+
+- analyse de risque,
+- visualisation de l’impact,
+- stratégie de patch/rollback.
+
+### Composants existants
+
+- Bridge GitHub : `devops_github` (actions: `list_commits`, `list_prs`, `get_file`, etc.)
+- `devopsIntelligenceEngine.runFullDevOpsIntelligence`
+- `DYNAMIC_FRAGILITY_LEARNING` (`devops_file_history`)
+
+### Actions à implémenter
+
+1. **Hook PR → DevOps Intelligence**
+
+   - [ ] Créer un endpoint serveur :
+
+     - `POST /api/devops/intel/pr-analyze`
+       - Input : `repo`, `prNumber`
+       - Steps :
+         - récupérer les diffs via `devops_github`,
+         - construire `files` + `changes` pour DevOpsIntelligence,
+         - appeler `runFullDevOpsIntelligence(...)`,
+         - retourner : `ciRisk`, `patchAdvice`, `impactMap`, `learningGaps`.
+
+   - [ ] Créer un GitHub Action / webhook :
+     - Sur `pull_request` (opened / synchronize / reopened):
+       - appelle `pr-analyze`,
+       - poste un commentaire automatique sur la PR avec :
+         - ⚠️ `riskLevel` (safe / caution / risky / dangerous),
+         - fichiers fragiles touchés,
+         - domaines impactés,
+         - `bestChoice` du Patch Advisor,
+         - recommandations.
+
+2. **Règles de merge selon le risque**
+
+   - [ ] Définir règles simples :
+     - `riskLevel = safe` → merge OK.
+     - `riskLevel = caution` → tests ciblés recommandés.
+     - `riskLevel = risky` → review humaine obligatoire + plan de rollback.
+     - `riskLevel = dangerous` → review + staging + rollback prêt.
+
+   - [ ] Option : appliquer des labels GitHub automatiques :
+     - `devops:risky`, `devops:dangerous`, `devops:needs-review`.
+
+3. **Plan de rollback**
+
+   - [ ] Générer un plan textuel simple à partir des diffs :
+     - `git revert <sha>`,
+     - endpoints/flows à surveiller après déploiement.
+
+### Critères de succès
+
+- Chaque PR importante arrive avec un **rapport DevOps** automatique.
+- Plus de “merge à l’aveugle” sur des zones critiques.
+
+---
+
+## Axe 3 – AUTO-AMÉLIORATION (Learning & Homework)
+
+### Objectif
+
+Transformer chaque bug, revert, ou hotfix en :
+
+- signal d’apprentissage,
+- homework ciblé,
+- amélioration de la fragilité dans le temps.
+
+### Composants existants
+
+- `devops_file_history` (historique par fichier)
+- `HOMEWORK_BRAIN_PLANNER.analyzeLearningGaps(userId)`
+- `knowledge_base`, `learning_log`
+- Homework system (`homework` / tâches de fond)
+- `BrainService.addKnowledge`
+
+### Actions à implémenter
+
+1. **Boucle Bug → LearningGap → Homework**
+
+   - [ ] API `POST /api/devops/fragility/report-bug` (déjà en place) :
+     - Enregistrer bug sur une ou plusieurs paths.
+     - Déclencher ensuite :
+       - une exécution de `analyzeLearningGaps(userId)`.
+
+   - [ ] Créer un service `devopsLearningService` qui :
+     - parcourt les `LearningGap` retournés,
+     - crée automatiquement des `homework` adaptés :
+       - type: `daily` / `weekly`,
+       - actions: veille, monitoring, docs,
+       - domaines : devops, sugu, football, finance, security, performance, etc.
+
+2. **Impact des homeworks sur la fragilité**
+
+   - [ ] Lors de l’exécution de certains homeworks (ex: analyse module X, refactor Y), ajuster :
+     - la confiance dans les domaines (`knowledge_base`),
+     - la fragilité dynamique (`devops_file_history` / scoring).
+
+### Critères de succès
+
+- Chaque bug sérieux génère automatiquement :
+  - un enregistrement d’historique,
+  - un ou plusieurs `LearningGap`,
+  - au moins un `homework` lié.
+- À moyen terme, on voit la fragilité **baisser** sur les zones travaillées.
+
+---
+
+## Axe 4 – OBSERVABILITÉ CORRÉLÉE (Logs ↔ Code ↔ DevOps)
+
+### Objectif
+
+Pouvoir corréler en quelques secondes :
+
+- une alerte monitoring,
+- les fichiers récemment modifiés,
+- leurs scores de fragilité,
+- et les derniers rapports DevOps.
+
+### Composants existants
+
+- Monitoring système (erreurs, temps de réponse) [déjà en place dans l’app].
+- `devops_file_history`
+- `DevOpsIntelligenceReport`
+- `BRAIN_IMPACT_MAP`
+
+### Actions à implémenter
+
+1. **Service de corrélation incidents**
+
+   - [ ] Créer un `incidentCorrelationService` qui :
+     - reçoit un signal (ex: erreur 500 sur `/api/sports/...`, latence ↑),
+     - identifie le domaine (ex: football_sports),
+     - récupère :
+       - les fichiers modifiés récemment dans ce domaine,
+       - leurs scores de fragilité,
+       - les derniers `DevOpsIntelligenceReport` associés.
+
+   - [ ] Exposer une route :
+     - `GET /api/devops/incidents/diagnose?errorCode=...&endpoint=...`
+
+2. **Alertes intelligentes DevOps**
+
+   - [ ] Dans le monitoring :
+     - si une alerte survient sur un domaine,
+     - ET que des fichiers fragiles de ce domaine ont été modifiés récemment,
+     → générer une alerte combinée DevOps :
+       - “Probable lien entre changement de X et erreurs sur Y”.
+
+### Critères de succès
+
+- Lors d’un incident, on peut répondre :
+  - “Quels changements récents sont probablement responsables ?”
+  - “Quels fichiers fragiles sont impliqués ?”
+- Temps de diagnostic fortement réduit.
+
+---
+
+## Axe 5 – CULTURE & UTILISATION (Coach vs. Pompier)
+
+### Objectif
+
+Que Maurice utilise réellement Ulysse comme **adjoint DevOps intelligent**,  
+et que Ulysse s’auto-discipline via le **journal de travail**.
+
+### Composants existants
+
+- Work Journal (`work_journal_manage`)
+- DevOps Intelligence Engine tools (`devops_intelligence` actions)
+- Homework & Brain
+- Dashboards `/devops`
+
+### Actions à implémenter
+
+1. **Règles d’usage côté Ulysse**
+
+   - Ulysse doit :
+     - [x] Mettre à jour le **journal de travail** après chaque action DevOps significative :
+       - analyse d’un module,
+       - exécution de `runFullDevOpsIntelligence`,
+       - refactor, patch, rollback.
+     - [x] Proposer, lorsqu’un problème survient :
+       - un rapport DevOps,
+       - une stratégie patch (A/B/C),
+       - un homework possible si c’est un pattern récurrent.
+
+2. **Routines côté Maurice**
+
+   - Scénarios d’usage recommandés :
+     - Avant refactor :
+       - “Ulysse, analyse l’impact de ces fichiers / de cette feature.”
+     - Avant merge sensible :
+       - “Donne-moi CI_ORACLE + fragility sur cette PR.”
+     - Après bug / incident :
+       - “Donne-moi le rapport complet : fichiers touchés, fragilité, DevOps Intel, learning gaps.”
+
+3. **Documentation**
+
+   - [ ] Documenter dans `docs/devops_guide.md` :
+     - comment lancer une analyse DevOps,
+     - comment lire un rapport,
+     - comment interpréter les niveaux de risque,
+     - comment exploiter le leaderboard de fragilité.
+
+### Critères de succès
+
+- Ulysse n’est plus un simple “assistant de chat”, mais :
+  - un **analyste DevOps**,
+  - qui propose des plans concrets,
+  - qui se souvient de son propre travail.
+- Maurice agit en **coach / décideur**, pas en exécutant de bas niveau.
+
+---
+
+## Priorisation (ordre recommandé de mise en œuvre)
+
+1. **Axe 1 – Vision & X-Ray**
+   - DevOpsIntelligenceService + dashboard `/devops`.
+2. **Axe 2 – Exécution orchestrée**
+   - Hook PR + commentaires automatiques.
+3. **Axe 3 – Auto-amélioration**
+   - Boucle bug → LearningGap → Homework.
+4. **Axe 4 – Observabilité corrélée**
+   - IncidentCorrelationService + alertes intelligentes.
+5. **Axe 5 – Culture & utilisation**
+   - Doc + routines + intégration dans le journal de travail.
+
+---
+
+Ce document est la base de travail pour l’évolution DevOps d’Ulysseproject.  
+Chaque case cochée rapproche le système d’un **DevOps assisté par IA de niveau “Ligue des Champions”**.

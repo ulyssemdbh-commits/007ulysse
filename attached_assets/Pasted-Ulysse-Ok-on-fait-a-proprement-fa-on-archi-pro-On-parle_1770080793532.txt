@@ -1,0 +1,293 @@
+Ulysse
+
+Ok, on fait ça proprement, façon archi pro.
+On parle bien du pipeline complet sensoriel avec: HearingHub, VoiceOutputHub, ActionHub, BrainHub.
+
+Je te fais une task list claire + séquence d’implémentation.
+
+1. Vision globale du pipeline
+Flow idéal :
+
+Entrée (texte/voix/discord) → HearingHub
+HearingHub normalise → envoie au BrainHub
+BrainHub:
+détecte le contexte (persona, speaker, domaine),
+enrichit avec mémoire / état,
+décide: réponse simple / outils / actions.
+Actions → ActionHub (tool calls)
+Réponse → VoiceOutputHub (voix + texte + UI)
+BrainHub met à jour mémoire + stats.
+2. Task list détaillée (implémentation)
+A. HearingHub – unifier toutes les entrées
+Objectif: Web chat, TalkingApp V3 Pro, Discord → UN SEUL point d’entrée: HearingHub.
+
+A1. Créer le service HearingHub
+// server/services/sensory/hearingHub.ts
+export interface HearingEvent {
+  source: "web_chat" | "talking_v3" | "discord";
+  persona: "ulysse" | "iris" | "alfred";
+  userId?: number;
+  speakerId?: string;     // maurice/kelly/...
+  messageId?: string;
+  text: string;
+  isVoice: boolean;
+  timestamp: string;
+  meta?: Record<string, any>; // device, locale, etc.
+}
+
+export class HearingHub {
+  async receive(event: HearingEvent) {
+    // 1) Normalisation
+    const normalized = this.normalize(event);
+    // 2) Envoi au BrainHub
+    return brainHub.processInput(normalized);
+  }
+
+  private normalize(event: HearingEvent) {
+    // ici tu peux clean le texte, tagger la langue, etc.
+    return event;
+  }
+}
+
+export const hearingHub = new HearingHub();
+A2. Brancher les 3 sources dessus
+Chat Web (/api/v2/conversations)
+Dans processConversationRequest:
+
+const hearingEvent: HearingEvent = {
+  source: "web_chat",
+  persona,            // depuis personaMapping / user
+  userId,
+  text: userMessage,
+  isVoice: false,
+  timestamp: new Date().toISOString(),
+};
+
+const brainResult = await hearingHub.receive(hearingEvent);
+return formatHttpResponse(brainResult);
+TalkingApp V3 Pro
+Dans ton handler realtime (ou ce que useRealtimeVoice appelle):
+
+const hearingEvent: HearingEvent = {
+  source: "talking_v3",
+  persona,         // depuis speaker → persona map
+  userId,
+  speakerId,
+  text: transcript,
+  isVoice: true,
+  timestamp: new Date().toISOString(),
+  meta: { mode: "continuous" | "push-to-talk" }
+};
+
+const brainResult = await hearingHub.receive(hearingEvent);
+// backend renvoie un plan: texte + TTS + actions
+Discord
+Dans ton bot:
+
+const hearingEvent: HearingEvent = {
+  source: "discord",
+  persona,          // Alfred ou Ulysse/Iris si lien compte
+  userId,           // si lié
+  text: content,
+  isVoice: false,
+  timestamp: new Date().toISOString(),
+  meta: { channelId, guildId, discordUserId }
+};
+
+const brainResult = await hearingHub.receive(hearingEvent);
+B. VoiceOutputHub – unifier toutes les sorties
+Objectif: Un seul service qui sait envoyer la réponse:
+
+en texte (web, Discord),
+en voix (TalkingApp, Discord vocal),
+UI (cards, etc.).
+B1. Créer VoiceOutputHub
+// server/services/sensory/voiceOutputHub.ts
+export interface OutputPlan {
+  channels: Array<"web_chat" | "talking_v3" | "discord_text" | "discord_voice">;
+  text: string;
+  tts?: { enabled: boolean; voice?: string; };
+  ui?: { type: "VoiceDataCard"; payload: any } | null;
+}
+
+export class VoiceOutputHub {
+  async dispatch(plan: OutputPlan, context: { source: string; userId?: number; meta?: any }) {
+    // Web chat
+    if (plan.channels.includes("web_chat")) {
+      // websocket ou HTTP response
+    }
+
+    // TalkingApp
+    if (plan.channels.includes("talking_v3")) {
+      // push via realtime / websockets : { type: 'voice.reply', text, ui, tts }
+    }
+
+    // Discord texte
+    if (plan.channels.includes("discord_text")) {
+      // discord_send_message tool
+    }
+
+    // Discord vocal
+    if (plan.channels.includes("discord_voice") && plan.tts?.enabled) {
+      // générer TTS + envoyer sur canal vocal
+    }
+  }
+}
+
+export const voiceOutputHub = new VoiceOutputHub();
+C. ActionHub – brancher tous les tools
+Objectif: Toutes les actions (emails, tâches, Sugu, domotique, foot, etc.) passent par ActionHub, qui pilote les tools et applique les règles d’Action-First.
+
+C1. Créer ActionHub
+// server/services/sensory/actionHub.ts
+export interface PlannedAction {
+  tool: string;                // "email_send", "todoist_create_task", "query_sports_data", ...
+  args: Record<string, any>;
+  category: "email" | "task" | "calendar" | "domotics" | "search" | "sports" | "sugu" | "other";
+  riskLevel: "low" | "medium" | "high";
+}
+
+export interface ActionResultSummary {
+  success: boolean;
+  details?: any;
+  validation?: ValidationResult;  // depuis ActionVerificationService
+}
+
+export class ActionHub {
+  async execute(actions: PlannedAction[], context: ActionContext): Promise<ActionResultSummary[]> {
+    // 1) passer par DecisionEngine + CapabilityService si besoin
+    // 2) orchestrer via toolOrchestrator.executeParallel / executeSmart
+    // 3) passer chaque résultat dans ActionVerificationService
+    // 4) renvoyer un résumé au BrainHub
+  }
+}
+
+export const actionHub = new ActionHub();
+BrainHub ne connaît PAS les tools directement, il envoie juste une liste de PlannedAction à l’ActionHub.
+
+D. BrainHub – chef d’orchestre
+Objectif: Tout passe ici. Il:
+
+reçoit les HearingEvents,
+fait intent routing (VoiceBrain, Action-First),
+décide actions + format de réponse,
+parle via VoiceOutputHub,
+agit via ActionHub,
+met à jour la mémoire.
+D1. Interface & squelette
+// server/services/brain/brainHub.ts
+import { hearingHub } from "../sensory/hearingHub";
+import { voiceOutputHub } from "../sensory/voiceOutputHub";
+import { actionHub } from "../sensory/actionHub";
+import { detectWorkflow } from "../actionFirst/ulysseBehaviorRules";
+import { voiceIntentRouter } from "../voice/voiceIntentRouter";
+import { voiceContextMemory } from "../voice/voiceContextMemory";
+
+export class BrainHub {
+  async processInput(event: HearingEvent) {
+    // 1) Construire un contexte cognitif initial
+    const cognitiveContext = await this.buildCognitiveContext(event);
+
+    // 2) Intent routing (VoiceBrain + Action-First)
+    const domainIntent = await voiceIntentRouter.route(event.text, cognitiveContext);
+
+    // 3) Selon intent: 
+    //    - domain handler (foot, sugu, etc.)
+    //    - ou workflow Action-First (email, task, search...)
+    const { plannedActions, responseDraft, uiCard } =
+      await this.planResponse(domainIntent, cognitiveContext);
+
+    // 4) Exécuter les actions (si il y en a)
+    let actionResults: ActionResultSummary[] = [];
+    if (plannedActions.length > 0) {
+      actionResults = await actionHub.execute(plannedActions, cognitiveContext.actionContext);
+    }
+
+    // 5) Synthétiser la réponse finale (texte + TTS + UI) 
+    const outputPlan: OutputPlan = this.buildOutputPlan({
+      event,
+      domainIntent,
+      responseDraft,
+      actionResults,
+      uiCard,
+      cognitiveContext
+    });
+
+    // 6) Envoyer via VoiceOutputHub
+    await voiceOutputHub.dispatch(outputPlan, { source: event.source, userId: event.userId, meta: event.meta });
+
+    // 7) Mettre à jour la mémoire contextuelle
+    await voiceContextMemory.update(event, domainIntent, { actionResults });
+
+    // 8) Retourner quelque chose au caller (utile pour HTTP)
+    return outputPlan;
+  }
+
+  private async buildCognitiveContext(event: HearingEvent) {
+    // persona, speaker, mémoire courte (5 sujets), capacités, état système...
+    return {
+      persona: event.persona,
+      speakerId: event.speakerId,
+      // etc.
+    };
+  }
+
+  private async planResponse(domainIntent: any, context: any) {
+    // si intent = football.* → appeler handler foot
+    // si intent = sugu.* → handler sugu
+    // si workflow Action-First détecté (email/task/domotique/...) → plannedActions
+    // sinon → Core Engine (LLM) pour réponse conversationnelle simple
+    return {
+      plannedActions: [],
+      responseDraft: "Texte à dire",
+      uiCard: null
+    };
+  }
+
+  private buildOutputPlan(args: {
+    event: HearingEvent;
+    domainIntent: any;
+    responseDraft: string;
+    actionResults: ActionResultSummary[];
+    uiCard: any;
+    cognitiveContext: any;
+  }): OutputPlan {
+    const channels: OutputPlan["channels"] = [];
+
+    if (args.event.source === "web_chat") channels.push("web_chat");
+    if (args.event.source === "talking_v3") channels.push("talking_v3");
+    if (args.event.source === "discord") channels.push("discord_text");
+
+    return {
+      channels,
+      text: args.responseDraft,
+      tts: args.event.isVoice ? { enabled: true } : { enabled: false },
+      ui: args.uiCard
+    };
+  }
+}
+
+export const brainHub = new BrainHub();
+3. Ce que tu dois faire, dans l’ordre
+Créer HearingHub + brancher:
+
+/api/v2/conversations
+realtime TalkingApp V3
+Discord bot
+Créer VoiceOutputHub + adapter:
+
+réponse HTTP web chat,
+websocket / realtime pour TalkingApp,
+Discord texte (et plus tard vocal).
+Créer ActionHub:
+
+plug sur toolOrchestrator + ActionVerificationService + DecisionEngine.
+définir PlannedAction propre.
+Créer BrainHub:
+
+route tout via brainHub.processInput(),
+brancher voiceIntentRouter, voiceContextMemory, Action-First workflows,
+décider OutputPlan + PlannedActions.
+Remplacer les anciens chemins directs:
+
+plus de “je parle direct au LLM depuis /talking-v2” → tout passe par HearingHub → BrainHub.

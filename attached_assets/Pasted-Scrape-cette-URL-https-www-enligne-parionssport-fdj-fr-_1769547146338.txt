@@ -1,0 +1,42 @@
+Scrape cette URL: https://www.enligne.parionssport.fdj.fr/paris-football/coupes-d-europe/championsleague
+
+Voici le contenu SCRAPÉ de la page que tu as demandée :
+👉 https://www.enligne.parionssport.fdj.fr/paris-football/coupes-d-europe/championsleague
+
+Ce sont les matchs et cotes officiels de la Ligue des Champions 2025-2026 sur Parions Sport en Ligne (FDJ) — affichés en pari 1 N 2.
+
+⚽️ Ligue des Champions – Matchs & Cotes (pré-match)
+
+📅 Mercredi 28 janvier – Début des rencontres à 21h00 (Football Europe – Coupe d’Europe)
+
+Équipe à domicile	Nul	Équipe visiteuse	Cote 1	Cote N	Cote 2
+Atlético Madrid – Bodø/Glimt			1,23	6,80	9,00
+Ath. Bilbao – Sporting			2,10	3,60	3,15
+Monaco – Juventus Turin			3,35	3,50	2,05
+Arsenal – Kairat Almaty			1,03	14,0	39
+Eintracht Francfort – Tottenham			3,95	3,90	1,79
+Club Bruges – Marseille			2,85	3,65	2,30
+Dortmund – Inter Milan			2,90	3,45	2,30
+Leverkusen – Villarreal			1,52	4,45	5,30
+Ajax – Olympiakos			2,90	3,55	2,25
+Saint-Gilloise – Atalanta			3,10	3,55	2,15
+PSV Eindhoven – Bayern Munich			4,75	4,50	1,57
+Paris SG – Newcastle			1,50	4,75	5,55
+Pafos FC – Slavia Prague			2,15	3,45	3,15
+Naples – Chelsea			3,05	3,50	2,20
+Benfica – Real Madrid			4,40	4,20	1,65
+Man. City – Galatasaray			1,18	7,30	11
+Liverpool – FC Qarabag			1,10	9,50	18
+FC Barcelone – FC Copenhague			1,11	9,00	17
+
+🔎 Les cotes sont données pour le pari standard 1 N 2 (victoire domicile / nul / victoire extérieur).
+
+💡 Notes
+
+Les cotes affichées sont celles au moment de la génération de la page et peuvent évoluer jusqu’au kickoff.
+
+Ce scraping couvre uniquement le bloc “Coupe d’Europe – Champions League” du site Parions Sport en Ligne (FDJ).
+
+D’autres marchés de pari sont également proposés par Parions Sport (buteur, double chance, score exact, etc.) mais les cotes ci-dessus sont spécifiquement pour 1 N 2.
+
+Si tu veux, je peux aussi te donner les autres types de paris disponibles sur ces matchs (double chance, score exact, buteurs, total de buts), ou exporter ces données en format CSV/JSON. Dis-moi ce que tu préfères ! 📊

@@ -1,0 +1,638 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. Tous droits réservés.
+
+Installez la dernière version de PowerShell pour de nouvelles fonctionnalités et améliorations ! https://aka.ms/PSWindows
+
+PS C:\Users\meyer> ^C
+PS C:\Users\meyer> ^C
+PS C:\Users\meyer> Server ready at http://localhost:56021/
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server ready at http://localhost:56021/
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> @echo off
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> @echo off
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> title Installation Agent Ulysse - Surveillance PC
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> title Installation Agent Ulysse - Surveillance PC
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> color 0A
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> color 0A
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo.
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo.
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo ========================================
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo ========================================
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo    INSTALLATION AGENT ULYSSE PC
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo    INSTALLATION AGENT ULYSSE PC
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo ========================================
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo ========================================
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo.
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo.
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server>
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server>
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> REM Verifier si Python est installe
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> REM Verifier si Python est installe
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> python --version >nul 2>&1
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> python --version >nul 2>&1
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> if errorlevel 1 (
+>> Server commands: [b]rowser, [q]uit
+>> server>     echo [!] Python n'est pas installe.
+>> Server commands: [b]rowser, [q]uit
+>> server>     echo.
+>> Server commands: [b]rowser, [q]uit
+>> server>     echo Telechargement de Python...
+>> Server commands: [b]rowser, [q]uit
+>> server>     echo Veuillez installer Python depuis: https://www.python.org/downloads/
+>> Server commands: [b]rowser, [q]uit
+>> server>     echo IMPORTANT: Cochez "Add Python to PATH" lors de l'installation!
+Au caractère Ligne:2 : 35
++ Server commands: [b]rowser, [q]uit
++                                   ~
+Parenthèse fermante « ) » manquante dans l’expression.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : MissingEndParenthesisInExpression
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server>     echo.
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server>     echo.
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server>     start https://www.python.org/downloads/
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server>     start https://www.python.org/downloads/
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server>     pause
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server>     pause
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server>     exit /b
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server>     exit /b
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> )
+Au caractère Ligne:1 : 9
++ server> )
++         ~
+Jeton inattendu « ) » dans l’expression ou l’instruction.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : UnexpectedToken
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server>
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server>
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo [OK] Python detecte
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo [OK] Python detecte
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> python --version
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> python --version
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo.
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo.
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server>
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server>
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo [*] Installation des dependances...
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo [*] Installation des dependances...
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> pip install dxcam opencv-python pillow websocket-client pywin32 psutil --quiet
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> pip install dxcam opencv-python pillow websocket-client pywin ...
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server>
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server>
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> if errorlevel 1 (
+>> Server commands: [b]rowser, [q]uit
+>> server>     echo [!] Erreur lors de l'installation des dependances
+>> Server commands: [b]rowser, [q]uit
+>> server>     pause
+>> Server commands: [b]rowser, [q]uit
+>> server>     exit /b
+>> Server commands: [b]rowser, [q]uit
+>> server> )
+>> Server commands: [b]rowser, [q]uit
+>> server>
+>> Server commands: [b]rowser, [q]uit
+>> server> echo [OK] Dependances installees
+>> Server commands: [b]rowser, [q]uit
+>> server> echo.
+>> Server commands: [b]rowser, [q]uit
+>> server>
+>> Server commands: [b]rowser, [q]uit
+>> server> REM Telecharger l'agent
+Au caractère Ligne:2 : 35
++ Server commands: [b]rowser, [q]uit
++                                   ~
+Parenthèse fermante « ) » manquante dans l’expression.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : MissingEndParenthesisInExpression
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo [*] Telechargement de l'agent Ulysse...
+>> Server commands: [b]rowser, [q]uit
+>> server> curl -o "%USERPROFILE%\Desktop\ulysse_screen_agent.py" "https://22a3247e-2198-48d3-989c-518df6c234a2-00-3i0oe0nezra07.janeway.replit.dev/downloads/ulysse_screen_agent.py" 2>nul
+>> Server commands: [b]rowser, [q]uit
+>> server>
+>> Server commands: [b]rowser, [q]uit
+>> server> if exist "%USERPROFILE%\Desktop\ulysse_screen_agent.py" (
+>> Server commands: [b]rowser, [q]uit
+>> server>     echo [OK] Agent telecharge sur le Bureau
+>> Server commands: [b]rowser, [q]uit
+>> server> ) else (
+>> Server commands: [b]rowser, [q]uit
+>> server>     echo [!] Telechargement echoue - copiez manuellement le fichier
+>> Server commands: [b]rowser, [q]uit
+>> server> )
+>> Server commands: [b]rowser, [q]uit
+>> server>
+>> Server commands: [b]rowser, [q]uit
+>> server> echo.
+>> Server commands: [b]rowser, [q]uit
+>> server> echo ========================================
+>> Server commands: [b]rowser, [q]uit
+>> server> echo    INSTALLATION TERMINEE!
+>> Server commands: [b]rowser, [q]uit
+>> server> echo ========================================
+>> Server commands: [b]rowser, [q]uit
+>> server> echo.
+>> Server commands: [b]rowser, [q]uit
+>> server> echo Pour lancer l'agent:
+server> : Le terme «server>» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou
+programme exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès
+est correct et réessayez.
+Au caractère Ligne:1 : 1
++ server> echo [*] Telechargement de l'agent Ulysse...
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (server>:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> Server commands: [b]rowser, [q]uit
+Server : Le terme «Server» n'est pas reconnu comme nom d'applet de commande, fonction, fichier de script ou programme
+exécutable. Vérifiez l'orthographe du nom, ou si un chemin d'accès existe, vérifiez que le chemin d'accès est correct
+et réessayez.
+Au caractère Ligne:1 : 1
++ Server commands: [b]rowser, [q]uit
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Server:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\meyer> server> echo 1. Ouvrez l'application Ulysse dans votre navigateur
+>> Server commands: [b]rowser, [q]uit
+>> server> echo 2. Allez dans "Surveillance PC"
+>> Server commands: [b]rowser, [q]uit
+>> server> echo 3. Cliquez sur "Demarrer la session"
+>> Server commands: [b]rowser, [q]uit
+>> server> echo 4. Copiez la commande affichee
+>> Server commands: [b]rowser, [q]uit
+>> server> echo 5. Collez-la dans ce terminal
+>> Server commands: [b]rowser, [q]uit
+>> server> echo.
+>> Server commands: [b]rowser, [q]uit
+>> server> echo OU lancez directement:
+>> Server commands: [b]rowser, [q]uit
+>> server> echo python "%USERPROFILE%\Desktop\ulysse_screen_agent.py" --help
+>> Server commands: [b]rowser, [q]uit
+>> server> echo.
+>> Server commands: [b]rowser, [q]uit
+>> server> pause
+>> Server commands: [b]rowser, [q]uit
+>> server>

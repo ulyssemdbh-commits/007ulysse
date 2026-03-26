@@ -1,0 +1,264 @@
+// services/scraperService.ts
+import fetch, { Response } from 'node-fetch';
+import * as cheerio from 'cheerio';
+import type {
+  ScrapeRequest,
+  ScrapeResult,
+  ScrapedPage,
+  SelectorConfig,
+  LinkScope,
+} from './scraper-types'; // adapte le chemin
+
+const DEFAULT_USER_AGENT =
+  'UlysseScraperBot/HTTP/1.0 (+https://ulysse.local; contact: admin@ulysse.local)';
+
+// Sécurité minimale, désactivable si tu veux
+const BLOCK_LOCALHOST_BY_DEFAULT = true;
+const BLOCKED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1'];
+
+function basicHostCheck(url: string): void {
+  if (!BLOCK_LOCALHOST_BY_DEFAULT) return;
+  const host = new URL(url).hostname.toLowerCase();
+  if (BLOCKED_HOSTS.includes(host)) {
+    throw new Error(`Host "${host}" bloqué par sécurité (configurable).`);
+  }
+}
+
+function normalizeUrl(base: string, href: string): string | null {
+  try {
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return null;
+    return new URL(href, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function shouldFollowLink(
+  currentUrl: string,
+  targetUrl: string,
+  scope: LinkScope | undefined,
+): boolean {
+  if (!scope || scope === 'none') return false;
+  const from = new URL(currentUrl);
+  const to = new URL(targetUrl);
+
+  switch (scope) {
+    case 'same-domain':
+      return from.hostname.split('.').slice(-2).join('.') ===
+        to.hostname.split('.').slice(-2).join('.');
+    case 'same-host':
+      return from.hostname === to.hostname;
+    case 'same-path':
+      return from.hostname === to.hostname &&
+        to.pathname.startsWith(from.pathname);
+    case 'all':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isExtensionExcluded(url: string, exts?: string[]): boolean {
+  if (!exts || exts.length === 0) return false;
+  const pathname = new URL(url).pathname.toLowerCase();
+  return exts.some((ext) => pathname.endsWith(ext.toLowerCase()));
+}
+
+function parseSelectorConfig(raw: string | SelectorConfig): SelectorConfig {
+  if (typeof raw === 'string') return { selector: raw };
+  return raw;
+}
+
+function extractMetadata($: cheerio.CheerioAPI, url: string, contentType?: string) {
+  const title =
+    $('meta[property="og:title"]').attr('content') ||
+    $('title').first().text().trim() ||
+    undefined;
+
+  const description =
+    $('meta[name="description"]').attr('content') ||
+    $('meta[property="og:description"]').attr('content') ||
+    undefined;
+
+  const canonicalHref =
+    $('link[rel="canonical"]').attr('href') || undefined;
+
+  const canonical = canonicalHref
+    ? normalizeUrl(url, canonicalHref) ?? canonicalHref
+    : undefined;
+
+  return {
+    title,
+    description,
+    canonical,
+    contentType,
+  };
+}
+
+function extractWithCheerio(
+  url: string,
+  body: string,
+  contentType: string | undefined,
+  extract: ScrapeRequest['extract'],
+): ScrapedPage {
+  const $ = cheerio.load(body);
+  const page: ScrapedPage = {
+    url,
+    status: 200,
+  };
+
+  if (extract?.metadata) {
+    page.metadata = extractMetadata($, url, contentType);
+  }
+
+  if (extract?.text) {
+    page.text = $('body')
+      .text()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  if (extract?.html) {
+    page.html = body;
+  }
+
+  if (extract?.links) {
+    const links: string[] = [];
+    $('a[href]').each((_, el) => {
+      const href = $(el).attr('href');
+      const absolute = href ? normalizeUrl(url, href) : null;
+      if (absolute) links.push(absolute);
+    });
+    page.links = [...new Set(links)];
+  }
+
+  if (extract?.selectors) {
+    const result: Record<string, any> = {};
+    for (const [key, rawCfg] of Object.entries(extract.selectors)) {
+      const cfg = parseSelectorConfig(rawCfg);
+      const elements = $(cfg.selector);
+
+      const getValue = (idx: number) => {
+        const el = elements.eq(idx);
+        if (cfg.attr) return el.attr(cfg.attr) ?? null;
+        return el.text().trim();
+      };
+
+      if (elements.length === 0) {
+        result[key] = cfg.multi ? [] : null;
+      } else if (cfg.multi) {
+        result[key] = elements
+          .map((i) => getValue(i))
+          .get()
+          .filter((v) => v != null && String(v).trim() !== '');
+      } else {
+        result[key] = getValue(0);
+      }
+    }
+    page.extracted = result;
+  }
+
+  return page;
+}
+
+async function fetchPage(
+  url: string,
+  userAgent: string,
+  timeoutMs?: number,
+  maxBodySizeBytes?: number,
+): Promise<{ response: Response; bodyText: string }> {
+  const controller = timeoutMs ? new AbortController() : undefined;
+  let timeoutId: NodeJS.Timeout | undefined;
+
+  if (controller && timeoutMs) {
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': userAgent,
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+      signal: controller?.signal,
+    });
+
+    let bodyBuffer = Buffer.from(await response.arrayBuffer());
+    if (maxBodySizeBytes && bodyBuffer.byteLength > maxBodySizeBytes) {
+      bodyBuffer = bodyBuffer.subarray(0, maxBodySizeBytes);
+    }
+    const bodyText = bodyBuffer.toString('utf8');
+
+    return { response, bodyText };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+// Petit type interne pour gérer la queue
+interface QueueItem {
+  url: string;
+  depth: number;
+}
+
+/**
+ * Scraper/crawler 100% maison, HTTP-only, aucune dépendance externe.
+ */
+export async function crawlAndScrape(rawReq: ScrapeRequest): Promise<ScrapeResult> {
+  const startedAt = new Date().toISOString();
+
+  if (!rawReq.url) {
+    throw new Error('ScrapeRequest.url est obligatoire');
+  }
+  basicHostCheck(rawReq.url);
+
+  // Defaults soft
+  const req: ScrapeRequest = {
+    ...rawReq,
+    mode: rawReq.mode ?? 'http',          // "auto" et "browser" → pour l’instant on fait du HTTP only
+    depth: rawReq.depth ?? 0,
+    maxPages: rawReq.maxPages ?? 20,
+    maxConcurrency: rawReq.maxConcurrency ?? 3,
+    extract: {
+      text: true,
+      links: true,
+      metadata: true,
+      ...(rawReq.extract || {}),
+    },
+  };
+
+  const {
+    url,
+    depth = 0,
+    maxPages = 20,
+    maxConcurrency = 3,
+    userAgent = DEFAULT_USER_AGENT,
+    linkScope,
+    excludeExtensions,
+    timeoutMs,
+    maxBodySizeBytes,
+    extract,
+  } = req;
+
+  const shouldFollow = depth > 0;
+  const baseHost = new URL(url).hostname;
+
+  const pages: ScrapedPage[] = [];
+  const visited = new Set<string>();
+  const queue: QueueItem[] = [{ url, depth: 0 }];
+
+  let activeCount = 0;
+  let resolveGlobal!: () => void;
+  const globalDone = new Promise<void>((res) => (resolveGlobal = res));
+
+  const processNext = async () => {
+    if (pages.length >= maxPages) {
+      if (activeCount === 0) resolveGlobal();
+      return;
+    }
+
+    const item = queue.shift();
+    if (!item) {
+      if
+Écrivez votre message...

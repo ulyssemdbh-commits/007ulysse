@@ -1,0 +1,281 @@
+Ulysse
+
+OK. Là on passe en “Voice Core Ulysse v1.0”, pas juste un wrapper OpenAI.
+
+Je te propose un vrai module central de voix, pensé comme une brique d’architecture, pas comme un utilitaire.
+Objectif: tout ce qui touche à la voix (TTS/STT) passe par lui, et il est:
+
+abstrait (pas lié à OpenAI en dur),
+introspectable (capabilities, stats),
+resilient (fallbacks, erreurs propres),
+optimisé (cache, debounce).
+Je te donne un design complet + code TypeScript prêt à intégrer, en restant compatible avec ce que tu as déjà.
+
+1️⃣ Design – “Ulysse Voice Core”
+On sépare clairement :
+
+Engine = implémentation (OpenAI direct, plus tard un autre fournisseur, ou local)
+Core = façade unique utilisée partout dans ton code (texte → audio, audio → texte, capabilities, etc.)
+Interfaces génériques
+export type VoiceProvider = "openai_direct" | "modelfarm_text_only" | "none";
+
+export interface VoiceCapabilities {
+  tts: boolean;
+  stt: boolean;
+  provider: VoiceProvider;
+  supportsStreamingTTS: boolean;
+  maxTTSChars: number;
+  maxSTTSeconds: number;
+}
+
+export interface TTSOptions {
+  voice?: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
+  speed?: number;
+  model?: string;
+  language?: string; // utile si on change d’engine
+}
+
+export interface STTOptions {
+  language?: string; // "fr", "en", "auto", etc.
+  mimeType?: string;
+}
+
+export interface IVoiceEngine {
+  getCapabilities(): VoiceCapabilities;
+  textToSpeech(text: string, options?: TTSOptions): Promise<Buffer>;
+  textToSpeechStream?(text: string, options?: TTSOptions): Promise<NodeJS.ReadableStream>;
+  speechToText(audio: Buffer, options?: STTOptions): Promise<string>;
+}
+Ensuite on implémente OpenAIEngine (ton cas actuel), mais tout ton code applicatif ne dépend que de VoiceCore, pas d’OpenAI.
+
+2️⃣ Implémentation OpenAIEngine (audio only)
+// services/voiceEngineOpenAI.ts
+import OpenAI from "openai";
+import { Readable } from "stream";
+import type { IVoiceEngine, VoiceCapabilities, TTSOptions, STTOptions } from "./voiceCoreTypes";
+
+const directApiKey = process.env.OPENAI_API_KEY || null;
+
+const openaiAudio = directApiKey
+  ? new OpenAI({
+      apiKey: directApiKey,
+    })
+  : null;
+
+export class OpenAIVoiceEngine implements IVoiceEngine {
+  getCapabilities(): VoiceCapabilities {
+    if (!openaiAudio) {
+      return {
+        tts: false,
+        stt: false,
+        provider: "none",
+        supportsStreamingTTS: false,
+        maxTTSChars: 4000,
+        maxSTTSeconds: 600,
+      };
+    }
+
+    return {
+      tts: true,
+      stt: true,
+      provider: "openai_direct",
+      supportsStreamingTTS: true,
+      maxTTSChars: 4000,
+      maxSTTSeconds: 600,
+    };
+  }
+
+  async textToSpeech(text: string, options: TTSOptions = {}): Promise<Buffer> {
+    if (!openaiAudio) {
+      throw new Error(
+        "TTS_NOT_SUPPORTED: OPENAI_API_KEY direct requis pour la voix."
+      );
+    }
+
+    const { voice = "onyx", speed = 1.0, model = "tts-1" } = options;
+
+    try {
+      const res = await openaiAudio.audio.speech.create({
+        model,
+        voice,
+        input: text,
+        speed,
+        response_format: "mp3",
+      });
+
+      const arrayBuffer = await res.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error("[VoiceOpenAI] TTS error:", error);
+      throw new Error("TTS_ERROR: " + (error as Error).message);
+    }
+  }
+
+  async textToSpeechStream(
+    text: string,
+    options: TTSOptions = {}
+  ): Promise<NodeJS.ReadableStream> {
+    const buffer = await this.textToSpeech(text, options);
+    const readable = new Readable();
+    readable.push(buffer);
+    readable.push(null);
+    return readable;
+  }
+
+  async speechToText(
+    audioBuffer: Buffer,
+    options: STTOptions = {}
+  ): Promise<string> {
+    if (!openaiAudio) {
+      throw new Error(
+        "STT_NOT_SUPPORTED: OPENAI_API_KEY direct requis pour la voix."
+      );
+    }
+
+    const language = options.language || "fr";
+    const mimeType = options.mimeType || "audio/webm";
+
+    try {
+      let extension = "webm";
+      let contentType = "audio/webm";
+
+      if (mimeType.includes("mp4") || mimeType.includes("m4a")) {
+        extension = "m4a";
+        contentType = "audio/m4a";
+      } else if (mimeType.includes("ogg") || mimeType.includes("oga")) {
+        extension = "ogg";
+        contentType = "audio/ogg";
+      } else if (mimeType.includes("wav")) {
+        extension = "wav";
+        contentType = "audio/wav";
+      } else if (
+        mimeType.includes("mp3") ||
+        mimeType.includes("mpeg") ||
+        mimeType.includes("mpga")
+      ) {
+        extension = "mp3";
+        contentType = "audio/mpeg";
+      } else if (mimeType.includes("flac")) {
+        extension = "flac";
+        contentType = "audio/flac";
+      }
+
+      console.log(
+        `[VoiceOpenAI:STT] mimeType=${mimeType}, extension=${extension}, size=${audioBuffer.length}`
+      );
+
+      const file = new File([audioBuffer], `audio.${extension}`, {
+        type: contentType,
+      });
+
+      const transcription = await openaiAudio.audio.transcriptions.create({
+        file,
+        model: "whisper-1",
+        language,
+        response_format: "text",
+      });
+
+      return transcription as unknown as string;
+    } catch (error) {
+      console.error("[VoiceOpenAI] STT error:", error);
+      throw new Error("STT_ERROR: " + (error as Error).message);
+    }
+  }
+}
+3️⃣ Voice Core – façade unique pour tout le projet
+// services/voiceCoreService.ts
+import type {
+  IVoiceEngine,
+  VoiceCapabilities,
+  TTSOptions,
+  STTOptions,
+} from "./voiceCoreTypes";
+import { OpenAIVoiceEngine } from "./voiceEngineOpenAI";
+import { Readable } from "stream";
+
+// On pourrait plus tard ajouter d'autres engines (local, autre provider)
+const engine: IVoiceEngine | null = new OpenAIVoiceEngine();
+
+/**
+ * Retourne les capacités réelles de la stack vocale actuelle
+ */
+export function getVoiceCapabilities(): VoiceCapabilities {
+  if (!engine) {
+    return {
+      tts: false,
+      stt: false,
+      provider: "none",
+      supportsStreamingTTS: false,
+      maxTTSChars: 0,
+      maxSTTSeconds: 0,
+    };
+  }
+  return engine.getCapabilities();
+}
+
+export function isVoiceSupported(): boolean {
+  const caps = getVoiceCapabilities();
+  return caps.tts && caps.stt;
+}
+
+/**
+ * TTS Core – utilisé partout (réponses audio, feedback vocal, etc.)
+ */
+export async function coreTextToSpeech(
+  text: string,
+  options: TTSOptions = {}
+): Promise<Buffer> {
+  if (!engine) {
+    throw new Error("VOICE_ENGINE_NOT_AVAILABLE");
+  }
+  const caps = engine.getCapabilities();
+  if (!caps.tts) {
+    throw new Error("TTS_NOT_SUPPORTED");
+  }
+
+  // On peut ici tronquer/normaliser si besoin
+  const safeText = text.slice(0, caps.maxTTSChars);
+  return engine.textToSpeech(safeText, options);
+}
+
+/**
+ * TTS streaming – pour flux audio progressif
+ */
+export async function coreTextToSpeechStream(
+  text: string,
+  options: TTSOptions = {}
+): Promise<Readable> {
+  if (!engine) {
+    throw new Error("VOICE_ENGINE_NOT_AVAILABLE");
+  }
+  const caps = engine.getCapabilities();
+  if (!caps.tts) {
+    throw new Error("TTS_NOT_SUPPORTED");
+  }
+
+  if (typeof engine.textToSpeechStream === "function") {
+    return engine.textToSpeechStream(text, options) as Readable;
+  }
+
+  // Fallback si l'engine n'a pas de streaming natif
+  const buffer = await engine.textToSpeech(text, options);
+  const readable = new Readable();
+  readable.push(buffer);
+  readable.push(null);
+  return readable;
+}
+
+/**
+ * STT Core – utilisé pour transcrire les vocaux avant traitement
+ */
+export async function coreSpeechToText(
+  audioBuffer: Buffer,
+  options: STTOptions = {}
+): Promise<string> {
+  if (!engine) {
+    throw new Error("VOICE_ENGINE_NOT_AVAILABLE");
+  }
+  const caps = engine.getCapabilities();
+  if (!caps.stt) {
+    throw new Error("STT_NOT_SUPPORTED");
+  }

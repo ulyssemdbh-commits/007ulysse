@@ -1,0 +1,78 @@
+Vous
+
+[FICHIER JOINT: Zouaghi Factures Janvier 2026.pdf]
+
+Contenu du fichier: FACTURES ZOUAGHI CACHER Période: Décembre 2025 Client: SUGU VALENTINE
+
+Fiabilité extraction: 100% (EXCELLENT) Validées: 17 | Avertissements: 0 | Invalides: 0
+
+17 factures extraites:
+
+✓ F2123408 du 31/12/2025 → 305,67 € ✓ F2123444 du 06/01/26 → 865,68 € (livr. 26,00 €) ✓ F2123467 du 06/01/2026 → 398,24 € ✓ F2123502 du 11/01/2026 → 198,07 € ✓ F2123505 du 12/01/2026 → 164,11 € ✓ F2123533 du 13/01/26 → 1 239,42 € (livr. 20,00 €) ✓ F2123555 du 13/01/2026 → 65,94 € ✓ F2123554 du 14/01/26 → 58,26 € (livr. 1,60 €) ✓ F2123564 du 15/01/2026 → 313,31 € ✓ F2123567 du 16/01/26 → 247,76 € (livr. 6,81 €) ✓ F2123610 du 20/01/26 → 1 408,71 € (livr. 26,00 €) ✓ F2123619 du 21/01/26 → 184,29 € ✓ F2123625 du 22/01/26 → 152,74 € (livr. 4,20 €) ✓ F2123640 du 22/01/2026 → 411,80 € ✓ F2123663 du 27/01/26 → 990,82 € (livr. 26,00 €) ✓ F2123686 du 27/01/2026 → 179,88 € ✓ F2123703 du 29/01/2026 → 197,20 €
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ TOTAUX DÉCEMBRE 2025:
+
+HT: 6 957,70 €
+
+20%: 110,61 € → TVA 22,12 € (transport) TVA totale: 424,20 € TTC: 7 381,90 €
+Analyse ce fichier et donne-moi un résumé.
+
+Ulysse
+
+OK, on refait le point proprement.
+
+Contexte général
+
+Fournisseur : Zouaghi Cacher
+Client : SUGU VALENTINE
+Période : intitulé “Décembre 2025” mais factures du 31/12/2025 au 29/01/2026
+Qualité d’extraction : 100 %, 17 factures valides, aucun avertissement
+Détail des 17 factures (TTC + livraisons)
+
+F2123408 – 31/12/2025 → 305,67 €
+F2123444 – 06/01/2026 → 865,68 € (livraison 26,00 €)
+F2123467 – 06/01/2026 → 398,24 €
+F2123502 – 11/01/2026 → 198,07 €
+F2123505 – 12/01/2026 → 164,11 €
+F2123533 – 13/01/2026 → 1 239,42 € (livraison 20,00 €)
+F2123555 – 13/01/2026 → 65,94 €
+F2123554 – 14/01/2026 → 58,26 € (livraison 1,60 €)
+F2123564 – 15/01/2026 → 313,31 €
+F2123567 – 16/01/2026 → 247,76 € (livraison 6,81 €)
+F2123610 – 20/01/2026 → 1 408,71 € (livraison 26,00 €)
+F2123619 – 21/01/2026 → 184,29 €
+F2123625 – 22/01/2026 → 152,74 € (livraison 4,20 €)
+F2123640 – 22/01/2026 → 411,80 €
+F2123663 – 27/01/2026 → 990,82 € (livraison 26,00 €)
+F2123686 – 27/01/2026 → 179,88 €
+F2123703 – 29/01/2026 → 197,20 €
+Synthèse comptable de la période
+
+Total HT : 6 957,70 €
+dont base transport à 20 % : 110,61 € → TVA 22,12 €
+TVA totale : 424,20 €
+Total TTC : 7 381,90 €
+En pratique Je peux te sortir ça en :
+
+tableau Excel (colonnes : N° facture, date, TTC, livraison, etc.), ou
+PDF récap prêt à envoyer au comptable.
+Dis-moi juste : “Excel” ou “PDF”, et à quelle adresse email tu veux que je l’envoie.
+
+Vous
+
+et le détails des articles achetés ?
+
+Ulysse
+
+Là, dans ce que tu m’as copié, j’ai seulement le récap factures (numéro, date, montant, livraison, totaux HT/TVA/TTC).
+Je n’ai aucun détail ligne par ligne (produits, quantités, prix unitaires) dans le texte que tu m’envoies.
+
+Donc deux options :
+
+Soit le PDF contient bien les lignes d’articles et l’extraction automatique a foiré avant de te donner ce résumé → tu m’uploades le PDF “brut” (ou tu me confirmes que le fichier joint dans l’app est bien l’original complet) et je l’analyse pour sortir :
+
+produit / référence
+quantité
+prix unitaire
+montant ligne
+et je peux te faire un tableau par article + un top des produits les plus achetés.

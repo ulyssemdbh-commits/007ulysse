@@ -1,0 +1,687 @@
+Vous
+
+Algo #7 — DYNAMIC_FRAGILITY_LEARNING — Opérationnel
+
+Ce qui a été construit :
+
+Table devops_file_history — Stocke chaque événement DevOps par fichier : type (commit/patch/review/revert/hotfix/bug_report), résultat (success/bug/revert/hotfix/failure), score de risque, lignes modifiées, SHA, domaines.
+
+Moteur de scoring dynamique — Calcule la fragilité de chaque fichier à partir de l'historique réel :
+
+Bug rate + revert rate pondérés par volume et récence Score combiné = mix statique (hardcodé) + dynamique (données), avec la confiance qui augmente avec le nombre d'événements Détection de tendance : compare la semaine récente vs les 30 jours précédents → improving / stable / degrading Collecte automatique — Chaque apply_patch enregistre maintenant automatiquement les fichiers touchés dans l'historique (fire & forget). Le système apprend en continu.
+
+4 endpoints API (sous /api/devops/fragility/) :
+
+GET /leaderboard — Top fichiers fragiles GET /file?path=... — Score détaillé d'un fichier POST /record — Enregistrer des événements POST /report-bug — Signaler un bug sur des fichiers 4 actions Ulysse (via le tool devops_intelligence) :
+
+fragility_leaderboard — Classement en live fragility_check — Vérifier un fichier record_event — Logger un événement DevOps report_bug — Signaler un bug Tests passés : record ✅, leaderboard ✅ (3 fichiers classés correctement), file check ✅ (scores combinés static+dynamic), report-bug ✅. L'app compile et tourne sans erreur.
+
+Ulysse
+
+Ok, là on commence à jouer en Ligue des Champions DevOps.
+
+Tu viens de rajouter:
+
+🔧 Algo #7 – DYNAMIC_FRAGILITY_LEARNING
+En clair, le système fait maintenant ça en continu :
+
+Table devops_file_history
+
+Pour chaque fichier touché:
+type d’événement: commit | patch | review | revert | hotfix | bug_report
+résultat: success | bug | revert | hotfix | failure
+score de risque (venant de CI_ORACLE),
+lignes modifiées,
+SHA,
+domaines concernés. → C’est la mémoire historique de la douleur par fichier.
+Scoring dynamique de fragilité
+
+Bug rate + revert rate pondérés par volume et récence,
+Mix:
+score statique (FRAGILE_MODULES),
+score dynamique (ce qui s’est vraiment passé),
+Confiance ↑ avec le nombre d’événements (plus de data = moins de pif),
+Détection de tendance:
+semaine récente vs 30 jours:
+improving | stable | degrading.
+Collecte auto
+
+Chaque apply_patch logge maintenant les fichiers concernés dans devops_file_history → sans friction.
+Résultat: le système apprend en continu où ça casse vraiment.
+🌐 API dispo /api/devops/fragility/
+GET /leaderboard → top fichiers les plus fragiles.
+GET /file?path=... → score complet pour un fichier.
+POST /record → enregistrer un événement.
+POST /report-bug → remonter un bug sur des fichiers.
+🧠 Actions Ulysse via tool devops_intelligence
+Je peux maintenant appeler:
+
+fragility_leaderboard → “Montre-moi les pires fichiers du moment.”
+fragility_check → “Ce fichier est fragile à quel point ?”
+record_event → enregistrer un évènement DevOps (patch, revert, etc.).
+report_bug → lier un bug à un ou plusieurs fichiers.
+Tests OK: record ✅, leaderboard ✅, file check ✅, report-bug ✅, app compile et tourne ✅.
+
+Concrètement pour toi:
+la prochaine fois qu’on touche au code, je ne parlerai plus d’intuition, mais de:
+
+“Ce fichier est dans le top fragilité, tendance degrading, on y va en mode scalpel.”
+“Cette zone s’améliore, bug rate en baisse, on peut se permettre un refactor plus ambitieux.”
+Tu veux qu’on s’en serve tout de suite sur un vrai cas, genre:
+
+“Donne-moi le leaderboard actuel des fichiers fragiles”
+ou
+“Analyse la fragilité de conversations.ts et devopsIntelligenceEngine.ts” ?
+Vous
+
+et de quoi on a besoin pour gagner la Ligue des Champions DevOps?
+
+Ulysse
+
+Pour aller chercher la Ligue des Champions DevOps, avec ce qu’on a déjà mis en place, il manque plus beaucoup… mais c’est des pièces lourdes.
+Je te le fais version “plan de jeu” avec ce que tu as déjà construit.
+
+1️⃣ Axe Vision & X-Ray : tout voir, tout comprendre
+Tu as déjà:
+
+BRAIN_IMPACT_MAP
+DYNAMIC_FRAGILITY_LEARNING
+CI_ORACLE
+DevOps Intelligence Engine
+À finir de pousser au max :
+
+Coupler tout ça au code réel en continu
+
+À chaque PR / commit:
+ImpactMap,
+CI Risk,
+Fragility update,
+PatchAdvice → Automatique, pas besoin que tu le demandes manuellement.
+Dashboard DevOps “Ulysse”
+
+Dans /devops :
+Top fichiers fragiles,
+Derniers rapports DevOps Intelligence,
+Tendances: modules qui s’améliorent vs qui dégénèrent,
+Heatmap par domaine (auth, SUGU, sports, brain…).
+🎯 Objectif: voir en 10 secondes où est le danger à l’instant T.
+
+2️⃣ Axe Exécution : que chaque changement soit “orchestré”
+Tu as déjà:
+
+devops_github bridge
+devopsIntelligenceEngine
+journal de travail
+Il nous faut:
+
+Pipeline “intelligent” par PR
+
+Hook GitHub → à chaque PR:
+on récupère les diffs,
+on appelle runFullDevOpsIntelligence,
+on poste un commentaire automatique sur la PR:
+risk score (safe/caution/risky/dangerous),
+fichiers fragiles touchés,
+domaines impactés,
+“best patch strategy” (A/B/C).
+Si dangerous:
+label auto needs-review,
+ping toi ou le bon “owner”.
+Plan de rollback intégré
+
+Quand CI_ORACLE sort risky ou dangerous:
+suggestion automatique:
+git revert plan prêt,
+endpoints à surveiller après déploiement.
+🎯 Objectif: chaque PR a un rapport DevOps structuré avant même que tu la regardes.
+
+3️⃣ Axe Auto-amélioration : Ulysse qui s’entraîne tout seul
+Tu as déjà:
+
+Homework system
+LearningLog
+Homework_Brain_Planner
+maintenant Dynamic Fragility
+Ce qu’il manque pour être “champion”:
+
+Boucle complète “échec → homework → knowledge”
+
+À chaque:
+bug en prod,
+revert,
+CI cassée, → déclenche:
+un report-bug DevOps,
+un LearningGap,
+un homework dédié:
+“veille / docs / best practices sur ce sujet”,
+“analyse du module X toutes les semaines”.
+Quand homework exécuté:
+ajout d’entrées dans knowledge_base,
+note dans learning_log,
+baisse automatique de la fragilité si les métriques s’améliorent.
+Journal de travail comme cerveau stratégique
+
+Tu as déjà le work_journal.
+Next step:
+que moi, Ulysse, je m’en sers pour:
+planifier ce que je fais ensuite,
+refermer les boucles :
+“j’ai vu ce bug → j’ai créé cette tâche → j’ai exécuté ça → voici le résultat.”
+🎯 Objectif:
+plus un seul bug sérieux sans qu’il déclenche:
+
+une analyse,
+un apprentissage,
+une amélioration structurelle.
+4️⃣ Axe Observabilité : rien ne passe entre les mailles
+On est fort sur:
+
+monitoring interne,
+diagnostics,
+DevOps Intelligence.
+Reste à bétonner:
+
+Corrélation logs / fragility / code
+
+Quand une alerte monitoring (latence, erreurs) apparaît:
+retrouver immédiatement:
+fichiers récemment touchés,
+score de fragilité,
+derniers DevOps reports sur ce domaine.
+Alertes “intelligentes”
+
+Exemple:
+un fichier fragile (score > 80) est modifié,
+et dans l’heure:
+erreurs 500 ↑ sur un endpoint lié, → alerte DevOps combinée:
+“Probable lien entre modif de X et erreurs sur Y”.
+🎯 Objectif: raccourcir le temps entre “ça commence à sentir mauvais” et “on sait où regarder”.
+
+5️⃣ Axe Culture : comment toi tu joues avec ça
+Techniquement, on est presque au top. Pour gagner la LdC, il faut que toi tu:
+
+Te reposes VRAIMENT sur Ulysse pour DevOps
+
+Avant un refactor:
+“Ulysse, analyse l’impact de X/Y/Z.”
+Avant un merge chaud:
+“Donne-moi le CI_ORACLE + fragility sur cette PR.”
+Après un bug:
+“Donne-moi le rapport complet (historique, modules fragiles, learning gaps).”
+Laisse tourner les moteurs en fond
+
+DevOps Intelligence / Dynamic Fragility / Homework Planner → en automatique.
+Tu interviens sur:
+les décisions clés,
+les arbitrages (patch minimal vs refactor),
+les priorités produit.
+Résumé ultra-court
+Pour gagner la Ligue des Champions DevOps, avec ce qu’on a déjà:
+
+On branche DevOpsIntelligence + Fragility directement sur les PR/commits.
+On donne à Ulysse un vrai rôle d’oracle sur chaque changement (risque, patch, impact).
+On ferme toutes les boucles d’échecs avec Homework + Brain + Journal.
+Tu joues le coach qui valide les gros moves, pas le mec qui fait tout à la main.
+Si tu veux, on choisit un premier scénario réel (ex: une PR / un refactor que tu as en tête) et je te montre comment tout ce qu’on a là se combine en rapport complet + plan d’action.
+
+Vous
+
+genere les 5 axes
+
+Ulysse
+
+Ok, on grave ça proprement.
+Voici les 5 axes pour gagner ta Ligue des Champions DevOps, prêts à être utilisés comme base de doc / spec.
+
+1️⃣ Axe VISION & X-RAY – Tout voir, tout comprendre
+Objectif
+Avoir une vue temps réel de l’état du code, des dépendances, des zones critiques et de leur évolution.
+
+Composants clés
+
+BRAIN_IMPACT_MAP (graphe de dépendances enrichi: fichiers ↔ domaines ↔ imports)
+DYNAMIC_FRAGILITY_LEARNING (fragilité dynamique par fichier)
+CI_ORACLE (scoring de risque par changement)
+DevOps Intelligence Engine (rapport global)
+À mettre en place
+
+Exécution automatique de DevOps Intelligence à chaque:
+commit,
+PR,
+apply_patch.
+Dashboard /devops avec:
+top fichiers fragiles,
+domaines critiques (auth, SUGU, sports, brain…),
+tendances: improving / stable / degrading,
+derniers rapports DevOps.
+Résultat attendu En 10 secondes, savoir:
+
+où c’est fragile,
+où ça se dégrade,
+quelle zone ne doit PAS être touchée à la légère.
+2️⃣ Axe EXÉCUTION – Chaque changement est orchestré
+Objectif
+Qu’aucun commit / PR ne parte en prod sans passage par l’“oracle DevOps”.
+
+Composants clés
+
+devops_github bridge
+DevOps Intelligence Engine (CI_ORACLE + ImpactMap + PatchAdvisor)
+DYNAMIC_FRAGILITY_LEARNING
+À mettre en place
+
+Hook GitHub PR:
+récupère les diffs,
+appelle runFullDevOpsIntelligence,
+poste un commentaire automatique sur la PR:
+risk score (safe / caution / risky / dangerous),
+fichiers fragiles touchés,
+domaines impactés,
+best patch strategy (minimal / moderate / structural).
+Règles:
+si dangerous → label auto needs-review, review obligatoire.
+plan de rollback pré-généré pour les PR à risque.
+Résultat attendu Chaque PR arrive déjà avec:
+
+une analyse de risque,
+une explication,
+des suggestions de patch,
+un plan de survie si ça tourne mal.
+3️⃣ Axe AUTO-AMÉLIORATION – Ulysse s’entraîne tout seul
+Objectif
+Chaque bug, revert, échec devient du carburant pour rendre le système plus fort.
+
+Composants clés
+
+Homework system
+LearningLog
+Homework_BRAIN_PLANNER
+DYNAMIC_FRAGILITY_LEARNING
+Brain (knowledge_base)
+À mettre en place
+
+Pour chaque:
+bug en prod,
+hotfix,
+revert,
+CI cassée, → créer automatiquement:
+un devops_file_history event,
+un LearningGap via Homework_BRAIN_PLANNER,
+un homework ciblé (veille, analyse, docs).
+Quand un homework est exécuté:
+ajout de connaissances dans knowledge_base,
+baisse progressive de la fragilité si les métriques s’améliorent.
+Résultat attendu Plus un seul gros problème sans:
+
+analyse,
+apprentissage,
+amélioration structurelle derrière.
+4️⃣ Axe OBSERVABILITÉ – Rien ne passe entre les mailles
+Objectif
+Relier les symptômes (logs, erreurs, latence) aux causes (fichiers, domaines, commits) en quelques secondes.
+
+Composants clés
+
+Monitoring existant (erreurs, latence)
+DYNAMIC_FRAGILITY_LEARNING
+BRAIN_IMPACT_MAP
+DevOps Intelligence
+À mettre en place
+
+Corrélation automatique:
+quand une alerte survient (erreurs 500, latence, timeout),
+on cherche:
+fichiers récents touchés dans le domaine,
+scores de fragilité,
+derniers DevOps reports liés.
+Alertes “intelligentes”:
+exemple:
+fichier fragile modifié + explosion d’erreurs dans le même domaine → alerte combinée: “Probable lien entre changement X et erreurs Y”.
+Résultat attendu Temps entre “ça part en vrille” et “on sait où regarder” réduit au minimum.
+
+5️⃣ Axe CULTURE & UTILISATION – Tu joues le coach, pas le pompier
+Objectif
+Que toi tu utilises vraiment tout ce système au quotidien, sans être esclave des détails.
+
+Composants clés
+
+Work Journal
+DevOps Intelligence tools
+Dashboards /devops
+Homework & Brain
+À mettre en place
+
+Réflexes Ulysse/Maurice:
+avant un gros refactor:
+“Ulysse, analyse l’impact de ces fichiers / de cette feature.”
+avant un merge sensible:
+“Donne-moi le CI_ORACLE + fragility sur cette PR.”
+après un bug:
+“Donne-moi le rapport complet: historique, fichiers fragiles, learning gaps, patch strategy.”
+Ulysse:
+met à jour le journal de travail après chaque action DevOps significative,
+propose de lui-même:
+quelles tâches attaquer,
+quels modules stabiliser,
+quels homeworks lancer.
+Résultat attendu Tu n’es plus en mode “je subis mon codebase”, mais:
+
+en mode coach qui pilote,
+avec Ulysse en analyste / adjoint DevOps qui fait tourner les moteurs en continu.
+Si tu veux, je peux transformer ces 5 axes en:
+
+plan d’implémentation par étapes (Semaine 1/2/3…),
+ou en spec plus formelle à coller dans ton repo (docs/devops_roadmap.md).
+Vous
+
+spec plus formelle, efficace et robuste à coller dans ton repo docs/devops_roadmap.md
+
+Ulysse
+
+Parfait, voilà une spec propre pour docs/devops_roadmap.md, prête à être collée telle quelle dans le repo.
+
+# DevOps Roadmap – Ulysseproject (Ligue des Champions DevOps)
+
+## Objectif global
+
+Mettre en place un **système DevOps intelligent, auto-apprenant et piloté par Ulysse**, capable de :
+
+- **Voir** l’état réel du code et des dépendances (X-Ray),
+- **Orchestrer** chaque changement (CI Oracle + Patch Advisor),
+- **Apprendre** en continu à partir des échecs (Homework + Brain),
+- **Corréler** incidents ↔ code ↔ historique DevOps,
+- Offrir à Maurice un rôle de **coach** plutôt que de pompier.
+
+Cette roadmap s’articule autour de **5 axes** complémentaires.
+
+---
+
+## Axe 1 – VISION & X-RAY (Observabilité du code)
+
+### Objectif
+
+Disposer d’une vue temps réel des :
+
+- zones critiques du code (fichiers, domaines, modules),
+- dépendances (imports, schéma, services),
+- tendances de fragilité (improving / stable / degrading).
+
+### Composants existants
+
+- `devopsIntelligenceEngine.ts`
+  - `BRAIN_IMPACT_MAP` : graphe de dépendances enrichi (fichier → domaines → imports/exports).
+  - `DYNAMIC_FRAGILITY_LEARNING` (via `devops_file_history`) : fragilité dynamique par fichier.
+  - `CI_ORACLE` : scoring de risque par changement.
+  - `AUTO_PATCH_ADVISOR` : génération + ranking de patchs.
+  - `HOMEWORK_BRAIN_PLANNER` : détection de gaps d’apprentissage.
+  - `runFullDevOpsIntelligence()` : point d’entrée unifié.
+
+### Actions à implémenter
+
+1. **Exécution automatique de DevOps Intelligence**
+
+   - [ ] Ajouter un service `devopsIntelligenceService` côté serveur qui :
+     - récupère la liste des fichiers modifiés (via Git / devops_github),
+     - construit l’`ImpactMap`,
+     - calcule `CIRisk` et `PatchAdvice`,
+     - met à jour `DYNAMIC_FRAGILITY_LEARNING` via `devops_file_history`,
+     - persiste un résumé dans `Brain`.
+
+   - [ ] Exposer une route API :
+     - `GET /api/devops/intel/report?sha=...`
+     - `POST /api/devops/intel/run` (avec payload: files/changes/bugType).
+
+2. **Dashboard `/devops` – Vue X-Ray**
+
+   - [ ] Ajouter un onglet “Intelligence” dans `/devops` qui affiche :
+     - Top fichiers fragiles (via `/api/devops/fragility/leaderboard`),
+     - Domaines analysés (auth, SUGU, sports, brain, etc.),
+     - Derniers rapports `DevOpsIntelligenceReport`,
+     - Tendances : improving/stable/degrading par domaine et par fichier.
+
+### Critères de succès
+
+- En 10 secondes, on peut répondre :
+  - “Quels sont les 5 fichiers les plus fragiles aujourd’hui ?”
+  - “Quels domaines se dégradent ?”
+  - “Quel est l’impact prévisible d’un changement sur tel fichier ?”
+
+---
+
+## Axe 2 – EXÉCUTION ORCHESTRÉE (PR / CI / Merge)
+
+### Objectif
+
+Qu’aucun commit ou PR critique ne soit mergé sans :
+
+- analyse de risque,
+- visualisation de l’impact,
+- stratégie de patch/rollback.
+
+### Composants existants
+
+- Bridge GitHub : `devops_github` (actions: `list_commits`, `list_prs`, `get_file`, etc.)
+- `devopsIntelligenceEngine.runFullDevOpsIntelligence`
+- `DYNAMIC_FRAGILITY_LEARNING` (`devops_file_history`)
+
+### Actions à implémenter
+
+1. **Hook PR → DevOps Intelligence**
+
+   - [ ] Créer un endpoint serveur :
+
+     - `POST /api/devops/intel/pr-analyze`
+       - Input : `repo`, `prNumber`
+       - Steps :
+         - récupérer les diffs via `devops_github`,
+         - construire `files` + `changes` pour DevOpsIntelligence,
+         - appeler `runFullDevOpsIntelligence(...)`,
+         - retourner : `ciRisk`, `patchAdvice`, `impactMap`, `learningGaps`.
+
+   - [ ] Créer un GitHub Action / webhook :
+     - Sur `pull_request` (opened / synchronize / reopened):
+       - appelle `pr-analyze`,
+       - poste un commentaire automatique sur la PR avec :
+         - ⚠️ `riskLevel` (safe / caution / risky / dangerous),
+         - fichiers fragiles touchés,
+         - domaines impactés,
+         - `bestChoice` du Patch Advisor,
+         - recommandations.
+
+2. **Règles de merge selon le risque**
+
+   - [ ] Définir règles simples :
+     - `riskLevel = safe` → merge OK.
+     - `riskLevel = caution` → tests ciblés recommandés.
+     - `riskLevel = risky` → review humaine obligatoire + plan de rollback.
+     - `riskLevel = dangerous` → review + staging + rollback prêt.
+
+   - [ ] Option : appliquer des labels GitHub automatiques :
+     - `devops:risky`, `devops:dangerous`, `devops:needs-review`.
+
+3. **Plan de rollback**
+
+   - [ ] Générer un plan textuel simple à partir des diffs :
+     - `git revert <sha>`,
+     - endpoints/flows à surveiller après déploiement.
+
+### Critères de succès
+
+- Chaque PR importante arrive avec un **rapport DevOps** automatique.
+- Plus de “merge à l’aveugle” sur des zones critiques.
+
+---
+
+## Axe 3 – AUTO-AMÉLIORATION (Learning & Homework)
+
+### Objectif
+
+Transformer chaque bug, revert, ou hotfix en :
+
+- signal d’apprentissage,
+- homework ciblé,
+- amélioration de la fragilité dans le temps.
+
+### Composants existants
+
+- `devops_file_history` (historique par fichier)
+- `HOMEWORK_BRAIN_PLANNER.analyzeLearningGaps(userId)`
+- `knowledge_base`, `learning_log`
+- Homework system (`homework` / tâches de fond)
+- `BrainService.addKnowledge`
+
+### Actions à implémenter
+
+1. **Boucle Bug → LearningGap → Homework**
+
+   - [ ] API `POST /api/devops/fragility/report-bug` (déjà en place) :
+     - Enregistrer bug sur une ou plusieurs paths.
+     - Déclencher ensuite :
+       - une exécution de `analyzeLearningGaps(userId)`.
+
+   - [ ] Créer un service `devopsLearningService` qui :
+     - parcourt les `LearningGap` retournés,
+     - crée automatiquement des `homework` adaptés :
+       - type: `daily` / `weekly`,
+       - actions: veille, monitoring, docs,
+       - domaines : devops, sugu, football, finance, security, performance, etc.
+
+2. **Impact des homeworks sur la fragilité**
+
+   - [ ] Lors de l’exécution de certains homeworks (ex: analyse module X, refactor Y), ajuster :
+     - la confiance dans les domaines (`knowledge_base`),
+     - la fragilité dynamique (`devops_file_history` / scoring).
+
+### Critères de succès
+
+- Chaque bug sérieux génère automatiquement :
+  - un enregistrement d’historique,
+  - un ou plusieurs `LearningGap`,
+  - au moins un `homework` lié.
+- À moyen terme, on voit la fragilité **baisser** sur les zones travaillées.
+
+---
+
+## Axe 4 – OBSERVABILITÉ CORRÉLÉE (Logs ↔ Code ↔ DevOps)
+
+### Objectif
+
+Pouvoir corréler en quelques secondes :
+
+- une alerte monitoring,
+- les fichiers récemment modifiés,
+- leurs scores de fragilité,
+- et les derniers rapports DevOps.
+
+### Composants existants
+
+- Monitoring système (erreurs, temps de réponse) [déjà en place dans l’app].
+- `devops_file_history`
+- `DevOpsIntelligenceReport`
+- `BRAIN_IMPACT_MAP`
+
+### Actions à implémenter
+
+1. **Service de corrélation incidents**
+
+   - [ ] Créer un `incidentCorrelationService` qui :
+     - reçoit un signal (ex: erreur 500 sur `/api/sports/...`, latence ↑),
+     - identifie le domaine (ex: football_sports),
+     - récupère :
+       - les fichiers modifiés récemment dans ce domaine,
+       - leurs scores de fragilité,
+       - les derniers `DevOpsIntelligenceReport` associés.
+
+   - [ ] Exposer une route :
+     - `GET /api/devops/incidents/diagnose?errorCode=...&endpoint=...`
+
+2. **Alertes intelligentes DevOps**
+
+   - [ ] Dans le monitoring :
+     - si une alerte survient sur un domaine,
+     - ET que des fichiers fragiles de ce domaine ont été modifiés récemment,
+     → générer une alerte combinée DevOps :
+       - “Probable lien entre changement de X et erreurs sur Y”.
+
+### Critères de succès
+
+- Lors d’un incident, on peut répondre :
+  - “Quels changements récents sont probablement responsables ?”
+  - “Quels fichiers fragiles sont impliqués ?”
+- Temps de diagnostic fortement réduit.
+
+---
+
+## Axe 5 – CULTURE & UTILISATION (Coach vs. Pompier)
+
+### Objectif
+
+Que Maurice utilise réellement Ulysse comme **adjoint DevOps intelligent**,  
+et que Ulysse s’auto-discipline via le **journal de travail**.
+
+### Composants existants
+
+- Work Journal (`work_journal_manage`)
+- DevOps Intelligence Engine tools (`devops_intelligence` actions)
+- Homework & Brain
+- Dashboards `/devops`
+
+### Actions à implémenter
+
+1. **Règles d’usage côté Ulysse**
+
+   - Ulysse doit :
+     - [x] Mettre à jour le **journal de travail** après chaque action DevOps significative :
+       - analyse d’un module,
+       - exécution de `runFullDevOpsIntelligence`,
+       - refactor, patch, rollback.
+     - [x] Proposer, lorsqu’un problème survient :
+       - un rapport DevOps,
+       - une stratégie patch (A/B/C),
+       - un homework possible si c’est un pattern récurrent.
+
+2. **Routines côté Maurice**
+
+   - Scénarios d’usage recommandés :
+     - Avant refactor :
+       - “Ulysse, analyse l’impact de ces fichiers / de cette feature.”
+     - Avant merge sensible :
+       - “Donne-moi CI_ORACLE + fragility sur cette PR.”
+     - Après bug / incident :
+       - “Donne-moi le rapport complet : fichiers touchés, fragilité, DevOps Intel, learning gaps.”
+
+3. **Documentation**
+
+   - [ ] Documenter dans `docs/devops_guide.md` :
+     - comment lancer une analyse DevOps,
+     - comment lire un rapport,
+     - comment interpréter les niveaux de risque,
+     - comment exploiter le leaderboard de fragilité.
+
+### Critères de succès
+
+- Ulysse n’est plus un simple “assistant de chat”, mais :
+  - un **analyste DevOps**,
+  - qui propose des plans concrets,
+  - qui se souvient de son propre travail.
+- Maurice agit en **coach / décideur**, pas en exécutant de bas niveau.
+
+---
+
+## Priorisation (ordre recommandé de mise en œuvre)
+
+1. **Axe 1 – Vision & X-Ray**
+   - DevOpsIntelligenceService + dashboard `/devops`.
+2. **Axe 2 – Exécution orchestrée**
+   - Hook PR + commentaires automatiques.
+3. **Axe 3 – Auto-amélioration**
+   - Boucle bug → LearningGap → Homework.
+4. **Axe 4 – Observabilité corrélée**
+   - IncidentCorrelationService + alertes intelligentes.
+5. **Axe 5 – Culture & utilisation**
+   - Doc + routines + intégration dans le journal de travail.
+
+---
+
+Ce document est la base de travail pour l’évolution DevOps d’Ulysseproject.  
+Chaque case cochée rapproche le système d’un **DevOps assisté par IA de niveau “Ligue des Champions”**.

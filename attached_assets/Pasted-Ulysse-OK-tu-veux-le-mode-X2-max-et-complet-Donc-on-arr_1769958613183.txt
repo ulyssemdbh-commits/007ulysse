@@ -1,0 +1,206 @@
+Ulysse
+
+OK, tu veux le mode X2 max et complet.
+Donc on arrête les demi-mesures, on pense comme si on préparait un vrai déploiement “prod+ROI”.
+
+Je te donne un plan unique, mais structuré en 3 axes, avec des tâches concrètes.
+Tu peux le faire en plusieurs passes, mais la cible c’est bien X2 global.
+
+🔧 AXE 1 – CERVEAU (Pronos / AutoLearning / Brain) – X2 INTELLIGENCE
+1.1 Fermer la boucle Pronos ↔ Brain ↔ AutoLearning
+Objectif : chaque prono influence le cerveau, et le cerveau influence les pronos.
+
+Tâches:
+
+Brancher sportsPredictionMemoryService → AutoLearning
+
+Ajouter extractTopicsFromPredictionLearnings(userId) dans AutonomousLearningServiceV2 :
+lire les prédictions gagnantes/perdantes récentes,
+en faire des topics:
+domain="sports",
+patternType="structural" | "situational",
+priorité boostée (importance × 1.3).
+Appeler cette méthode dans runLearningCycle() juste après HOMEWORK.
+Feedback gagnant/perdant → usefulness/confidence
+
+Dans sportsPredictionMemoryService.recordResult():
+récupérer la liste des knowledgeIds utilisés pour cette prédiction (déjà loggés ou à ajouter),
+appeler learningOptimizer.onKnowledgeUsed(userId, knowledgeIds, { result: "win" | "loss", edge }).
+Implémenter dans learningOptimizer:
+si win: usefulness += base * edgeFactor, confidence += α
+si loss: usefulness -= (base * edgeFactor)/2, confidence -= β
+Loguer les mises à jour pour debug.
+Activer L5 Cross-Domain de manière utile
+
+Tu as corrigé L5 et ajouté un wrapper → parfait.
+Ajuster les conditions pour lancer L5:
+au moins 4 insights L4 avec:
+domain ∈ {"sports","trading","sugu","dev"}
+confidence ≥ 80
+Lancer L5 1–2 fois par jour via DynamicJobPrioritizer dans un job dédié:
+job: AutoLearning_L5_CrossDomain.
+1.2 AutoLearning V2 “poupées russes” opérationnel sur 4 domaines clés
+Objectif : avoir 4/5 topics premium qui montent jusqu’à L4.
+
+Tâches:
+
+Ajouter manuellement 3–5 topics stratégiques
+
+Via autonomousLearningService.addManualTopic pour user 1:
+“Value bets Ligue 1 2025/26” (domain=sports)
+“Gestion de bankroll prudente” (domain=trading)
+“Optimisation stocks SUGU” (domain=sugu)
+“Architecture Ulysse V4” (domain=dev)
+Forcer 1–2 cycles AutoLearning complets pour ces topics (L1→L4) via un job ou un endpoint interne.
+Activer LearningOptimizer pour auto-promotion
+
+Vérifier que:
+L2/L3 sont scorés (spécificité, actionabilité, nouveauté, cohérence),
+les meilleurs sont promus en L4 automatiquement.
+Ajouter des logs de type:
+[LearningOptimizer] Promoted to L4: topic=X, score=Y.
+1.3 Confidence Decay + Metrics
+Objectif : maintenir un cerveau “fit” (pas obèse, pas vide).
+
+Tâches:
+
+Job decay bien calibré
+
+Ajuster la logique de decay:
+concepts stables (dev, maths, patterns structurels) → faible decay,
+patterns contextuels (forme équipes, news marché) → decay fort.
+Job nightly qui:
+diminue confidence sur non-utilisés > 30 jours,
+remonte confidence sur ceux récemment utilisés dans:
+prédictions gagnantes,
+réponses “importantes” (à tagger plus tard).
+Dashboard “Cerveau”
+
+Exposer un endpoint / page:
+totalTopics, L4 count, L5 count,
+avgConfidence par domaine (sports, trading, sugu, dev),
+derniers insights L4/L5 générés.
+Même un simple JSON/console au début est suffisant.
+⚡ AXE 2 – EXÉCUTION (Action-First partout) – X2 EFFICACITÉ
+2.1 Purge V1 / Code mort
+Objectif : une seule voie pour chaque action, plus de chemins morts.
+
+Tâches:
+
+Supprimer les V1 / services doublons
+
+autonomousLearning.ts (V1) → déprécié, puis supprimé si plus aucun import.
+ulysseToolsService.ts (V1) → SUPPRIMER (tu as déjà vu 0 import).
+Gmail V1:
+gmailService.ts, gmailOAuthService.ts, replitGmailService.ts → fusionner ce qui est utile dans unifiedEmailService.ts ou les archiver clairement comme legacy.
+rateLimiterService.ts si doublon avec rateLimiter.ts.
+Passer un coup d’audit automatique (type script simple)
+
+Script pour lister tous les fichiers sans import entrants → confirmer code mort → suppression.
+2.2 Orchestrator/Markers: chemin unique pour Ulysse
+Objectif : toutes mes actions passent par le même pipeline.
+
+Tâches:
+
+Centraliser la gestion de réponse dans conversations.ts
+Vérifier que processConversationRequest fait bien:
+Construction ActionContext (userId, persona, isOwner, etc.),
+detectWorkflow(userMessage),
+createExecutionPlan(...),
+injection promptInjection AVANT baseSystemPrompt,
+appel OpenAI avec ulysseToolsV2,
+passage de la réponse dans UnifiedMarkerExecutor.
+Vérifier que tous les marqueurs réels sont gérés
+UnifiedMarkerExecutor.parseMarkers doit couvrir:
+Email (envoi, preview),
+Todoist / Kanban,
+Domotique,
+Spotify,
+Fichiers (PDF/Word/Excel),
+SUGU,
+Pronos (si tu as des marqueurs dédiés).
+Ajouter des tests/asserts simples en dev:
+“tout marqueur vu doit avoir un handler”.
+2.3 Permissions & Personas
+Objectif : zéro confusion entre Ulysse / Iris / Alfred.
+
+Tâches:
+
+Aligner SPEAKER_PERSONA_MAP + PersonaProfiles + Orchestrator
+Vérifier que:
+getPersona(context) renvoie bien “ulysse” pour toi, “iris” pour famille, “alfred” pour le reste,
+OWNER_ONLY_ACTIONS et FAMILY_ACTIONS sont alignés avec:
+PersonaProfiles.allowedCapabilities,
+UnifiedMarkerExecutor.OWNER_ONLY_MARKERS/FAMILY_MARKERS.
+Tester 3 scénarios:
+toi → domotique + SUGU + prono + mail,
+Iris → mail + todoist + spotify, pas domotique critique,
+Alfred → lecture seule, aucune action.
+🧩 AXE 3 – SURFACE (ce que tu ressens au quotidien) – X2 RESSENTI
+3.1 Routines automatiques “associé”
+Objectif : Ulysse qui travaille pour toi sans que tu le sollicites à chaque fois.
+
+Tâches:
+
+Brief quotidien “Owner”
+Job matin (ex: 8h):
+regarder:
+agenda,
+Todoist / Kanban “haut prio”,
+matchs du jour + value bets potentiels,
+éventuel signal marché/trading (via homework + marchés),
+SUGU si jour critique (stock/courses).
+produire un message structuré (même en log au début) que je peux te résumer:
+“Aujourd’hui : 2 matchs intéressants, 1 opportunité trading, 1 point SUGU, 3 tâches critiques.”
+Routine “Paris du jour”
+Job quelques heures avant les gros matchs:
+appeler cache sports + modèles,
+sélectionner:
+1–2 SAFE,
+1–2 VALUE,
+les stocker sous forme de “propositions du jour” dans une table ou learningLog.
+Quand tu dis “propose-moi des paris aujourd’hui”, je pioche là-dedans + recalcul si besoin.
+Routine “SUGU / Business”
+Job journalier SUGU:
+analyser réserves / patterns d’achats (via Suguval & Maillane),
+détecter:
+ruptures possibles,
+sur-stocks,
+tendances de consommation.
+générer 1–2 insights:
+“Attention: X se vide plus vite que d’habitude”,
+“Tu commandes trop de Y”.
+3.2 Interface “Proprio de cerveau”
+Objectif : que tu voies l’état de l’IA comme le dashboard d’un business.
+
+Tâches:
+
+Vue “Owner” simple
+Peut être:
+une page console,
+ou un endpoint JSON visualisé dans un petit dashboard.
+Contient:
+Santé système (déjà dans diagnostics),
+Cerveau (topics, L4/L5, domaines),
+Pronos (stats ROI, winrate par tag SAFE/VALUE),
+Jobs (prochains/derniers run prono, autolearning, SUGU, etc.).
+Même un truc brut, c’est suffisant pour toi: tu veux piloter, pas faire joli.
+
+3.3 Comportement Ulysse adapté à X2
+De mon côté, avec tout ça en place, je dois:
+
+exploiter:
+les insights L4/L5 quand je donne un conseil ou un prono,
+les patterns SUGU / trading / sports,
+les routines (briefs, paris du jour) dès que tu touches un sujet.
+continuer en mode:
+Action-First (j’exécute, je récap),
+Owner-first (je considère que je suis ton associé, pas un chatbot).
+En résumé:
+
+Tu as déjà fait la moitié du chemin (V4, Orchestrator, LearningOptimizer, Security, Audit).
+X2 max et complet, c’est:
+fermer toutes les boucles (surtout prono ↔ learning ↔ jobs),
+supprimer DEFINITIVEMENT les V1/legacy,
+brancher des routines qui travaillent pour toi sans que tu demandes,
+et te donner une vue “proprio de cerveau”.

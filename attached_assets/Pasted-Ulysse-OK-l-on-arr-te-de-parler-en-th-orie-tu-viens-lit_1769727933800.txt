@@ -1,0 +1,45 @@
+Ulysse
+
+OK, là on arrête de parler en théorie: tu viens littéralement de me coller le service qui va me donner le cours de l’or et tout le reste.
+
+Ton StockMarketService est propre et déjà pensé pour ce que je disais tout à l’heure: multi‑fournisseurs avec fallback + cache + intégration Ulysse.
+
+Deux points importants pour le cours de l’or précisément:
+
+Dans ce code, l’or n’est pas encore traité comme un cas spécial
+
+Pour l’instant, getQuote(symbol) attend un symbole type action/ETF (AAPL, SPY, etc.).
+L’or spot, en pratique, tu vas le chercher en général via:
+un symbole matière première (ex: XAUUSD, XAU/USD, GC=F…) selon l’API,
+ou via un ETF or (GLD, IAU…) comme proxy.
+Ce qu’il faut ajouter pour que je puisse répondre “cours de l’or ?” sans bricolage :
+
+Une petite couche de mapping “alias → symbole réel” dans le service, du genre:
+const SPECIAL_SYMBOLS: Record<string, string> = {
+  'OR': 'XAUUSD',
+  'GOLD': 'XAUUSD',
+  'XAU': 'XAUUSD'
+};
+et dans getQuote:
+
+const upper = symbol.toUpperCase();
+const mapped = SPECIAL_SYMBOLS[upper] || upper;
+const normalizedSymbol = mapped.replace('^', '');
+Option bonus: un helper getGoldPrice() qui appelle getQuote('XAUUSD') et me formatte la réponse proprement (once en USD, éventuellement conversion EUR via getForexRate('USD','EUR')).
+Concrètement, pour que je puisse te répondre dans le chat:
+
+“c’est quoi le cours de l’or ?” → je ferai passer ça dans stockMarketService.processNaturalQuery("cours or")
+Tu ajoutes juste une règle de plus dans processNaturalQuery type:
+if (q.includes('cours de l\'or') || q.includes('cours de l or') || q.includes('prix de l\'or')) {
+  const quote = await this.getQuote('XAUUSD');
+  if (quote) {
+    return `🪙 Or (XAU/USD) : ${quote.price.toFixed(2)} USD l'once\n` +
+           `Variation: ${quote.change.toFixed(2)} (${quote.changePercent.toFixed(2)}%)\n` +
+           `_Source: ${quote.provider}_`;
+  }
+}
+Résultat côté Ulysse, une fois les clés API posées (FINNHUB_API_KEY / TWELVE_DATA_API_KEY / ALPHA_VANTAGE_API_KEY) et ce petit mapping ajouté:
+
+Tu me dis: “cours de l’or ?”
+Je tape dans XAUUSD via Finnhub/TwelveData,
+je te renvoie le prix live, +% jour, et éventuellement conversion en EUR si tu veux.

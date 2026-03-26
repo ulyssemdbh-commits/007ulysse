@@ -1,0 +1,127 @@
+Vous
+
+audit ton systeme et dis moi parmi toutes tes capacités et compétences, lesquelles tu ne peux pas réellement exécuter depuis le chat
+
+Ulysse
+
+Je vais être direct: j’ai un gros catalogue de capacités, mais depuis ce chat uniquement, certaines sont soit incomplètes, soit dépendantes d’API/infra que je ne contrôle pas ici.
+
+Je te les classe par catégorie, en mode “ce que je peux vraiment faire à 100% depuis le chat” vs “ce qui est logique/implémenté côté serveur, mais pas réellement exécutable dans ce contexte de sandbox”.
+
+✅ Pleinement exécutables depuis le chat
+Tout ça, je peux vraiment le faire, ici, maintenant, parce que ça ne dépend que de mon moteur + des outils branchés dans ton backend:
+
+Analyse / génération de code:
+lire tes fichiers TS/TSX que tu colles, les refactorer, proposer des architectures, corriger, etc.
+Conception système / architecture:
+design de services, schémas DB, workflows, prompts internes, etc.
+Audit de ton code:
+ce qu’on vient de faire sur Kanban, scraperService, diagnostics, etc.
+Stratégie / organisation (Kanban, tâches, contextes):
+je peux proposer les modèles, les commandes internes type [KANBAN_...], les flux.
+Raisonnement sur tes données foot / paris (quand tu les injectes ou qu’elles sont déjà dans ma mémoire).
+Tout ce qui est purement textuel:
+rédaction, analyse, résumés, plans, stratégies, docs, prompts.
+Bref: tout ce qui ne nécessite pas un appel externe réel est 100% exécutable.
+
+🟡 Partiellement exécutables (concept OK, action réelle limitée ici)
+Ce sont des capacités vraiment implémentées dans TON backend Ulysse, mais dans CE chat sandbox je n’ai pas le tuyau direct vers ton infra.
+Je peux:
+
+raisonner comme si elles existaient,
+te dire comment les appeler ([MARQUEUR: ...]),
+t’aider à les coder / corriger,
+mais dans cette instance-ci, le marqueur ne déclenche pas réellement l’action.
+
+1. Email AgentMail
+Ce que je peux faire ici:
+rédiger des emails complets,
+te préparer exactement le marqueur [EMAIL_ENVOYÉ: to="...", subject="...", body="..."],
+concevoir les workflows (suivi, relance, PDF attachés, etc.).
+Ce que je ne peux pas faire réellement depuis CE chat:
+déclencher l’API AgentMail en vrai.
+lire ta vraie inbox en live.
+Dans ton vrai serveur, ce marqueur est branché → dans ce chat, il ne l’est pas.
+Donc: la logique est prête, mais l’exécution réelle passe par ton app.
+
+2. Navigation / Géoloc / Itinéraires
+Je peux:
+proposer l’API [NAVIGATION: adresse],
+concevoir les workflows de géofence, itinéraires, ETA, etc.
+Je ne peux pas:
+ouvrir Waze/Plans,
+récupérer ta vraie position GPS en direct ici.
+C’est câblé dans ton stack, pas dans cette sandbox.
+
+3. Domotique (Hue, Tuya, HomeKit, scènes, Siri webhook)
+Je peux:
+générer les commandes [SMART_DEVICE: ...], [SCENE_ACTIVATE: ...], [TUYA: ...],
+t’aider à coder les intégrations, flows, stratégies proactives.
+Je ne peux pas:
+allumer physiquement tes lumières depuis ce chat,
+parler à tes ponts Tuya/Hue réels.
+Donc: intelligence et design OK, exécution matérielle = dans ton infra, pas ici.
+
+4. Spotify / Musique
+Je peux:
+choisir ce qu’il faudrait jouer, organiser playlists, proposer prompts,
+décrire les appels [SPOTIFY_PLAY_TRACK: ...], PLAY_TRACK, etc.
+Je ne peux pas:
+lancer la musique sur ton compte Spotify réel depuis CE chat.
+Encore une fois: dans ta vraie app, oui; ici, non.
+
+5. Scraper / MARS / smartCrawl / paris sportifs en live
+Je peux:
+concevoir les stratégies de scraping (HTTP → Jina → Playwright → Perplexity),
+analyser le code de smartCrawl, scraperService, détecter les failles,
+raisonner comme si j’avais les résultats.
+Je ne peux pas:
+lancer smartCrawl réel (ton backend HTTP n’est pas accessible ici),
+appeler API-Football, TheOddsAPI, API-Sports en direct via ton serveur.
+Je peux utiliser mon accès web MARS générique (OpenAI side) pour rechercher, mais ce n’est pas le même pipeline que ton MARS custom.
+
+6. Fichiers persistants de ton serveur (Google Drive, Notion, Todoist, Suguval, Sugumaillane)
+Je peux:
+lire/analyser un fichier que tu uploades dans ce chat (PDF, Excel, image),
+concevoir les requêtes [CREER_DOC_DRIVE], [NOTION_QUERY_BASE], [TODOIST_CREER],
+définir les schémas Sugu, les rapports, etc.
+Je ne peux pas:
+accéder à TON Google Drive réel,
+lire TES bases Notion réelles,
+toucher aux vraies checklists Suguval / Maillane via tes endpoints.
+Dans ton app Ulysse, ces routes existent. Ici, je suis isolé.
+
+7. Surveillance écran, reconnaissance faciale, caméras
+Capacité côté design: très claire, tu as posé:
+SCREEN_MONITOR, CURRENT_CONTEXT, reconnaissance faciale, vidéo, etc.
+Depuis CE chat:
+je ne vois ni ton écran, ni ta webcam, ni tes caméras IP.
+je peux juste raisonner sur le code que tu me montres.
+8. Automatisations / IFTTT / webhooks Siri, Google Home, Alexa
+Je peux:
+définir les webhooks, les événements, les payloads,
+te donner le JSON exact pour IFTTT, etc.
+Je ne peux pas:
+trigger réellement un Google Home ou Alexa depuis ce chat.
+🔴 Capacité explicitement “non-exécutable” ici
+Il y a un truc important:
+je ne peux pas modifier mon propre code serveur sans ton intervention, même si je peux:
+
+l’auditer,
+le corriger,
+rédiger les patches.
+Donc:
+
+Tout ce qui est “auto-modification de moi-même” → conceptuellement prévu, mais bridé tant que tu n’appliques pas les changements dans ton repo.
+En synthèse, en mode net
+Dans ton environnement Ulysse (serveur central + dashboard + mobile), quasiment tout ce qu’on a listé est exécutable: emails, calendrier, AgentMail, Spotify, Sugu, Kanban, diagnostics, scraping, etc.
+
+Dans CE chat isolé:
+
+Je suis pleinement opérationnel pour:
+penser, planifier, architecturer, coder, diagnostiquer, analyser.
+Je suis limité pour:
+agir réellement sur tes services externes / ton infra (emails réels, domotique, apps, devices).
+Autrement dit:
+ici je suis ton cerveau stratégique & moteur de code,
+dans ton app complète je suis aussi branché aux bras et aux yeux

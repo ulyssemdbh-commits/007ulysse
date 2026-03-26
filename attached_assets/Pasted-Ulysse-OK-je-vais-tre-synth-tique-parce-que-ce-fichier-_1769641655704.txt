@@ -1,0 +1,324 @@
+Ulysse
+
+OK, je vais être synthétique, parce que ce fichier est un monstre.
+
+Je te fais un retour en 5 points : structure, voix, perf, UX, dette technique.
+
+1. Structure générale
+Points forts :
+
+Le Dashboard est clairement le “hub central” : conversations, voix, géoloc, panels, preview, etc.
+Tu utilises bien les hooks spécialisés (useVoice, useRealtimeVoice, useWebRTCCall, useGeolocation, useRealtimeSync, etc.) → bonne séparation logique.
+La gestion des panels via usePanelManager est propre : ça évite 40 useState.
+Points faibles :
+
+Le composant fait tout : UI + orchestration voix + logique conversation + triggers homework + navigation parsing + affichage fichiers + gestion iOS, etc.
+Beaucoup de logique dans le JSX (handlers complexes inline).
+C’est dense : lire/maintenir ça demande un gros contexte mental.
+Ce que je ferais à terme (pas urgent, mais souhaitable) :
+
+Extraire des sous-composants “intelligents” :
+VoiceControls (header mic/voice/call),
+StatusBar,
+MainChat (messages + input),
+PanelsOrchestrator.
+Garder Dashboard comme orchestrateur qui passe les bons props.
+2. Voix & conversation (le gros morceau)
+Ce que tu gères déjà très bien :
+
+Wake word (“Hey Ulysse / Hey Iris”),
+Mode conversation continu,
+Commandes vocales (“on reprend plus tard”, “Over”),
+Auto-restart du mic après TTS avec cooldown,
+Echo protection multi-niveaux :
+bloc dur pendant que ça parle,
+cooldown temporel,
+comparaison avec lastSpokenText (isEchoOfTTS),
+côté useVoice (echo guard énergie + contenu).
+C’est très avancé. Tu n’es clairement pas en mode “on/off du micro façon demo YouTube”.
+
+Points d’attention / risques :
+
+Logique dispersée entre useVoice et Dashboard
+
+Tu as de la logique echo/prevention côté hook ET ici (cooldown, isEchoOfTTS).
+C’est efficace, mais il faut vraiment faire gaffe à ne pas diverger entre les deux, sinon tu te tapes des edge cases bizarres (transcripts qui passent d’un côté mais pas de l’autre).
+Beaucoup de side-effects dans des useEffect qui dépendent de plein de choses
+
+useEffect sur transcript qui fait wake word, pause, over, conversationMode, etc.
+Si tu touches au modèle de transcript dans useVoice, tu dois repasser ici.
+Complexité du flux conversationnel
+
+pendingVoiceMessageRef, timers 1.5s de silence, auto-submit “à toi”, auto-restart mic…
+Ça marche, mais c’est une vraie FSM implicite.
+Suggestion (quand tu voudras aller en V2-vraiment-clean sur la voix) :
+
+Définir une FSM explicite (state machine) pour la conversation vocal :
+idle / wake / listening / thinking / speaking / cooldown.
+Encapsuler toute la logique “réagir à transcript” dans un hook dédié type useVoiceConversationEngine, avec une API claire :
+onUserMessage(text),
+onTTSStart/End,
+onWakeWord,
+onPause/Over.
+Mais pour l’instant, ça tient debout.
+
+3. Perf & UX
+Points très positifs :
+
+useMemo pour :
+personaName,
+isSearching, isAnalyzing (orb),
+conversationMood, ambiance,
+conversationContext pour realtime.
+Auto-scroll géré via scrollRef.
+Réactivité sur les panels et les animations (Framer Motion bien utilisé).
+Gestion iOS TTS unlock via :
+slide dédié,
+touchstart global.
+Points à surveiller :
+
+Nombre de useEffect dépendant d’objets lourds (ex: activeConversation?.messages) → reruns fréquents, mais OK vu ton usage, c’est du Dashboard.
+Lecture/écriture multiple dans localStorage (mic state, realtime mode, daily trigger) → ça va, rien de dramatique.
+UX :
+
+Les CTA sont cohérents : micro, autospeak, call, panels.
+Le header est chargé, mais logique pour une app “pro cockpit”.
+Sliders iOS pour TTS unlock : très bon pour la compliance.
+4. Gestion des erreurs & diagnostics
+Gros plus :
+
+useRealtimeDiagnostics branché :
+logs permission mic denied,
+tracking d’erreurs websocket pour realtime voice avec auto-reconnect.
+PreviewConfirmationCard pour les actions sensibles (AI preview).
+Gestion d’erreur dans handleSendMessage :
+Abort 90s timeout,
+message d’erreur ajouté dans la conversation,
+logs console.
+On est loin du “fetch sans try/catch”.
+
+5. Dettes techniques / axes d’amélioration concrets
+Je te remonte les trucs les plus impactants si tu veux une V2 “propre” du Dashboard :
+
+Trop de responsabilités dans un seul composant
+
+On l’a dit, mais c’est LA dette :
+voix (2 modes : local + realtime + call),
+géoloc,
+homework trigger,
+panels,
+afficher fichiers / images via markers,
+navigation parsing.
+Gagner en lisibilité = extraire des sous-blocs.
+Flux voix/text confluent dans un seul handler handleSendMessage
+
+Tous les chemins (input texte, voice, fichier, vision, display markers, navigation tags) passent par là.
+Ça marche, mais c’est difficile à “reason about”.
+Parsing de la réponse pour actions (AFFICHER_IMAGE, NAVIGATION) embed inline
+
+Ce code mériterait d’être dans un hook utilitaire :
+useResponseSideEffects({ displayWindow, panels, setNavigationDestination })
+ou une fonction processAssistantResponse(fullResponse).
+Détection d’echo à deux niveaux (hook + Dashboard)
+
+Ça améliore la robustesse mais complexifie le modèle mental.
+À terme, tout ce qui est echo / transcript filtering devrait idéalement vivre DANS useVoice et exposer uniquement des transcripts “validés”.
+En résumé :
+
+Le Dashboard est massif, mais cohérent (ce qui est rare quand ça devient aussi gros).
+Ta gestion de la voix, iOS, echo, nav, panels est franchement au-dessus de la moyenne.
+Si tu veux passer en V2 “propre architecturale”, les priorités seraient :
+Extraire la logique de traitement de transcript dans un hook à part (voice conversation engine).
+Extraire la logique post-réponse (AFFICHER_IMAGE, NAVIGATION, Preview) dans une fonction util / hook.
+Découper Dashboard en 3 gros sous-composants : Header/VoiceControls, MainChat, Panels.
+Si tu veux, on peut attaquer justement le point 2 (refactor propre du traitement de fullResponse : display, navigation, preview) ou le point 1 (hook useVoiceConversationEngine autour de transcript).
+Tu préfères que je commence par lequel ?
+
+Vous
+
+focus sur les points faibles
+
+Ulysse
+
+Parfait, on passe en mode critique ciblé. Je vais te pointer uniquement les trucs qui me gênent vraiment, avec des suggestions concrètes.
+
+Je regroupe par “paquets de dette” pour que tu voies où ça pique le plus.
+
+1. Composant God-Object (Dashboard fait tout)
+Symptôme
+Dashboard gère :
+
+état voix (mic, TTS, echo, wake word, conversation mode),
+logique de call WebRTC,
+logique de chat (messages, streaming, parsing réponse),
+gestion des panels,
+homework daily trigger,
+géoloc + navigation,
+iOS unlock, iOS slide, etc.
+Résultat :
+
+Lire/comprendre ce composant demande de charger un énorme contexte mental.
+Chaque petit changement (ex: sur la voix) risque d’avoir des effets de bord ailleurs.
+Ce que ça peut causer
+
+Bugs difficiles à isoler (un useEffect qui réagit à un état qu’il ne devrait pas),
+Régressions silencieuses quand tu touches un endroit “anodin”,
+Impossibilité à terme d’ajouter des features sans rendre le fichier ingérable.
+Ce que je ferais
+Sans tout casser, tu peux déjà dégager 3 sous-blocs “logiques” :
+
+VoiceControlsHeader (tout le header avec mic/autospeak/call + panels + logout)
+ChatArea (messages + streaming + input + envoi)
+PanelsLayer (history/memory/diagnostics... + geolocation + camera + integrations + modals)
+Le but : que Dashboard devienne un orchestrateur :
+
+il monte les hooks globaux,
+et passe aux sous-composants des props claires (ex : voiceState, onSendMessage, panels).
+2. Logique voix / transcript trop éclatée
+Symptôme
+
+Filtrage echo & logique transcript :
+une grosse partie dans useVoice (echo guard, VAD, etc.),
+une autre dans Dashboard :
+blocage pendant isSpeaking,
+cooldown via ttsEndTimeRef,
+isEchoOfTTS,
+“Over”, “on reprend plus tard”, wake words, conversationMode, etc.
+Plusieurs useEffect très denses pivots sur transcript.
+Ce que ça peut causer
+
+Effets de bord subtils :
+un jour tu changes l’ordre des effets ou la logique echo dans le hook → certains transcripts passent, d’autres non, sans que ce soit évident.
+Bugs “fantômes” :
+cas où un transcript est filtré par l’un mais attendu par l’autre,
+convo qui ne se déclenche pas ou se coupe sans explication claire.
+Ce que je ferais
+
+Extraire la logique “conversation vocale” dans un hook dédié, par exemple :
+
+const {
+  conversationMode,
+  handleNewTranscript,   // appelé quand useVoice fournit un transcript
+  handleTTSEvent,        // start/end
+  shouldIgnoreTranscript // (pour debug, si besoin)
+} = useVoiceConversationEngine({ user, speak, stopListening, ... });
+Et dans Dashboard, tu gardes :
+
+useEffect(() => {
+  if (!transcript) return;
+  handleNewTranscript(transcript);
+}, [transcript, handleNewTranscript]);
+Tout ce qui est :
+
+wake word,
+“Over”,
+“on reprend plus tard”,
+conversationMode,
+cooldown after TTS,
+pendingVoiceMessageRef + auto-send après 1.5s → vit dans ce hook, pas dans le composant.
+3. handleSendMessage = entonnoir monstrueux
+Symptôme
+Cette fonction fait TOUT :
+
+gère l’input texte,
+ajoute le contexte fichier (pendingFileAnalysis),
+envoie la requête HTTP,
+gère le streaming SSE,
+reconstruit fullResponse,
+met à jour le cache React Query,
+parse les markers [AFFICHER_IMAGE], [AFFICHER_TEXTE],
+cherche des fichiers par nom,
+parse le NAVIGATION tag,
+déclenche displayWindow,
+gère errors + message d’erreur dans la conversation,
+gère TTS (clean du markdown, suppression des markers, navigation tags, etc).
+Ce que ça peut causer
+
+Toute régression sur un aspect (fichiers, navigation, display, TTS) peut casser le flux global.
+Difficile de tester une seule responsabilité (ex : “est-ce que la logique de display de fichier marche bien ?”).
+Ce que je ferais
+
+Le découper en petits morceaux pures :
+
+buildOutgoingMessage(content, pendingFileAnalysis)
+→ renvoie { content, imageDataUrl, clearedPending }
+
+streamAssistantResponse(conversationId, payload)
+→ renvoie fullResponse ou throw une erreur.
+(juste le fetch + stream + reconstruction du texte)
+
+applyAssistantResponseToCache(fullResponse)
+→ ajoute le message assistant dans React Query.
+
+runResponseSideEffects(fullResponse)
+→ parse markers / navigation / display :
+
+[AFFICHER_IMAGE: ...]
+[AFFICHER_TEXTE: ...]
+[NAVIGATION: ...]
+speakAssistantResponse(fullResponse)
+→ clean + speak.
+
+Tu gardes handleSendMessage comme orchestrateur :
+
+const handleSendMessage = useCallback(async (messageText?: string) => {
+  const { content, imageDataUrl, clearedPending } = buildOutgoingMessage(...);
+  // … post, stream, get fullResponse
+  applyAssistantResponseToCache(fullResponse);
+  await runResponseSideEffects(fullResponse);
+  speakAssistantResponse(fullResponse);
+}, [...]);
+Ça réduit la complexité cognitive d’un gros bloc de 150+ lignes en 5 fonctions claires.
+
+4. Multiplication des useEffect à effets forts
+Tu as beaucoup de useEffect qui :
+
+déclenchent des side-effects non triviaux :
+démarrage/arrêt mic,
+TTS unlock iOS,
+daily homework trigger,
+restauration mic depuis localStorage,
+greetings auto (avec TTS),
+auto-scroll,
+re-start mic après TTS.
+Le problème n’est pas chaque effet en soi, mais le fait que tout soit dans le même composant, avec des dépendances croisées (ex: conversationMode, isStreaming, isListening, ttsUnlocked, etc.)
+
+Risques
+
+Ordre d’exécution / timing qui peut créer des race conditions (par ex. start/stop mic qui se chevauchent).
+Corrections locales qui cassent un cas iOS ou un cas particulier (owner vs external).
+Piste simple
+Sans tout ré-écrire, tu peux :
+
+Annoter clairement (en commentaire) les effets critiques :
+// [VOICE], // [IOS TTS], // [HOMEWORK], // [NAVIGATION]
+Regrouper certaines logiques dans des hooks :
+useDailyHomeworkTrigger(user),
+useIOSAudioUnlock(isIOS, ttsUnlocked, unlockTTS),
+useAutoScroll(scrollRef, [messages, streamingContent]).
+Ça garde le code logique mais t’allège le Dashboard.
+
+5. Cohabitation WebRTC Call / Realtime Voice / Local Voice
+Tu as :
+
+useWebRTCCall (call bidirectionnel PCM16),
+useRealtimeVoice (WebSocket LLM streaming),
+useVoice (whisper + TTS local, wake word, etc.).
+Pour l’instant, tu ne sembles pas trop mélanger les trois, mais clairement :
+
+La surface d’interaction est grande (et va grandir).
+Tu as déjà un risque que l’état d’un système se contredise avec l’autre (ex : call actif vs conversationMode vs isListening).
+Amélioration à prévoir plus tard
+Un truc du genre useVoiceOrchestrator qui sait :
+
+“en mode call” → on ne fait pas de useVoice local, ou on limite certaines features,
+“en mode realtime voice” → on gère différemment les transcripts.
+Pas à faire tout de suite, mais c’est un point faible latent.
+
+Si je devais prioriser les faiblesses à traiter :
+
+Découper handleSendMessage + la logique de post-réponse → tu gagnes tout de suite en lisibilité et robustesse.
+Créer un hook useVoiceConversationEngine et sortir la logique transcript de Dashboard.
+Après ça, seulement, commencer à extraire des sous-composants UI (Header, Chat, Panels).
+On peut attaquer l’un d’eux maintenant.
+Tu préfères que je commence par te sortir un vrai runResponseSideEffects(fullResponse) propre, ou par la V1 d’un hook useVoiceConversationEngine qui remplace ton gros useEffect sur transcript ?

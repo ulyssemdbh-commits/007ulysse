@@ -1,0 +1,168 @@
+Ulysse
+
+Oui, là tu as posé un vrai Storage Core Ulysse.
+
+Ce module est propre, cohérent et surtout très aligné avec ce qu’on a construit :
+
+Isolation par userId partout (projects, tasks, notes, homework, media, files…) → parfait pour la confidentialité.
+Gestion des approvedUsers avec limite MAX_APPROVED_USERS = 3 → exactement ce qu’il faut pour “toi + tes filles”.
+AmbianceProfiles, VoiceSettings, Homework, MediaLibrary, FaceDescriptors, Charter → tout ce qui touche à mon comportement, ma voix, mon ambiance, ma reconnaissance faciale est centralisé ici.
+getCharter() qui renvoie un charter par défaut si rien n’est encore en DB → ça garantit que j’ai toujours un comportement défini, même sans config.
+En plus tu as déjà pensé à :
+
+la synchro temps réel sur les fichiers (broadcastToUser dans createUlysseFile),
+la logique métier sur Homework (set completedAt quand status=completed),
+l’activation exclusive d’un profil d’ambiance (setActiveAmbianceProfile désactive les autres).
+Honnêtement, pour un “Storage Core”, c’est robuste, clair, et suffisant pour que je puisse :
+
+charger ton UlysseCharter,
+respecter tes settings vocaux,
+manipuler tes homeworks, tes projets, tes fichiers générés,
+et brancher tout ça avec tout ce qu’on a fait (Voice Core, Voice Auth, MARS, Scraper, Translation, etc.).
+À ce stade, tu as :
+
+un Cerveau (MARS + mémoire + verified),
+un Corps (Voice Core + Avatar + Speaker/Face),
+un Système nerveux (Storage, Homework, Activity, Snapshots).
+C’est exactement ce qu’il fallait pour un Ulysse full CORE, puissant, autonome et vraiment à toi.
+
+Vous
+
+des ameliorations ?
+
+Ulysse
+
+Oui, on peut le pousser encore un peu en “Core Ulysse” sans tout refondre.
+Ton DatabaseStorage est déjà très bon, je te propose des améliorations ciblées, pas un gros refactor.
+
+Je te donne des axes, tu pourras les prendre un par un.
+
+1️⃣ Centraliser la gestion owner / approved (sécurité logique)
+Tu as approvedUsers mais les méthodes de storage ne savent pas si l’appelant est:
+
+l’owner (toi),
+un approved (tes filles),
+un externe (Alfred).
+Pour renforcer la logique “Ulysse n’est que pour toi + approuvés” tu peux ajouter une petite couche au-dessus du storage:
+
+soit un AccessControlService,
+soit des helpers dans le Storage pour savoir rapidement:
+async isOwner(userId: number): Promise<boolean> {
+  const user = await this.getUser(userId);
+  return !!user?.isOwner;
+}
+
+async isOwnerOrApproved(userId: number): Promise<boolean> {
+  const user = await this.getUser(userId);
+  if (!user) return false;
+  if (user.isOwner) return true;
+  const approved = await this.isUserApproved(userId);
+  return approved;
+}
+Et ensuite, dans ton API / routes:
+
+Tu peux refuser certaines opérations si !isOwnerOrApproved(userId)
+(par ex. accès à certains homeworks, settings, SUGU plus tard, etc.).
+2️⃣ Harden addApprovedUser (éviter doubles / incohérences)
+Tu as déjà un MAX_APPROVED_USERS. On peut rajouter deux garde-fous:
+
+Empêcher d’ajouter deux fois le même user:
+async addApprovedUser(data: InsertApprovedUser): Promise<ApprovedUser> {
+  const count = await this.getApprovedUserCount();
+  if (count >= MAX_APPROVED_USERS) {
+    throw new Error(`Maximum of ${MAX_APPROVED_USERS} approved users allowed`);
+  }
+
+  const existing = await db.select().from(approvedUsers).where(eq(approvedUsers.userId, data.userId));
+  if (existing.length > 0) {
+    return existing[0];
+  }
+
+  const [approved] = await db.insert(approvedUsers).values(data).returning();
+  return approved;
+}
+Optionnel: empêcher d’approuver un user qui n’existe pas (au cas où):
+const user = await this.getUser(data.userId);
+if (!user) {
+  throw new Error("Cannot approve unknown user");
+}
+3️⃣ Stocker le UlysseCharter par défaut en DB (au lieu de juste le retourner)
+Actuellement, getCharter:
+
+renvoie un charter par défaut si rien en DB,
+mais ne le persiste pas.
+Tu peux faire en sorte que le premier getCharter crée automatiquement une entrée:
+
+async getCharter(userId: number): Promise<UlysseCharter> {
+  const [existing] = await db
+    .select()
+    .from(ulysseCharter)
+    .where(eq(ulysseCharter.userId, userId));
+
+  if (existing) return existing;
+
+  const now = new Date();
+  const defaults: InsertUlysseCharter = {
+    userId,
+    communicationStyle: "direct",
+    language: "fr",
+    responseLength: "concise",
+    priorityDomains: [],
+    activeProjects: [],
+    behaviorRules: [],
+    wakeWord: "Ulysse",
+    voicePersonality: "professional",
+    rememberConversations: true,
+    contextRetentionDays: 30,
+    proactiveInsights: true,
+    dailyBriefEnabled: true,
+    dailyBriefTime: "08:00",
+    customInstructions: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const [created] = await db.insert(ulysseCharter).values(defaults).returning();
+  return created;
+}
+→ Ça te garantit que tout ce qui touche à moi (charte) est réellement dans la DB, pas juste en mémoire.
+
+4️⃣ Uniformiser le pattern “createOrUpdateXXX”
+Tu as déjà un pattern pour createOrUpdateVoiceSettings, tu pourrais:
+
+garder la même logique pour d’autres ressources qui sont naturellement uniques par user (Charter, VoiceSettings, AmbianceProfile actif éventuellement).
+Ce que tu as pour VoiceSettings est clean, rien à dire, c’est surtout bien d’avoir ce pattern en tête pour les futurs types.
+
+5️⃣ Ajout de petits helpers “Core-friendly”
+Quelques utilitaires peuvent simplifier beaucoup de choses côté services:
+
+Récupérer l’utilisateur + charte + voice settings d’un coup
+Un helper type:
+async getUserCoreContext(userId: number): Promise<{
+  user: User;
+  charter: UlysseCharter;
+  voiceSettings: VoiceSettings | undefined;
+}> {
+  const [user, charter, voice] = await Promise.all([
+    this.getUser(userId),
+    this.getCharter(userId),
+    this.getVoiceSettings(userId),
+  ]);
+
+  if (!user) throw new Error("USER_NOT_FOUND");
+
+  return { user, charter, voiceSettings: voice };
+}
+Ça simplifie les services comme:
+
+Voice Core,
+Homework,
+Ambiance/Avatar,
+qui ont souvent besoin de ce triplet.
+Helper pour “files by category” (generated / received)
+Tu les distingues côté contexte, tu pourrais l’avoir côté storage aussi, si besoin plus tard.
+6️⃣ Petits détails / robustesse
+createUlysseFile: tu fais un require('./services/realtimeSync') en lazy, c’est intelligent pour éviter les cycles. Ça va, mais tu peux éventuellement isoler ce broadcast dans un petit FileEventsService plus tard si ça grossit.
+
+getHomework(userId) → tu orderBy(ulysseHomework.createdAt) ascendant.
+Tu voudras peut-être utiliser desc si tu consultes souvent les plus récents.

@@ -1,0 +1,214 @@
+Vous
+
+import { z } from 'zod'; import { insertProjectSchema, insertTaskSchema, insertNoteSchema, insertSubtaskSchema, insertTaskLabelSchema, projects, tasks, notes, subtasks, taskLabels } from './schema';
+
+export const errorSchemas = { validation: z.object({ message: z.string(), field: z.string().optional(), }), notFound: z.object({ message: z.string(), }), internal: z.object({ message: z.string(), }), };
+
+export const api = { projects: { list: { method: 'GET' as const, path: '/api/projects', responses: { 200: z.array(z.custom<typeof projects.$inferSelect>()), }, }, get: { method: 'GET' as const, path: '/api/projects/:id', responses: { 200: z.custom<typeof projects.$inferSelect>(), 404: errorSchemas.notFound, }, }, create: { method: 'POST' as const, path: '/api/projects', input: insertProjectSchema, responses: { 201: z.custom<typeof projects.$inferSelect>(), 400: errorSchemas.validation, }, }, update: { method: 'PATCH' as const, path: '/api/projects/:id', input: insertProjectSchema.partial(), responses: { 200: z.custom<typeof projects.$inferSelect>(), 400: errorSchemas.validation, 404: errorSchemas.notFound, }, }, delete: { method: 'DELETE' as const, path: '/api/projects/:id', responses: { 204: z.void(), 404: errorSchemas.notFound, }, }, }, tasks: { list: { method: 'GET' as const, path: '/api/tasks', input: z.object({ projectId: z.coerce.number().optional(), }).optional(), responses: { 200: z.array(z.custom<typeof tasks.$inferSelect>()), }, }, create: { method: 'POST' as const, path: '/api/tasks', input: insertTaskSchema, responses: { 201: z.custom<typeof tasks.$inferSelect>(), 400: errorSchemas.validation, }, }, update: { method: 'PATCH' as const, path: '/api/tasks/:id', input: insertTaskSchema.partial(), responses: { 200: z.custom<typeof tasks.$inferSelect>(), 400: errorSchemas.validation, 404: errorSchemas.notFound, }, }, delete: { method: 'DELETE' as const, path: '/api/tasks/:id', responses: { 204: z.void(), 404: errorSchemas.notFound, }, }, }, subtasks: { list: { method: 'GET' as const, path: '/api/tasks/:taskId/subtasks', responses: { 200: z.array(z.custom<typeof subtasks.$inferSelect>()), }, }, create: { method: 'POST' as const, path: '/api/tasks/:taskId/subtasks', input: insertSubtaskSchema.omit({ taskId: true }), responses: { 201: z.custom<typeof subtasks.$inferSelect>(), 400: errorSchemas.validation, }, }, update: { method: 'PATCH' as const, path: '/api/subtasks/:id', input: insertSubtaskSchema.partial().omit({ taskId: true }), responses: { 200: z.custom<typeof subtasks.$inferSelect>(), 404: errorSchemas.notFound, }, }, delete: { method: 'DELETE' as const, path: '/api/subtasks/:id', responses: { 204: z.void(), 404: errorSchemas.notFound, }, }, }, taskLabels: { list: { method: 'GET' as const, path: '/api/labels', responses: { 200: z.array(z.custom<typeof taskLabels.$inferSelect>()), }, }, create: { method: 'POST' as const, path: '/api/labels', input: insertTaskLabelSchema.omit({ userId: true }), responses: { 201: z.custom<typeof taskLabels.$inferSelect>(), 400: errorSchemas.validation, }, }, delete: { method: 'DELETE' as const, path: '/api/labels/:id', responses: { 204: z.void(), 404: errorSchemas.notFound, }, }, assign: { method: 'POST' as const, path: '/api/tasks/:taskId/labels/:labelId', responses: { 201: z.object({ success: z.boolean() }), }, }, unassign: { method: 'DELETE' as const, path: '/api/tasks/:taskId/labels/:labelId', responses: { 204: z.void(), }, }, }, notes: { list: { method: 'GET' as const, path: '/api/notes', input: z.object({ projectId: z.coerce.number().optional(), }).optional(), responses: { 200: z.array(z.custom<typeof notes.$inferSelect>()), }, }, get: { method: 'GET' as const, path: '/api/notes/:id', responses: { 200: z.custom<typeof notes.$inferSelect>(), 404: errorSchemas.notFound, }, }, create: { method: 'POST' as const, path: '/api/notes', input: insertNoteSchema, responses: { 201: z.custom<typeof notes.$inferSelect>(), 400: errorSchemas.validation, }, }, update: { method: 'PATCH' as const, path: '/api/notes/:id', input: insertNoteSchema.partial(), responses: { 200: z.custom<typeof notes.$inferSelect>(), 400: errorSchemas.validation, 404: errorSchemas.notFound, }, }, delete: { method: 'DELETE' as const, path: '/api/notes/:id', responses: { 204: z.void(), 404: errorSchemas.notFound, }, }, }, };
+
+export function buildUrl(path: string, params?: Record<string, string | number>): string { let url = path; if (params) { Object.entries(params).forEach(([key, value]) => { if (url.includes(:${key})) { url = url.replace(:${key}, String(value)); } }); } return url; }
+
+Ulysse
+
+Très propre ce fichier, tu ne dors vraiment pas sur la stack.
+
+Je te fais un retour rapide et utile.
+
+1. Ce que fait ce fichier (et bien)
+Tu as une définition centralisée de ton contrat d’API côté client/serveur avec Zod :
+projects, tasks, subtasks, taskLabels, notes
+pour chaque ressource : method, path, input (Zod) et responses typées.
+Tu utilises z.custom<typeof table.$inferSelect>() → cohérent avec Drizzle pour garder le type des rows.
+Tu as un errorSchemas mutualisé (validation, notFound, internal) → top pour homogénéiser la gestion des erreurs.
+Tu ajoutes un petit helper buildUrl() pour remplacer les :id & co dans les paths → simple et efficace.
+C’est du vrai contrat d’API typé, pas juste du “REST au feeling”.
+
+2. Points forts
+Lisibilité : API décrite dans un seul objet api, clair, par ressource.
+Réutilisable :
+côté front, tu peux plug ça dans un client type “typed fetch” (un wrapper TanStack Query / fetch / axios),
+côté back, c’est un bon spec pour t’assurer que tes routes restent alignées.
+Validation :
+input Zod (schemas insert*),
+responses Zod → tu peux valider ce que tu reçois / renvoies si tu veux.
+Franchement, pour une base “projets / tâches / notes”, c’est nickel.
+
+3. Améliorations possibles (si tu veux pousser le délire)
+Rien d’urgent, mais si un jour tu veux industrialiser ça :
+
+Factoriser un type générique pour les endpoints
+Un truc du genre :
+
+type ApiEndpoint<InputSchema extends z.ZodTypeAny | undefined, Responses extends Record<number, z.ZodTypeAny>> = {
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  path: string;
+  input?: InputSchema;
+  responses: Responses;
+};
+Puis l’utiliser sur projects.list, etc. pour avoir un typing encore plus strict sur la structure.
+
+Client HTTP généré
+À partir de cet objet api, tu pourrais générer un petit client :
+
+async function call<K extends keyof typeof api, E extends keyof (typeof api)[K]>(
+  resource: K,
+  endpoint: E,
+  options: { params?, body? }
+) { ... }
+Avec :
+
+typage de body basé sur input,
+typage de response basé sur responses[status].
+Uniformisation de l’input pour GET
+Tu as déjà commencé avec tasks.list et notes.list (input optionnel).
+Tu peux décider d’une convention :
+
+soit tous les GET ont un input (query),
+soit tu sépares params/path/query si tu veux aller plus loin.
+Mais c’est du raffinage, pas un bug.
+
+4. buildUrl
+Simple, lisible, suffisant pour :id, :taskId, :labelId, etc.
+Si un jour tu gères des params qui peuvent contenir / ou des caractères spéciaux, tu pourras encodeURIComponent la value avant de l’injecter.
+En résumé :
+Ce fichier est carrément clean. Il structure ton API comme un vrai contrat typed, tu peux t’en servir comme base pour :
+
+un client auto‑typé côté front,
+une doc d’API interne,
+une vérif de cohérence entre routes Express et ce spec.
+Si tu veux, on peut prendre ce pattern et l’appliquer ensuite à d’autres parties de ton app (ex : endpoints AppToOrder health, payments, HubRise, etc.) pour que tout ton backend soit piloté par ce genre de définition.
+
+Vous
+
+quel client auto typé?
+
+Ulysse
+
+Je parlais d’un client HTTP TypeScript qui se base directement sur ton objet api pour te donner:
+
+le bon body attendu (input Zod),
+le bon type de réponse (responses Zod),
+et t’éviter les fetch('/api/xxx') à la main avec any partout.
+Vu ton fichier, tu es déjà à 80% du chemin. Voilà ce que j’entendais concrètement.
+
+1. Tu as déjà le “contrat d’API”
+Exemple :
+
+api.tasks.create = {
+  method: 'POST',
+  path: '/api/tasks',
+  input: insertTaskSchema,
+  responses: {
+    201: z.custom<typeof tasks.$inferSelect>(),
+    400: errorSchemas.validation,
+  },
+};
+Tu as donc, pour chaque endpoint :
+
+method
+path
+input (Zod)
+responses (Zod, typées)
+Tu peux t’en servir pour générer un client.
+
+2. Exemple simple de client auto‑typé
+On peut faire un helper générique qui :
+
+prend comme clé resource + action ('tasks', 'create', etc.),
+lit api[resource][action],
+déduit les types input / responses,
+et fait le fetch pour toi.
+Exemple de code (esquisse, pas copié-collé brut) :
+
+import { z } from 'zod';
+import { api } from './api-spec';
+
+type ApiSpec = typeof api;
+
+type Endpoint<
+  Resource extends keyof ApiSpec,
+  Action extends keyof ApiSpec[Resource]
+> = ApiSpec[Resource][Action];
+
+type InferInput<E> = E extends { input: infer I } ? I : undefined;
+type InferResponses<E> = E extends { responses: infer R } ? R : never;
+
+type InferSuccessResponse<E> = InferResponses<E>[keyof InferResponses<E>];
+
+async function callApi<
+  Resource extends keyof ApiSpec,
+  Action extends keyof ApiSpec[Resource]
+>(
+  resource: Resource,
+  action: Action,
+  options: {
+    params?: Record<string, string | number>;
+    body?: InferInput<Endpoint<Resource, Action>> extends z.ZodTypeAny
+      ? z.infer<InferInput<Endpoint<Resource, Action>>>
+      : never;
+  },
+): Promise<z.infer<InferSuccessResponse<Endpoint<Resource, Action>>>> {
+  const endpoint = api[resource][action] as Endpoint<Resource, Action>;
+  let url = endpoint.path;
+
+  if (options?.params) {
+    Object.entries(options.params).forEach(([key, value]) => {
+      if (url.includes(`:${key}`)) {
+        url = url.replace(`:${key}`, String(value));
+      }
+    });
+  }
+
+  const res = await fetch(url, {
+    method: endpoint.method,
+    headers: { 'Content-Type': 'application/json' },
+    body: endpoint.method !== 'GET' && options.body
+      ? JSON.stringify(options.body)
+      : undefined,
+  });
+
+  const responses = endpoint.responses;
+  const schema = responses[res.status as keyof typeof responses] as
+    | z.ZodTypeAny
+    | undefined;
+
+  if (!schema) {
+    throw new Error(`Unexpected status ${res.status} for ${String(resource)}.${String(action)}`);
+  }
+
+  const json = res.status === 204 ? undefined : await res.json();
+  return schema.parse(json);
+}
+Usage côté front :
+
+// Créer une task
+const newTask = await callApi('tasks', 'create', {
+  body: {
+    title: 'Ma tâche',
+    projectId: 1,
+  },
+});
+
+// Lister les notes d’un projet
+const notes = await callApi('notes', 'list', {
+  params: { projectId: 3 },
+});
+Grâce à ton objet api :
+
+body est typé (si tu oublies un champ obligatoire de insertTaskSchema, TS gueule),
+le return est typé (tasks.$inferSelect[], etc.),
+si tu te trompes sur une clé ('taks' au lieu de 'tasks'), TS gueule aussi.
+Ça devient ton client auto‑typé.
+
+3. Pourquoi c’est stylé pour toi
+Tu centralises ton contrat d’API une seule fois (api + Zod).
+Tu l’exploites :
+côté backend (routes Express alignées),
+côté frontend (client typé),
+côté tests (tu peux même générer des tests d’API auto).
+Tu peux aller plus loin encore (générer la doc, etc.), mais même un client simple comme ci‑dessus te donne déjà :
+
+moins de bugs,
+plus d’auto‑complétion,
+plus de sécurité type‑wise.
+Si tu veux, je peux te faire une version plus propre/finale de ce client pour l’intégrer dans ton code (avec TanStack Query par dessus, par exemple : useApiQuery('tasks', 'list', {...})).

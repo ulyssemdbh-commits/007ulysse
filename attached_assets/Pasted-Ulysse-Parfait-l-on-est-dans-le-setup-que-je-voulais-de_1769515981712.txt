@@ -1,0 +1,292 @@
+Ulysse
+
+Parfait, là on est dans le setup que je voulais depuis le début.
+
+Donc maintenant, on a :
+
+Détection automatique dans les homeworks :
+URL + mots-clés critiques (classement, score, cote, match, buteur, etc.)
+→ passage direct par le Verified Scraper.
+Pipe d’exécution côté homework :
+[HomeworkExecution] Using VERIFIED SCRAPER for: https://site.com/classement
+[HomeworkExecution] ✅ VERIFIED data extracted: type=ranking, items=20
+[HomeworkExecution] ✅ Using VERIFIED data for homework: Classement Ligue 1
+Marquage sémantique dans le résultat :
+Données vérifiées annotées comme:
+"[DONNÉES VÉRIFIÉES - RANKING]", "[DONNÉES VÉRIFIÉES - ODDS]", etc.
+Fallback intelligent :
+Si verifiedScrape échoue → scrape standard utilisé, mais sans le label “données vérifiées”.
+Ça veut dire que :
+
+Quand je te réponds avec un classement, des cotes ou des stats provenant de ces homeworks, je peux m’appuyer sur de vraies données validées double-scrape.
+Dans ton code, tu peux déjà filtrer en mode “seulement VERIFIED” pour les usages critiques (pronos, rapports, etc.).
+Pour la suite, on peut pousser encore :
+
+Jobs de veille sport/cotes (scheduledJobs.ts)
+
+Pour chaque ligue / marché :
+utiliser scrapeRankingVerified / scrapeOddsVerified
+ne stocker en base que les résultats ok === true
+loguer les échecs pour inspection.
+Flag VERIFIED en mémoire (memoryService)
+
+Quand on enregistre une mémoire issue de scraping :
+ajouter un champ verified: true/false
+→ et moi je privilégie toujours verified: true quand je te réponds.
+Extension à d'autres types
+
+prix produits, stock, promos, etc.
+même logique : mots-clés + détection type → Verified Scraper
+Si tu veux, prochain step, je peux t’esquiver :
+
+soit la modif de scheduledJobs.ts pour que toutes les veilles foot/cotes passent par le Verified Scraper,
+soit l’extension du memoryService pour intégrer le flag VERIFIED proprement.
+Vous
+
+je veux 1 2 et 3, bien construit, robuste et performant.
+
+Ulysse
+
+OK, on va structurer ça proprement en trois blocs, comme si on livrait une vraie V2 de ton système.
+
+Je te donne du concret, modulaire, sans blabla :
+
+intégration dans les jobs de veille (scheduledJobs)
+flag VERIFIED dans la mémoire
+extension à d’autres types (produits, articles, etc.)
+1️⃣ Intégration Verified Scraper dans les jobs de veille (scheduledJobs.ts)
+a) Design
+Objectif : toute veille sport/cotes passe par le Verified Scraper quand c’est pertinent.
+
+Pattern recommandé :
+
+Un service de veille sport dédié, qui:
+connaît les URLs par ligue / type de donnée,
+appelle scrapeRankingVerified, scrapeOddsVerified, etc.,
+stocke en DB + mémoire UNIQUEMENT les données ok === true.
+b) Exemple de service sportsWatchService.ts
+// services/sportsWatchService.ts
+import { scrapeRankingVerified, scrapeOddsVerified } from './verifiedScraperService';
+import { db } from '../db';
+import { sportsWatchData } from '@shared/schema'; // à adapter à ta table réelle
+import { memoryService } from './memory';
+
+interface LeagueConfig {
+  name: string;
+  urlRanking?: string;
+  urlOdds?: string;
+}
+
+const LEAGUES: LeagueConfig[] = [
+  {
+    name: 'Ligue 1',
+    urlRanking: 'https://www.eurotopteam.com/football/ligue1.php',
+    urlOdds: 'https://example.com/odds/ligue1', // à adapter
+  },
+  {
+    name: 'Serie A',
+    urlRanking: 'https://www.eurotopteam.com/football/seriea.php',
+  },
+  // etc.
+];
+
+export class SportsWatchService {
+  async runDailyWatch(userId: number): Promise<void> {
+    for (const league of LEAGUES) {
+      if (league.urlRanking) {
+        await this.updateLeagueRanking(userId, league);
+      }
+      if (league.urlOdds) {
+        await this.updateLeagueOdds(userId, league);
+      }
+    }
+  }
+
+  private async updateLeagueRanking(userId: number, league: LeagueConfig) {
+    console.log(`[SportsWatch] Fetching VERIFIED ranking for ${league.name}...`);
+
+    const res = await scrapeRankingVerified(league.urlRanking!);
+
+    if (!res.ok || !res.data || res.data.length === 0) {
+      console.warn(
+        `[SportsWatch] Ranking for ${league.name} NOT VERIFIED. diffs=`,
+        res.diffs,
+      );
+      return;
+    }
+
+    console.log(
+      `[SportsWatch] ✅ VERIFIED ranking for ${league.name}: ${res.data.length} teams`,
+    );
+
+    // 1) Stockage en DB (table d’archive veille)
+    await db
+      .insert(sportsWatchData)
+      .values({
+        type: 'ranking',
+        league: league.name,
+        url: league.urlRanking,
+        verified: true,
+        payload: res.data, // JSON
+        createdAt: new Date(),
+      });
+
+    // 2) Mémorisation dans le cerveau d’Ulysse avec flag VERIFIED
+    await memoryService.updateOrCreateMemory(
+      userId,
+      'sports_ranking',
+      `ranking_${league.name.replace(/\s+/g, '_').toLowerCase()}`,
+      `[DONNÉES VÉRIFIÉES - RANKING] ${league.name} : ${res.data.length} équipes`,
+      `sports:ranking:${league.name}`,
+      { verified: true, data: res.data }, // voir partie 2 pour le support des méta
+    );
+  }
+
+  private async updateLeagueOdds(userId: number, league: LeagueConfig) {
+    console.log(`[SportsWatch] Fetching VERIFIED odds for ${league.name}...`);
+
+    const res = await scrapeOddsVerified(league.urlOdds!);
+
+    if (!res.ok || !res.data || res.data.length === 0) {
+      console.warn(
+        `[SportsWatch] Odds for ${league.name} NOT VERIFIED. diffs=`,
+        res.diffs,
+      );
+      return;
+    }
+
+    console.log(
+      `[SportsWatch] ✅ VERIFIED odds for ${league.name}: ${res.data.length} lignes`,
+    );
+
+    await db.insert(sportsWatchData).values({
+      type: 'odds',
+      league: league.name,
+      url: league.urlOdds,
+      verified: true,
+      payload: res.data,
+      createdAt: new Date(),
+    });
+
+    await memoryService.updateOrCreateMemory(
+      userId,
+      'sports_odds',
+      `odds_${league.name.replace(/\s+/g, '_').toLowerCase()}`,
+      `[DONNÉES VÉRIFIÉES - ODDS] ${league.name} : ${res.data.length} lignes de cotes`,
+      `sports:odds:${league.name}`,
+      { verified: true, data: res.data },
+    );
+  }
+}
+
+export const sportsWatchService = new SportsWatchService();
+c) Intégration dans scheduledJobs.ts
+// scheduledJobs.ts
+import { sportsWatchService } from './services/sportsWatchService';
+
+export async function runDailyJobs() {
+  const ownerId = 1; // Maurice
+  await sportsWatchService.runDailyWatch(ownerId);
+  // autres jobs...
+}
+2️⃣ Flag VERIFIED dans la mémoire système (memoryService)
+a) Étendre la table ulysseMemory
+Ajout d’un champ verified + metadata (JSON) dans le schéma partagé.
+
+// @shared/schema.ts (exemple)
+export const ulysseMemory = pgTable('ulysse_memory', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  category: text('category').notNull(),
+  key: text('key').notNull(),
+  value: text('value').notNull(),
+  confidence: float('confidence').default(0.5),
+  verified: boolean('verified').default(false), // <--- nouveau
+  metadata: jsonb('metadata').$type<Record<string, any> | null>(), // <--- optionnel
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+b) Adapter memoryService.updateOrCreateMemory
+On veut pouvoir passer un options avec verified et éventuellement un payload data.
+
+// services/memory.ts
+interface MemoryOptions {
+  verified?: boolean;
+  data?: any; // data brute associée (classement, odds, etc.)
+}
+
+class MemoryService {
+  async updateOrCreateMemory(
+    userId: number,
+    category: string,
+    key: string,
+    value: string,
+    source: string,
+    options?: MemoryOptions,
+  ) {
+    const verified = options?.verified ?? false;
+    const metadata = options?.data
+      ? { source, data: options.data }
+      : { source };
+
+    const existing = await db
+      .select()
+      .from(ulysseMemory)
+      .where(and(eq(ulysseMemory.userId, userId), eq(ulysseMemory.key, key)));
+
+    if (existing.length > 0) {
+      await db
+        .update(ulysseMemory)
+        .set({
+          value,
+          confidence: verified ? 0.9 : 0.6,
+          verified,
+          metadata,
+          updatedAt: new Date(),
+        })
+        .where(eq(ulysseMemory.id, existing[0].id));
+    } else {
+      await db.insert(ulysseMemory).values({
+        userId,
+        category,
+        key,
+        value,
+        confidence: verified ? 0.9 : 0.6,
+        verified,
+        metadata,
+      });
+    }
+  }
+
+  // Helper pour récupérer uniquement les mémoires vérifiées si besoin
+  async getVerifiedMemories(
+    userId: number,
+    category?: string,
+  ): Promise<typeof ulysseMemory.$inferSelect[]> {
+    const base = db.select().from(ulysseMemory).where(eq(ulysseMemory.userId, userId));
+    if (category) {
+      return base
+        .where(and(eq(ulysseMemory.userId, userId), eq(ulysseMemory.category, category), eq(ulysseMemory.verified, true)));
+    }
+    return base.where(eq(ulysseMemory.verified, true));
+  }
+}
+
+export const memoryService = new MemoryService();
+Avec ça, chaque mémoire peut être clairement marquée :
+
+verified: true → issue d’un verifiedScrape
+verified: false → soit non vérifiée, soit issue d’une source non contrôlée
+Et moi, côté “cerveau Ulysse”, je peux favoriser les mémoires verified dans mes réponses.
+
+3️⃣ Étendre la détection à plus de types (produits, articles, etc.)
+Tu as déjà :
+
+extractProductList, extractArticleContent, extractOddsData, etc.
+scrapeProductsVerified, scrapeArticleVerified, scrapeOddsVerified
+autoVerifiedScrape(url) avec détection automatique du type
+On va formaliser la détection & l’intégration dans les homeworks.
+
+a) Détection automatique du type de page
+// services/verifiedScraperService.ts (exemple)
+type VerifiedType = 'ranking' |

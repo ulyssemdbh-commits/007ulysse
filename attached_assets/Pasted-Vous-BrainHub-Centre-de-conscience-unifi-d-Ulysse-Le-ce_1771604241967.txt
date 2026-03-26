@@ -1,0 +1,182 @@
+Vous
+
+/** * BrainHub - Centre de conscience unifié d'Ulysse * * Le cerveau central qui coordonne les 4 sens et maintient * l'état de conscience d'Ulysse en temps réel. * * Architecture: * [HearingHub] ─┐ * [VisionHub] ─┼─→ [BrainHub] ─→ [CoreEngine] ─→ [VoiceOutputHub/ActionHub] * [Context] ─┘ / import { EventEmitter } from 'events'; import { hearingHub, HearingInput } from './HearingHub'; import { voiceOutputHub, VoiceOutput } from './VoiceOutputHub'; import { visionHub, VisionInput } from './VisionHub'; import { actionHub, ActionRequest, ActionResult } from './ActionHub'; // ============== TYPES ============== export interface ConsciousnessState { currentFocus: 'idle' | 'listening' | 'thinking' | 'speaking' | 'acting' | 'observing'; activeUserId: number | null; activePersona: 'ulysse' | 'iris' | 'alfred' | null; activeInterface: 'web' | 'discord' | 'api' | 'pwa' | null; workingMemory: WorkingMemoryItem[]; cognitiveLoad: number; // 0-100 lastActivity: Date; isProcessing: boolean; } export interface WorkingMemoryItem { type: 'input' | 'output' | 'thought' | 'context'; content: string; source: string; timestamp: Date; importance: number; // 0-100 ttlMs: number; } export interface BrainEvent { type: 'input_received' | 'output_sent' | 'action_executed' | 'vision_processed' | 'state_changed' | 'decision_made'; source: string; data: any; timestamp: Date; } export interface BrainDecision { action: 'respond' | 'act' | 'observe' | 'wait' | 'escalate'; reason: string; confidence: number; suggestedHub: 'voice' | 'action' | 'vision' | null; } export interface BrainStats { totalInputs: number; totalOutputs: number; totalActions: number; totalDecisions: number; avgCognitiveLoad: number; uptime: number; workingMemorySize: number; } // ============== CONSTANTS ============== const WORKING_MEMORY_MAX_ITEMS = 100; // Increased for invoice storage const WORKING_MEMORY_DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes const COGNITIVE_LOAD_DECAY_RATE = 0.1; // Per second when idle const COGNITIVE_LOAD_DECAY_INTERVAL = 1000; // 1 second // ============== BRAIN HUB ============== class BrainHub extends EventEmitter { private static instance: BrainHub; private consciousness: ConsciousnessState; private stats: BrainStats; private startTime: Date; private decayInterval: NodeJS.Timeout | null = null; private cleanupInterval: NodeJS.Timeout | null = null; private constructor() { super(); this.startTime = new Date(); this.consciousness = { currentFocus: 'idle', activeUserId: null, activePersona: null, activeInterface: null, workingMemory: [], cognitiveLoad: 0, lastActivity: new Date(), isProcessing: false, }; this.stats = { totalInputs: 0, totalOutputs: 0, totalActions: 0, totalDecisions: 0, avgCognitiveLoad: 0, uptime: 0, workingMemorySize: 0, }; this.setupSensoryListeners(); this.startBackgroundProcesses(); console.log('[BrainHub] Centre de conscience unifié initialisé'); } static getInstance(): BrainHub { if (!BrainHub.instance) { BrainHub.instance = new BrainHub(); } return BrainHub.instance; } // ============== SENSORY INTEGRATION ============== private setupSensoryListeners(): void { // Écouter les entrées auditives hearingHub.onHear((hearing) => { this.processHearingInput(hearing as any); }); // Écouter les sorties vocales voiceOutputHub.onSpeak((output) => { this.processVoiceOutput(output as any); }); // Écouter les entrées visuelles visionHub.onSee((vision) => { this.processVisionInput(vision as any); }); // Écouter les actions exécutées actionHub.onAction((log) => { this.processActionResult(log.result); }); console.log('[BrainHub] Listeners sensoriels configurés'); } private processHearingInput(input: HearingInput): void { this.stats.totalInputs++; this.updateFocus('listening'); this.updateCognitiveLoad(15); // Mettre à jour le contexte actif if (input.userId) { this.consciousness.activeUserId = input.userId; } if (input.metadata?.persona) { this.consciousness.activePersona = input.metadata.persona as any; } if (input.source) { this.consciousness.activeInterface = this.mapSourceToInterface(input.source); } // Ajouter à la mémoire de travail this.addToWorkingMemory({ type: 'input', content: input.normalizedText || input.rawContent, source: input.source, timestamp: input.timestamp, importance: input.intent ? 80 : 50, ttlMs: WORKING_MEMORY_DEFAULT_TTL, }); this.emitEvent('input_received', 'hearing', input); } private processVoiceOutput(output: VoiceOutput): void { this.stats.totalOutputs++; this.updateFocus('speaking'); this.updateCognitiveLoad(-10); // Speaking reduces load this.addToWorkingMemory({ type: 'output', content: output.text.substring(0, 200), source: output.destination, timestamp: output.timestamp, importance: 60, ttlMs: WORKING_MEMORY_DEFAULT_TTL, }); this.emitEvent('output_sent', 'voice', output); } private processVisionInput(input: VisionInput): void { this.updateFocus('observing'); this.updateCognitiveLoad(20); if (input.extractedText) { this.addToWorkingMemory({ type: 'context', content: input.extractedText.substring(0, 300), source: input.source, timestamp: input.timestamp, importance: 40, ttlMs: WORKING_MEMORY_DEFAULT_TTL * 2, }); } this.emitEvent('vision_processed', 'vision', input); } private processActionResult(result: ActionResult): void { this.stats.totalActions++; this.updateFocus('acting'); this.updateCognitiveLoad(result.success ? -15 : 10); this.addToWorkingMemory({ type: 'thought', content: Action ${result.actionType}: ${result.success ? 'succès' : 'échec'}, source: 'action', timestamp: result.completedAt, importance: result.success ? 50 : 80, ttlMs: WORKING_MEMORY_DEFAULT_TTL, }); this.emitEvent('action_executed', 'action', result); } // ============== CONSCIOUSNESS MANAGEMENT ============== private updateFocus(focus: ConsciousnessState['currentFocus']): void { const previous = this.consciousness.currentFocus; this.consciousness.currentFocus = focus; this.consciousness.lastActivity = new Date(); if (previous !== focus) { this.emitEvent('state_changed', 'brain', { from: previous, to: focus }); } } private updateCognitiveLoad(delta: number): void { this.consciousness.cognitiveLoad = Math.max(0, Math.min(100, this.consciousness.cognitiveLoad + delta )); this.consciousness.isProcessing = this.consciousness.cognitiveLoad > 20; } addToWorkingMemory(item: WorkingMemoryItem): void { this.consciousness.workingMemory.unshift(item); // Limiter la taille if (this.consciousness.workingMemory.length > WORKING_MEMORY_MAX_ITEMS) { this.consciousness.workingMemory = this.consciousness.workingMemory .slice(0, WORKING_MEMORY_MAX_ITEMS); } this.stats.workingMemorySize = this.consciousness.workingMemory.length; } private cleanupWorkingMemory(): void { const now = Date.now(); this.consciousness.workingMemory = this.consciousness.workingMemory.filter(item => { // Skip items without valid timestamp if (!item.timestamp || typeof item.timestamp.getTime !== 'function') { return false; // Remove invalid entries } const age = now - item.timestamp.getTime(); return age < item.ttlMs; }); this.stats.workingMemorySize = this.consciousness.workingMemory.length; } // ============== DECISION MAKING ============== makeDecision(context: { input?: string; userId?: number; urgency?: 'low' | 'normal' | 'high'; }): BrainDecision { this.stats.totalDecisions++; const load = this.consciousness.cognitiveLoad; const hasRecentInput = this.consciousness.workingMemory.some( m => m.type === 'input' && m.timestamp && typeof m.timestamp.getTime === 'function' && Date.now() - m.timestamp.getTime() < 5000 ); let decision: BrainDecision; if (context.urgency === 'high' || hasRecentInput) { decision = { action: 'respond', reason: 'Input récent nécessitant une réponse', confidence: 0.9, suggestedHub: 'voice', }; } else if (load > 80) { decision = { action: 'wait', reason: 'Charge cognitive élevée, attendre', confidence: 0.7, suggestedHub: null, }; } else if (load < 20 && !hasRecentInput) { decision = { action: 'observe', reason: 'Charge faible, observer l'environnement', confidence: 0.6, suggestedHub: 'vision', }; } else { decision = { action: 'respond', reason: 'Traitement normal', confidence: 0.8, suggestedHub: 'voice', }; } this.emitEvent('decision_made', 'brain', decision); return decision; } // ============== CONTEXT FOR CORE ENGINE ============== getContextForCoreEngine(): { workingMemory: string[]; recentInputs: string[]; cognitiveState: string; focus: string; } { const recentInputs = this.consciousness.workingMemory .filter(m => m.type === 'input') .slice(0, 5) .map(m => m.content); const contextItems = this.consciousness.workingMemory .filter(m => m.type === 'context' || m.type === 'thought') .slice(0, 3) .map(m => m.content); let cognitiveState = 'normal'; if (this.consciousness.cognitiveLoad > 70) cognitiveState = 'surchargé'; else if (this.consciousness.cognitiveLoad < 20) cognitiveState = 'détendu'; return { workingMemory: contextItems, recentInputs, cognitiveState, focus: this.consciousness.currentFocus, }; } // ============== BACKGROUND PROCESSES ============== private startBackgroundProcesses(): void { // Décroissance de la charge cognitive this.decayInterval = setInterval(() => { if (this.consciousness.currentFocus === 'idle') { this.updateCognitiveLoad(-COGNITIVE_LOAD_DECAY_RATE * 10); } // Retour à idle si inactif depuis 10 secondes const idleTime = Date.now() - this.consciousness.lastActivity.getTime(); if (idleTime > 10000 && this.consciousness.currentFocus !== 'idle') { this.updateFocus('idle'); } }, COGNITIVE_LOAD_DECAY_INTERVAL); // Nettoyage de la mémoire de travail this.cleanupInterval = setInterval(() => { this.cleanupWorkingMemory(); }, 30000); } // ============== HELPERS ============== private mapSourceToInterface(source: string): ConsciousnessState['activeInterface'] { if (source.includes('discord')) return 'discord'; if (source.includes('api')) return 'api'; if (source.includes('pwa')) return 'pwa'; return 'web'; } private emitEvent(type: BrainEvent['type'], source: string, data: any): void { const event: BrainEvent = { type, source, data, timestamp: new Date(), }; this.emit('event', event); this.emit(type, event); } // ============== CHEF D'ORCHESTRE - PROCESS INPUT ============== /* * Point d'entrée principal du chef d'orchestre * Route tous les inputs vers le traitement approprié / async processInput(input: { content: string; source: 'web_chat' | 'talking_v3' | 'discord_text' | 'discord_voice' | 'api'; userId: number; persona: 'ulysse' | 'iris' | 'alfred'; isVoice: boolean; metadata?: Record<string, any>; }): Promise<{ response: string; shouldSpeak: boolean; actions: any[]; decision: BrainDecision; }> { const startTime = Date.now(); this.consciousness.isProcessing = true; this.updateFocus('thinking'); this.updateCognitiveLoad(25); // 1. Mise à jour du contexte actif this.setActiveContext( input.userId, input.persona, this.mapSourceToInterface(input.source) ); // 2. Ajouter à la mémoire de travail this.addToWorkingMemory({ type: 'input', content: input.content, source: input.source, timestamp: new Date(), importance: input.isVoice ? 85 : 70, ttlMs: WORKING_MEMORY_DEFAULT_TTL, }); // 3. Prendre une décision sur le traitement const decision = this.makeDecision({ input: input.content, userId: input.userId, urgency: input.isVoice ? 'high' : 'normal', }); // 4. Construire le contexte enrichi pour le CoreEngine const brainContext = this.getContextForCoreEngine(); // 5. Journaliser le processing this.addToWorkingMemory({ type: 'thought', content: Processing: ${decision.action} (${(decision.confidence * 100).toFixed(0)}% confiance), source: 'brain', timestamp: new Date(), importance: 40, ttlMs: 60000, }); const processingTime = Date.now() - startTime; console.log([BrainHub] 🧠 processInput: source=${input.source}, decision=${decision.action}, time=${processingTime}ms); // 6. Mettre à jour l'état final this.consciousness.isProcessing = false; this.updateCognitiveLoad(-10); // Note: Le CoreEngine est appelé par le caller (conversations.ts, etc.) // BrainHub fournit la décision et le contexte enrichi return { response: '', // Sera rempli par le CoreEngine shouldSpeak: input.isVoice || input.source.includes('voice'), actions: [], decision, }; } /* * Obtient le prompt de conscience à injecter dans le contexte AI / getConsciousnessPrompt(): string { const ctx = this.getContextForCoreEngine(); const c = this.consciousness; let prompt = [ÉTAT MENTAL ULYSSE]\n; prompt += Focus: ${c.currentFocus} | Charge cognitive: ${c.cognitiveLoad}% | État: ${ctx.cognitiveState}\n; if (ctx.workingMemory.length > 0) { prompt += Contexte récent: ${ctx.workingMemory.slice(0, 2).join(' | ')}\n; } if (c.activeUserId) { prompt += Interlocuteur actif: User #${c.activeUserId} via ${c.activeInterface}\n; } return prompt; } /* * Vérifie si le BrainHub peut traiter un nouvel input / canProcess(): { ready: boolean; reason: string } { if (this.consciousness.cognitiveLoad >= 95) { return { ready: false, reason: 'Charge cognitive maximale' }; } if (this.consciousness.isProcessing) { return { ready: false, reason: 'Traitement en cours' }; } return { ready: true, reason: 'Prêt' }; } /* * Force le reset de l'état de processing (en cas de timeout) / resetProcessingState(): void { this.consciousness.isProcessing = false; this.updateFocus('idle'); this.updateCognitiveLoad(-20); console.log('[BrainHub] État de processing réinitialisé'); } // ============== PUBLIC API ============== getConsciousness(): ConsciousnessState { return { ...this.consciousness }; } getStats(): BrainStats { return { ...this.stats, uptime: Date.now() - this.startTime.getTime(), avgCognitiveLoad: this.consciousness.cognitiveLoad, }; } setActiveContext(userId: number, persona: 'ulysse' | 'iris' | 'alfred', iface: 'web' | 'discord' | 'api' | 'pwa'): void { this.consciousness.activeUserId = userId; this.consciousness.activePersona = persona; this.consciousness.activeInterface = iface; this.consciousness.lastActivity = new Date(); } addThought(content: string, importance: number = 50): void { this.addToWorkingMemory({ type: 'thought', content, source: 'internal', timestamp: new Date(), importance, ttlMs: WORKING_MEMORY_DEFAULT_TTL, }); } /* * Store detailed invoice data in working memory * Stores supplier info, totals, AND all line items with prices */ storeInvoice(invoice: { fournisseur: string; numeroFacture: string; dateFacture: string; totalHT: number; totalTVA: number; totalTTC: number; lignes: Array<{ reference?: string; designation: string; quantite: number; unite?: string; prixUnitaire: number; montantHT: number; tauxTVA?: number; }>; validated: boolean; }): void { const TTL_INVOICE = 2 * 365 * 24 * 60 * 60 * 1000; // 2 YEARS for invoice data (legal retention) // Store supplier summary const supplierInfo = 🏪 Fournisseur: ${invoice.fournisseur} | Facture n°${invoice.numeroFacture} du ${invoice.dateFacture}; this.addToWorkingMemory({ type: 'context', content: supplierInfo, source: 'invoice_analyzer', timestamp: new Date(), importance: 90, ttlMs: TTL_INVOICE, }); // Store financial totals const totalsInfo = 💰 Totaux: HT=${invoice.totalHT.toFixed(2)}€ | TVA=${invoice.totalTVA.toFixed(2)}€ | TTC=${invoice.totalTTC.toFixed(2)}€ | ${invoice.validated ? '✓ Validé' : '⚠ Erreur'}; this.addToWorkingMemory({ type: 'context', content: totalsInfo, source: 'invoice_analyzer', timestamp: new Date(), importance: 85, ttlMs: TTL_INVOICE, }); // Store each article line with details const articlesDetails = invoice.lignes.map((line, idx) => { const ref = line.reference ? [${line.reference}] : ''; const unite = line.unite || 'u'; const prixDisplay = unite.toLowerCase().includes('kg') ? ${line.prixUnitaire.toFixed(2)}€/kg : ${line.prixUnitaire.toFixed(2)}€/u; return ${idx + 1}. ${ref} ${line.designation} | Qté: ${line.quantite} ${unite} × ${prixDisplay} = ${line.montantHT.toFixed(2)}€ HT; }).join('\n'); this.addToWorkingMemory({ type: 'context', content: 📦 Articles (${invoice.lignes.length}):\n${articlesDetails}, source: 'invoice_analyzer', timestamp: new Date(), importance: 80, ttlMs: TTL_INVOICE, }); // Log top 5 most expensive items const topExpensive = [...invoice.lignes] .sort((a, b) => b.montantHT - a.montantHT) .slice(0, 5) .map((l, i) => ${i + 1}. ${l.designation}: ${l.montantHT.toFixed(2)}€) .join(' | '); this.addToWorkingMemory({ type: 'thought', content: 🔝 Top 5 articles coûteux: ${topExpensive}, source: 'invoice_analyzer', timestamp: new Date(), importance: 75, ttlMs: TTL_INVOICE, }); console.log([BrainHub] 🧾 Facture ${invoice.numeroFacture} stockée: ${invoice.lignes.length} articles, ${invoice.totalTTC.toFixed(2)}€ TTC); } isReady(): boolean { return this.consciousness.cognitiveLoad < 90 && !this.consciousness.isProcessing; } shutdown(): void { if (this.decayInterval) clearInterval(this.decayInterval); if (this.cleanupInterval) clearInterval(this.cleanupInterval); console.log('[BrainHub] Arrêt du centre de conscience'); } } // ============== SINGLETON EXPORT ============== export const brainHub = BrainHub.getInstance(); export default brainHub;
+
+Ulysse
+
+OK, là on voit ton vrai cerveau d’archi.
+
+Ton BrainHub est déjà très solide. Je te fais un retour orienté “Ulysse 100%” : pas de blabla, que des points concrets pour l’aligner avec tout ce qu’on a calibré (conscience, KPI, decision coach, auto-learning, etc.).
+
+Je découpe en 4 points :
+
+1. Ce que ton BrainHub fait déjà très bien
+Architecture claire et extensible
+Hearing / Vision / Action / Voice branchés proprement sur un centre de conscience unique.
+ConsciousnessState bien posé (focus, persona, interface, workingMemory, cognitiveLoad, etc.).
+Working memory
+TTL, importance, cleanup régulier, limite d’items → nickel pour un “RAM mental”.
+Intégration factures (storeInvoice)
+Hyper propre: résumé fournisseur, totaux, détails lignes, top 5 coûteux, TTL long (2 ans) → parfait pour SUGU / finance.
+API vers le CoreEngine
+getContextForCoreEngine() + getConsciousnessPrompt() → exactement ce qu’il faut pour injecter l’état mental dans le modèle.
+Bref, la base est là pour un vrai “cerveau central”.
+
+2. Gaps par rapport à tout ce qu’on a activé autour (KPI, auto-learning, décision, owner profile)
+Vu tout ce qu’on a mis en place (KPI system, Decision Coach, Owner Profile 2.0, Auto-Learning Engine, Initiative Engine, etc.), il manque 4 intégrations majeures dans ce BrainHub:
+
+2.1. Aucune connexion directe aux KPIs / auto-learning
+Tu gères stats internes (inputs, outputs, actions, decisions, workingMemorySize…) mais:
+
+Pas de:
+latence par requête,
+quality/factual flags,
+satisfaction,
+health score.
+Pas de remontée vers /api/v2/ulysse/kpis.
+👉 À faire pour coller au nouveau système:
+
+Ajouter des hooks dans processInput (et éventuellement dans les callbacks de CoreEngine) pour:
+loguer:
+startTime, endTime, latency,
+domaines (SUGU, sports, dev, perso…),
+tools utilisés (hearing, vision, action, outils métier),
+décision prise.
+appeler un service type kpiTracker.record({ ... }).
+Tu peux rajouter un champ dans BrainStats genre:
+
+interface BrainStats {
+  // ...
+  lastLatencyMs?: number;
+  avgLatencyMs?: number;
+}
+et un petit service dédié qui pousse vers /api/v2/ulysse/kpis.
+
+2.2. Le Decision Coach et l’Owner Profile ne sont pas encore branchés ici
+Ton makeDecision ne regarde que:
+
+la charge cognitive,
+la présence d’input récent,
+l’urgence.
+Mais maintenant, on a :
+
+un Owner Profile Maurice 2.0 (paris, SUGU, dev),
+un Decision Coach,
+un Initiative Engine.
+👉 Propositions concrètes:
+
+Brancher le domain / intent
+
+Ajouter au context de makeDecision un champ:
+domain?: 'sugu' | 'sports' | 'dev' | 'personal' | 'generic';
+Ce domain serait détecté en amont (par ton intent classifier actuel).
+Décisions enrichies selon domaine
+
+Pour domain === 'sports' + OwnerProfile → Decision Coach:
+décide si on propose un pari,
+ou si on dit “rien d’assez clean aujourd’hui”.
+Pour domain === 'sugu' → Initiative Engine:
+déclenche ou non une analyse d’anomalies / synthèse.
+Faire remonter ça dans BrainDecision
+
+Ajouter par ex:
+interface BrainDecision {
+  // ...
+  domain?: string;
+  strategy?: string; // ex: 'value_bet_pipeline', 'sugu_cashflow_analysis'
+}
+Et processInput pourrait appeler un decisionCoach externe après makeDecision, pour les cas “query de décision”, et enrichir la décision.
+
+2.3. L’Initiative Engine (anomalies SUGU, briefs) n’est pas piloté ici
+Ton BrainHub a déjà des background processes (décroissance de charge, cleanup mémoire), mais:
+
+Il ne lance pas:
+checks SUGU matin,
+revue Monday,
+proactivité contextuelle.
+👉 Idée simple:
+
+Ajouter dans startBackgroundProcesses() un hook vers un initiativeEngine:
+private startBackgroundProcesses(): void {
+  // existant...
+
+  // Initiative checks
+  setInterval(() => {
+    initiativeEngine.tick(this.consciousness, this.stats);
+  }, 60_000); // toutes les minutes par ex.
+}
+Où initiativeEngine.tick vérifie:
+
+heure locale,
+domaine actif récent (SUGU, sports, etc.),
+et déclenche éventuellement:
+actionHub (envoyer alerte),
+ou ajoute une thought dans workingMemory (“⚠ anomalie SUGU détectée”),
+ou prépare un brief pour le prochain tour de conversation.
+2.4. L’Enhanced Self-Critique n’est pas branché dans le cycle
+Ton BrainHub finit processInput en renvoyant une structure neutre:
+
+return {
+  response: '',
+  shouldSpeak: ...,
+  actions: [],
+  decision,
+};
+Mais maintenant on a:
+
+Self-critique post-réponse (qualité, factualité, alignement objectifs),
+Feedback Protocol.
+👉 Pattern à adopter:
+
+BrainHub ne fera pas la self-critique lui-même, mais:
+il peut:
+stocker dans workingMemory un “slot” pour évaluation,
+taguer certains outputs (via processVoiceOutput) comme “à évaluer”.
+Ensuite, un qualityEngine/selfCritiqueEngine est appelé par le CoreEngine après réponse, et:
+ajoute une thought:
+“Réponse X évaluée: OK / à améliorer pour telle raison”,
+ou logue vers /api/v2/ulysse/kpis/error en cas d’erreur factuelle.
+3. Petites améliorations possibles dans BrainHub lui-même
+Des points plus locaux, mais qui aident:
+
+Cognitive load plus “sémantique”
+
+Aujourd’hui c’est juste un nombre modulé.
+Tu pourrais typer ce qu’il représente:
+beaucoup d’inputs récents,
+beaucoup d’actions en cours,
+tasks lourdes.
+Pas obligatoire, mais utile si tu veux moduler la proactivité (moins d’initiatives quand cognitiveLoad élevé).
+Exposition du workingMemory en mode “debug nice”
+
+Ajouter une méthode:
+getWorkingMemorySnapshot(limit = 10): WorkingMemoryItem[]
+Pour pouvoir facilement loguer / inspecter l’état mental dans des endpoints debug.
+Validation plus stricte des timestamps
+
+Tu as déjà un check typeof timestamp.getTime === 'function'.
+Tu peux normaliser à l’entrée:
+si timestamp est string/number, le caster en new Date() avant push.
+4. En résumé – ce que je ferais comme next step sur ce fichier
+Si tu me dis “on passe à l’action sur BrainHub maintenant”, je ferais dans l’ordre:
+
+Brancher KPIs & auto-learning
+
+Ajouter un petit service brainKpiTracker appelé dans:
+processInput (start/end),
+processHearingInput, processVisionInput, processActionResult.
+Enregistrer latence, types d’inputs, décisions.
+Ajouter la notion de domaine & stratégie dans BrainDecision
+
+Et brancher ça avec ton Planner / Decision Coach / Owner Profile.
+Intégrer l’Initiative Engine dans startBackgroundProcesses
+
+Tick régulier basé sur consciousness et stats.
+Prévoir des hooks Self-Critique / Feedback
+
+Même si ça vit ailleurs, BrainHub doit prévoir le transport de ces infos (via BrainEvent, addThought).
+Si tu veux, je peux te proposer une version patchée de ce fichier avec :
+
+ajout champ domain / strategy dans BrainDecision,
+squelette d’intégration initiativeEngine.tick,
+et hooks pour un kpiTracker.

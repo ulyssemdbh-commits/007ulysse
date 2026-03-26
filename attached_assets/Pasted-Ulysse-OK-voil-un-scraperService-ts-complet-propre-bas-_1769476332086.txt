@@ -1,0 +1,309 @@
+Ulysse
+
+OK, voilà un scraperService.ts complet, propre, basé exactement sur tes types + les améliorations qu’on vient de poser.
+Tu le colles dans ton backend, tu adaptes juste les chemins d’import (./scraper-types, ./scraperConfig) selon ton arbo.
+
+// services/scraperService.ts
+import {
+  CheerioCrawler,
+  PlaywrightCrawler,
+  log,
+  RequestQueue,
+} from 'crawlee';
+import * as cheerio from 'cheerio';
+
+import type {
+  ScrapeRequest,
+  ScrapeResult,
+  ScrapedPage,
+  ScrapeMode,
+  SelectorConfig,
+  LinkScope,
+} from '../scraper-types';
+import { applyProfileToRequest } from '../scraperConfig';
+
+log.setLevel(log.LEVELS.INFO);
+
+const DEFAULT_USER_AGENT =
+  'UlysseScraperBot/3.0 (+https://ulysse.local; contact: admin@ulysse.local)';
+
+// Sécurité minimale (éviter les SSRF crades). Tu peux passer ce flag à false si tu t’en fous.
+const BLOCK_LOCALHOST_BY_DEFAULT = true;
+const BLOCKED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1'];
+
+function basicHostCheck(url: string): void {
+  if (!BLOCK_LOCALHOST_BY_DEFAULT) return;
+  const host = new URL(url).hostname.toLowerCase();
+  if (BLOCKED_HOSTS.includes(host)) {
+    throw new Error(`Host "${host}" bloqué par sécurité (configurable).`);
+  }
+}
+
+function normalizeUrl(base: string, href: string): string | null {
+  try {
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return null;
+    return new URL(href, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function shouldFollowLink(
+  currentUrl: string,
+  targetUrl: string,
+  scope: LinkScope | undefined,
+): boolean {
+  if (!scope || scope === 'none') return false;
+  const from = new URL(currentUrl);
+  const to = new URL(targetUrl);
+
+  switch (scope) {
+    case 'same-domain':
+      return from.hostname.split('.').slice(-2).join('.') ===
+        to.hostname.split('.').slice(-2).join('.');
+    case 'same-host':
+      return from.hostname === to.hostname;
+    case 'same-path':
+      return from.hostname === to.hostname &&
+        to.pathname.startsWith(from.pathname);
+    case 'all':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isExtensionExcluded(url: string, exts?: string[]): boolean {
+  if (!exts || exts.length === 0) return false;
+  const pathname = new URL(url).pathname.toLowerCase();
+  return exts.some((ext) => pathname.endsWith(ext.toLowerCase()));
+}
+
+function parseSelectorConfig(raw: string | SelectorConfig): SelectorConfig {
+  if (typeof raw === 'string') return { selector: raw };
+  return raw;
+}
+
+function extractMetadata($: cheerio.CheerioAPI, url: string, contentType?: string) {
+  const title =
+    $('meta[property="og:title"]').attr('content') ||
+    $('title').first().text().trim() ||
+    undefined;
+
+  const description =
+    $('meta[name="description"]').attr('content') ||
+    $('meta[property="og:description"]').attr('content') ||
+    undefined;
+
+  const canonical =
+    $('link[rel="canonical"]').attr('href') || undefined;
+
+  const htmlTag = $('html').first();
+  const lang =
+    htmlTag.attr('lang') ||
+    htmlTag.attr('xml:lang') ||
+    undefined;
+
+  const ogTitle = $('meta[property="og:title"]').attr('content') || undefined;
+  const ogDescription =
+    $('meta[property="og:description"]').attr('content') || undefined;
+
+  return {
+    title,
+    description,
+    canonical: canonical ? normalizeUrl(url, canonical) ?? canonical : undefined,
+    contentType,
+    lang,
+    ogTitle,
+    ogDescription,
+  };
+}
+
+function extractWithCheerio(
+  url: string,
+  body: string,
+  contentType: string | undefined,
+  extract: ScrapeRequest['extract'],
+): ScrapedPage {
+  const $ = cheerio.load(body);
+  const page: ScrapedPage = {
+    url,
+    status: 200,
+  };
+
+  if (extract?.metadata) {
+    page.metadata = extractMetadata($, url, contentType);
+  }
+
+  if (extract?.text) {
+    page.text = $('body')
+      .text()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  if (extract?.html) {
+    page.html = body;
+  }
+
+  if (extract?.links) {
+    const links: string[] = [];
+    $('a[href]').each((_, el) => {
+      const href = $(el).attr('href');
+      const absolute = href ? normalizeUrl(url, href) : null;
+      if (absolute) links.push(absolute);
+    });
+    page.links = [...new Set(links)];
+  }
+
+  if (extract?.selectors) {
+    const result: Record<string, any> = {};
+    for (const [key, rawCfg] of Object.entries(extract.selectors)) {
+      const cfg = parseSelectorConfig(rawCfg);
+      const elements = $(cfg.selector);
+
+      const getValue = (idx: number) => {
+        const el = elements.eq(idx);
+        if (cfg.attr) return el.attr(cfg.attr) ?? null;
+        return el.text().trim();
+      };
+
+      if (elements.length === 0) {
+        result[key] = cfg.multi ? [] : null;
+      } else if (cfg.multi) {
+        result[key] = elements
+          .map((i) => getValue(i))
+          .get()
+          .filter((v) => v != null && String(v).trim() !== '');
+      } else {
+        result[key] = getValue(0);
+      }
+    }
+    page.extracted = result;
+  }
+
+  return page;
+}
+
+interface BrowserCrawlerParams {
+  req: ScrapeRequest;
+  pages: ScrapedPage[];
+  visited: Set<string>;
+}
+
+async function runBrowserCrawler(params: BrowserCrawlerParams) {
+  const { req, pages, visited } = params;
+  const {
+    url,
+    maxPages = 50,
+    maxConcurrency = 3,
+    extract,
+    userAgent = DEFAULT_USER_AGENT,
+    linkScope,
+    depth = 0,
+    excludeExtensions,
+    maxBodySizeBytes,
+  } = req;
+
+  const shouldFollowLinks = depth > 0;
+  const baseHost = new URL(url).hostname;
+
+  const crawler = new PlaywrightCrawler({
+    maxRequestsPerCrawl: maxPages,
+    maxConcurrency,
+    launchContext: {
+      launchOptions: {
+        headless: true,
+      },
+    },
+    async requestHandler({ request, page, response }) {
+      if (pages.length >= maxPages) return;
+
+      const currentUrl = request.loadedUrl || request.url;
+      if (visited.has(currentUrl)) return;
+      visited.add(currentUrl);
+
+      const startTime = Date.now();
+
+      await page.setExtraHTTPHeaders({
+        'User-Agent': userAgent,
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      });
+
+      const contentType =
+        response?.headers()['content-type'] ??
+        (await page.evaluate(() =>
+          document.contentType || document.querySelector('meta[http-equiv="Content-Type"]')?.getAttribute('content') || '',
+        ));
+
+      const isHtml =
+        typeof contentType === 'string' &&
+        contentType.toLowerCase().includes('text/html');
+
+      if (!isHtml) {
+        pages.push({
+          url: currentUrl,
+          status: response?.status() ?? 0,
+          error: 'Unsupported content type in browser mode',
+          timing: Date.now() - startTime,
+          fromBrowser: true,
+        });
+        return;
+      }
+
+      const html = await page.content();
+      let body = html;
+
+      if (maxBodySizeBytes && Buffer.byteLength(body, 'utf8') > maxBodySizeBytes) {
+        body = body.slice(0, maxBodySizeBytes);
+      }
+
+      const pageData = extractWithCheerio(
+        currentUrl,
+        body,
+        typeof contentType === 'string' ? contentType : undefined,
+        extract,
+      );
+      pageData.status = response?.status() ?? 200;
+      pageData.timing = Date.now() - startTime;
+      pageData.fromBrowser = true;
+
+      pages.push(pageData);
+
+      if (shouldFollowLinks && pageData.links) {
+        for (const link of pageData.links) {
+          if (pages.length >= maxPages) break;
+          if (isExtensionExcluded(link, excludeExtensions)) continue;
+
+          const follow = shouldFollowLink(currentUrl, link, linkScope);
+          const hostOk = (() => {
+            try {
+              return new URL(link).hostname === baseHost;
+            } catch {
+              return false;
+            }
+          })();
+
+          if (!follow || !hostOk) continue;
+
+          if (!visited.has(link)) {
+            await crawler.addRequests([{ url: link }]);
+          }
+        }
+      }
+    },
+    failedRequestHandler({ request, error }) {
+      pages.push({
+        url: request.url,
+        status: 0,
+        error: error?.message || 'Browser request failed',
+        fromBrowser: true,
+      });
+    },
+  });
+
+  await crawler.run([url]);
+}
+
+export async function crawlAndScrape(rawReq: Scr

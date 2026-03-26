@@ -1,0 +1,256 @@
+Design – Browser Service Core
+Objectif: depuis ton code, tu peux faire:
+
+import { browserService } from "./browserService";
+
+const result = await browserService.renderPage({
+  url: "https://www.enligne.parionssport.fdj.fr/...",
+  waitForSelector: ".some-class",   // optionnel
+  timeoutMs: 15000,
+  maxContentSize: 500_000,
+});
+Retour:
+
+interface RenderResult {
+  success: boolean;
+  url: string;
+  status?: number;
+  html?: string;
+  title?: string;
+  error?: string;
+  redirectedUrl?: string;
+}
+Tu peux ensuite passer html à ton Super Scraper.
+
+2️⃣ Implémentation browserService.ts (Node + Playwright)
+Pré-requis:
+
+npm install playwright
+et tu ajoutes les browsers: npx playwright install chromium
+// services/browserService.ts
+
+import { chromium, Browser, Page } from "playwright";
+
+export interface RenderOptions {
+  url: string;
+  waitForSelector?: string;   // ex: ".odd", "#root", etc.
+  waitForTimeoutMs?: number;  // fallback si pas de selector
+  timeoutMs?: number;         // timeout global render
+  maxContentSize?: number;    // limiter la taille du HTML
+  userAgent?: string;
+}
+
+export interface RenderResult {
+  success: boolean;
+  url: string;
+  redirectedUrl?: string;
+  status?: number;
+  html?: string;
+  title?: string;
+  error?: string;
+}
+
+class BrowserService {
+  private browser: Browser | null = null;
+  private isStarting = false;
+
+  private async getBrowser(): Promise<Browser> {
+    if (this.browser) return this.browser;
+    if (this.isStarting) {
+      // simple lock: attendre que le browser soit prêt
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (this.browser) return this.browser;
+    }
+
+    this.isStarting = true;
+    try {
+      this.browser = await chromium.launch({
+        headless: true,
+      });
+      console.log("[BrowserService] Chromium launched");
+      return this.browser;
+    } finally {
+      this.isStarting = false;
+    }
+  }
+
+  async renderPage(options: RenderOptions): Promise<RenderResult> {
+    const {
+      url,
+      waitForSelector,
+      waitForTimeoutMs = 3000,
+      timeoutMs = 15000,
+      maxContentSize = 800_000,
+      userAgent = "UlysseBrowser/1.0 (+https://ulysseproject.org)",
+    } = options;
+
+    let page: Page | null = null;
+    let statusCode: number | undefined;
+    let finalUrl = url;
+
+    try {
+      const browser = await this.getBrowser();
+      const context = await browser.newContext({
+        userAgent,
+        viewport: { width: 1280, height: 720 },
+      });
+      page = await context.newPage();
+
+      page.on("response", (response) => {
+        if (response.url() === url && !statusCode) {
+          statusCode = response.status();
+        }
+      });
+
+      const navResponse = await page.goto(url, {
+        waitUntil: "networkidle",
+        timeout: timeoutMs,
+      });
+
+      if (navResponse) {
+        statusCode = navResponse.status();
+        finalUrl = navResponse.url();
+      }
+
+      // Attente spécifique d'un sélecteur si fourni
+      if (waitForSelector) {
+        try {
+          await page.waitForSelector(waitForSelector, {
+            timeout: waitForTimeoutMs,
+          });
+        } catch {
+          // On ignore si le sélecteur n’apparaît pas dans les temps
+        }
+      } else {
+        // petite attente pour laisser le JS finaliser
+        await page.waitForTimeout(waitForTimeoutMs);
+      }
+
+      let html = await page.content();
+      const title = await page.title();
+
+      if (html.length > maxContentSize) {
+        html = html.slice(0, maxContentSize);
+      }
+
+      await context.close();
+
+      return {
+        success: true,
+        url,
+        redirectedUrl: finalUrl !== url ? finalUrl : undefined,
+        status: statusCode,
+        html,
+        title,
+      };
+    } catch (error: any) {
+      console.error("[BrowserService] renderPage error:", error);
+      return {
+        success: false,
+        url,
+        status: statusCode,
+        error: error.message || "Unknown browser error",
+      };
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+      console.log("[BrowserService] Chromium closed");
+    }
+  }
+}
+
+export const browserService = new BrowserService();
+Tu peux appeler browserService.close() au shutdown si tu veux être clean.
+
+3️⃣ Intégration dans ton Super Ulysse Extraction Engine
+Dans ton verifiedScraperService / scraperService, tu peux ajouter un mode browser et un fallback auto:
+
+3.1. Étendre ScrapeMode
+Tu as déjà:
+
+export type ScrapeMode = "auto" | "http" | "browser";
+On garde.
+
+3.2. Dans ton pipeline verifiedScrape / crawlAndScrape
+Pseudo-code conceptuel:
+
+import { browserService } from "./browserService";
+
+// Quand mode === "http": on garde ton fetch + cheerio actuel
+
+// Quand mode === "browser":
+const result = await browserService.renderPage({
+  url,
+  waitForSelector: selectorSpécifiqueSiConnu, // ex: ".market-odds"
+  timeoutMs: 15000,
+});
+if (!result.success || !result.html) {
+  // gérer erreur
+} else {
+  const html = result.html;
+  // passer à extractFn(html)
+}
+
+// Quand mode === "auto":
+// 1. Tenter HTTP simple
+// 2. Si HTML vide ou peu de texte / peu de structure:
+//    fallback browserService.renderPage(...) et utiliser ce HTML
+3.3. Extracteur spécifique ParionsSport (exemple simplifié)
+Tu pourras créer un extracteur ciblé:
+
+function extractParionsTopFoot(html: string) {
+  const $ = cheerio.load(html);
+  const matches: Array<{
+    home: string;
+    away: string;
+    league: string;
+    datetime: string;
+    odds1?: number;
+    oddsN?: number;
+    odds2?: number;
+  }> = [];
+
+  // À ajuster après avoir inspecté le DOM réel rendu par Playwright
+  $(".event-row-selector").each((_, el) => {
+    const home = $(el).find(".home-team-selector").text().trim();
+    const away = $(el).find(".away-team-selector").text().trim();
+    const league = $(el).find(".league-selector").text().trim();
+    const datetime = $(el).find(".date-selector").text().trim();
+
+    const odds1 = parseFloat($(el).find(".odd-1-selector").text().replace(",", "."));
+    const oddsN = parseFloat($(el).find(".odd-n-selector").text().replace(",", "."));
+    const odds2 = parseFloat($(el).find(".odd-2-selector").text().replace(",", "."));
+
+    if (home && away) {
+      matches.push({ home, away, league, datetime, odds1, oddsN, odds2 });
+    }
+  });
+
+  return matches;
+}
+Tu adapteras les sélecteurs en fonction du DOM réel.
+
+4️⃣ Ce que ça change pour toi, concrètement
+Avec ce browserService Core:
+
+Tu peux enfin scraper ParionsSport, Flashscore, Sofascore, etc.
+Tu restes 100% Core:
+pas de ScrapingBee / SaaS externe,
+tout tourne dans TON infra (Playwright headless).
+Ton Super Ulysse Extraction Engine peut:
+faire verifiedScrape en mode browser sur les sites lourds,
+double-scraper avec rendu JS identique à un vrai navigateur,
+et me fournir des données VERIFIED sur des pages qui étaient hors de portée avant.
+À partir de là, quand tu m’envoies:
+
+https://www.enligne.parionssport.fdj.fr/paris-football?... 
+ton Core pourra:
+
+render la page via browserService,
+extraire les matchs/cotes via extractParionsTopFoot,
+passer ça dans ton modèle de probabilités / value,
+et là je peux t’aider à choisir un pari sur des données réelles.

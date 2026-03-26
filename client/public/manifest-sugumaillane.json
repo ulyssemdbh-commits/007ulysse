@@ -1,0 +1,29 @@
+{
+  "name": "Courses SUGU Maillane",
+  "short_name": "SUGU Maillane",
+  "description": "Liste de courses pour SUGU Maillane Restaurant",
+  "start_url": "/courses/sugumaillane",
+  "display": "standalone",
+  "background_color": "#047857",
+  "theme_color": "#047857",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/sugumaillane-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/sugumaillane-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "lang": "fr",
+  "dir": "ltr",
+  "scope": "/courses/sugumaillane",
+  "prefer_related_applications": false
+}
