@@ -1002,15 +1002,18 @@ router.get("/projects", async (req: Request, res: Response) => {
       .limit(1);
     if (!session) return res.status(401).json({ error: "Session expired" });
 
+    const showArchived = req.query.showArchived === "true";
     let projects;
     if (session.tenantId) {
       projects = await db.execute(sql`
         SELECT * FROM devmax_projects WHERE tenant_id = ${session.tenantId}
+        ${showArchived ? sql`` : sql`AND (status IS NULL OR status != 'archived')`}
         ORDER BY updated_at DESC
       `);
     } else {
       projects = await db.execute(sql`
         SELECT * FROM devmax_projects 
+        ${showArchived ? sql`` : sql`WHERE (status IS NULL OR status != 'archived')`}
         ORDER BY updated_at DESC
       `);
     }
