@@ -5,6 +5,7 @@ import {
   CheckSquare, 
   StickyNote, 
   Bot,
+  Users,
   Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ const navigation = [
   { name: "Tâches", href: "/tasks", icon: CheckSquare },
   { name: "Notes", href: "/notes", icon: StickyNote },
   { name: "Ulysse", href: "/assistant", icon: Bot },
+  { name: "SuperChat", href: "/superchat", icon: Users },
   { name: "Paramètres", href: "/settings", icon: Settings },
 ];
 
