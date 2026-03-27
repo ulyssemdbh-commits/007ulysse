@@ -108,31 +108,37 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400;
   }
   
-  /* Glassmorphism cards */
+  /* Glassmorphism cards — Safari needs -webkit-backdrop-filter */
   .glass {
     @apply bg-white/5 backdrop-blur-xl border border-white/10;
+    -webkit-backdrop-filter: blur(24px);
   }
   
   .glass-card {
     @apply bg-card/80 backdrop-blur-xl border border-white/10 shadow-xl rounded-xl;
+    -webkit-backdrop-filter: blur(24px);
   }
   
   .glass-panel {
     @apply bg-card/60 backdrop-blur-2xl border border-white/5 shadow-2xl;
+    -webkit-backdrop-filter: blur(40px);
   }
   
   .glass-input {
     @apply bg-white/5 backdrop-blur-lg border border-white/10 focus:border-primary/50;
+    -webkit-backdrop-filter: blur(16px);
   }
   
   .glass-button {
     @apply bg-white/10 backdrop-blur-lg border border-white/20 hover:bg-white/15 transition-all;
+    -webkit-backdrop-filter: blur(16px);
   }
   
   /* AI message bubble - elegant glassmorphism */
   .ai-bubble {
     @apply bg-secondary/80 dark:bg-white/5;
     @apply backdrop-blur-2xl border border-border/40 dark:border-white/10;
+    -webkit-backdrop-filter: blur(40px);
     @apply rounded-2xl text-foreground;
     @apply shadow-sm dark:shadow-lg dark:shadow-black/20;
   }
@@ -210,6 +216,7 @@
   /* Bottom nav */
   .bottom-nav {
     @apply fixed bottom-0 left-0 right-0 bg-card/90 backdrop-blur-xl border-t border-white/10 safe-area-bottom;
+    -webkit-backdrop-filter: blur(24px);
   }
   
   .nav-item {
@@ -321,6 +328,20 @@
       min-width: 44px;
     }
   }
+}
+
+/* Safari global -webkit-backdrop-filter support for all Tailwind backdrop-blur classes */
+@supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) {
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
+  }
+  .backdrop-blur-sm { -webkit-backdrop-filter: blur(4px); }
+  .backdrop-blur { -webkit-backdrop-filter: blur(8px); }
+  .backdrop-blur-md { -webkit-backdrop-filter: blur(12px); }
+  .backdrop-blur-lg { -webkit-backdrop-filter: blur(16px); }
+  .backdrop-blur-xl { -webkit-backdrop-filter: blur(24px); }
+  .backdrop-blur-2xl { -webkit-backdrop-filter: blur(40px); }
+  .backdrop-blur-3xl { -webkit-backdrop-filter: blur(64px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
