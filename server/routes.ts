@@ -49,6 +49,7 @@ import { db } from "./db";
 import { suguCashRegister } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import miscRoutes from "./routes/miscRoutes";
+import superChatRoutes from "./routes/superChatRoutes";
 import interconnectRoutes from "./routes/interconnectRoutes";
 import uiSnapshotRoutes from "./routes/uiSnapshotRoutes";
 import dashboardScreenshotRoutes from "./routes/dashboardScreenshot";
@@ -370,6 +371,9 @@ export async function registerRoutes(
 
   // Misc Routes (homework, charter, voice settings, preview, RAC, face descriptors, marseille info)
   app.use("/api", miscRoutes);
+
+  // SuperChat - multi-AI group chat
+  app.use("/api/superchat", requireAuth, superChatRoutes);
 
   // Owner Routes (code snapshot API with PIN verification)
   app.use("/api", ownerRoutes);
