@@ -44,6 +44,9 @@ const PAGE_ROUTES: Record<string, string> = {
   "talking": "/talking",
   "vocal": "/talking",
   "footalmanach": "/sports/predictions/footalmanach",
+  "superchat": "/superchat",
+  "super chat": "/superchat",
+  "groupe": "/superchat",
 };
 
 export function resolvePageRoute(page: string): string | null {
