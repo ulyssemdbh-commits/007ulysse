@@ -2131,7 +2131,9 @@ export default function DevOps() {
             fileData = { content: `[Fichier binaire — ${ext.toUpperCase()}]`, sha: data.sha };
           } else {
             try {
-              const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
+              const raw = atob(data.content.replace(/\n/g, ""));
+              const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
+              const decoded = new TextDecoder("utf-8").decode(bytes);
               fileData = { content: decoded, sha: data.sha };
             } catch {
               fileData = { content: atob(data.content.replace(/\n/g, "")), sha: data.sha };
@@ -2789,7 +2791,9 @@ export default function DevOps() {
               sha: data.sha,
             };
           } else {
-            const decoded = atob(data.content);
+            const raw = atob(data.content.replace(/\n/g, ""));
+            const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
+            const decoded = new TextDecoder("utf-8").decode(bytes);
             fileData = { content: decoded.slice(0, 10000), sha: data.sha };
           }
           fileContentCache.current.set(cacheKey, fileData);

@@ -170,7 +170,9 @@ function IrisStagingBrowser({ repo, onClose }: { repo: string; onClose: () => vo
     try {
       const res = await fetch(`${base}/contents/${path}?ref=staging`, { credentials: "include" });
       const data = await res.json();
-      const decoded = atob(data.content?.replace(/\n/g, "") || "");
+      const raw = atob(data.content?.replace(/\n/g, "") || "");
+      const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
+      const decoded = new TextDecoder("utf-8").decode(bytes);
       setFileContent({ path, content: decoded, sha: data.sha });
       setEditContent(decoded);
       setEditMode(false);

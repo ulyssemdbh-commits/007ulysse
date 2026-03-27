@@ -439,7 +439,9 @@ function FileBrowserTab() {
     try {
       const res = await fetch(`${API}/contents/${path}?ref=${branch}`, { credentials: "include" });
       const data = await res.json();
-      const decoded = atob(data.content?.replace(/\n/g, "") || "");
+      const raw = atob(data.content?.replace(/\n/g, "") || "");
+      const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
+      const decoded = new TextDecoder("utf-8").decode(bytes);
       setFileContent({ path, content: decoded, sha: data.sha });
       setEditContent(decoded);
       setEditMode(false);
