@@ -16,17 +16,16 @@ export function normalizeNginxName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
 
-export function sslCertForDomain(domain: string): { cert: string; key: string } {
-  if (domain.endsWith(".dev.ulyssepro.org")) {
-    return {
-      cert: "/etc/letsencrypt/live/dev.ulyssepro.org/fullchain.pem",
-      key: "/etc/letsencrypt/live/dev.ulyssepro.org/privkey.pem",
-    };
-  }
-  return {
-    cert: "/etc/ssl/certs/ulysse.crt",
-    key: "/etc/ssl/private/ulysse.key",
-  };
+export function resolveAppDomain(appName: string, customDomain?: string): string {
+  if (customDomain) return customDomain;
+  return `${appName}.ulyssepro.org`;
+}
+
+export const ORIGIN_CERT = "/etc/ssl/certs/ulysse.crt";
+export const ORIGIN_KEY = "/etc/ssl/private/ulysse.key";
+
+export function sslCertForDomain(_domain: string): { cert: string; key: string } {
+  return { cert: ORIGIN_CERT, key: ORIGIN_KEY };
 }
 
 export const ULYSSE_FRAME_ANCESTORS = "'self' https://ulysseproject.org https://*.ulysseproject.org https://ulyssepro.org https://*.ulyssepro.org";

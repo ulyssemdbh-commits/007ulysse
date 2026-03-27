@@ -1,5 +1,5 @@
 import type { SSHService } from "./core";
-import { staticNginxBlock, proxyNginxBlock, pm2EcosystemConfig, sslCertForDomain, normalizeNginxName, nginxCleanupCmd } from "./helpers";
+import { staticNginxBlock, proxyNginxBlock, pm2EcosystemConfig, sslCertForDomain, normalizeNginxName, nginxCleanupCmd, resolveAppDomain } from "./helpers";
 
 export function createDeployMethods(service: SSHService) {
   return {
@@ -22,7 +22,11 @@ export function createDeployMethods(service: SSHService) {
       copyEnvFrom?: string;
       devmaxProjectId?: string;
     }): Promise<{ success: boolean; message: string; url?: string; port?: number; httpCode?: string; logs?: string[] }> {
-      const { repoUrl, appName, branch = "main", buildCmd, startCmd, envVars = {}, domain, createDb, dbName, dbUser, dbPassword, ssl, caller = "ulysse", copyEnvFrom, devmaxProjectId } = params;
+      const { repoUrl, appName: rawAppName, branch = "main", buildCmd, startCmd, envVars = {}, domain, createDb, dbName, dbUser, dbPassword, ssl, caller = "ulysse", copyEnvFrom, devmaxProjectId } = params;
+      const appName = rawAppName?.toLowerCase()?.trim();
+      if (!appName || appName === "undefined" || appName === "null") {
+        return { success: false, message: `Invalid app name: "${rawAppName}". A valid app name is required.` };
+      }
       const appDir = `/var/www/apps/${appName}`;
       const logs: string[] = [];
 
@@ -151,7 +155,7 @@ export function createDeployMethods(service: SSHService) {
       if (projectType === "static") {
         logs.push(`[3/8] Static site — skipping npm/PM2`);
 
-        const nginxDomain = domain || `${appName}.ulyssepro.org`;
+        const nginxDomain = resolveAppDomain(appName, domain);
         const nginxFileName = normalizeNginxName(appName);
         const staticDistCheck = await service.executeCommand(`[ -d "${appDir}/dist" ] && echo "dist" || ([ -d "${appDir}/build" ] && echo "build" || echo "root")`, 5000);
         const staticBuildDir = staticDistCheck.output?.trim();
@@ -193,7 +197,7 @@ export function createDeployMethods(service: SSHService) {
 
       if (projectType === "spa-build") {
         logs.push(`[3/8] SPA build detected — will build then serve static`);
-        const nginxDomain = domain || `${appName}.ulyssepro.org`;
+        const nginxDomain = resolveAppDomain(appName, domain);
         const distDir = `${appDir}/dist`;
 
         const spaPreCheck = await service.executeCommand(
@@ -302,8 +306,23 @@ export function createDeployMethods(service: SSHService) {
         return { success: true, message: `SPA "${appName}" built & deployed!\n${logs.join("\n")}\nURL: ${url}`, url, logs };
       }
 
-      const actualPort = params.port || await service.findFreePort(undefined, caller);
-      logs.push(`[3/8] Port: ${actualPort} (${caller} range)`);
+      let actualPort = params.port || 0;
+      if (!actualPort) {
+        const existingPortResult = await service.executeCommand(
+          `grep -oP '"PORT":\\s*"\\K[0-9]+' ${appDir}/ecosystem.config.cjs 2>/dev/null || grep -oP 'PORT="?\\K[0-9]+' ${appDir}/.env 2>/dev/null || echo "0"`,
+          5000
+        );
+        const existingPort = parseInt(existingPortResult.output?.trim() || "0", 10);
+        if (existingPort > 0) {
+          actualPort = existingPort;
+          logs.push(`[3/8] Port: ${actualPort} (reused from existing deployment)`);
+        } else {
+          actualPort = await service.findFreePort(undefined, caller);
+          logs.push(`[3/8] Port: ${actualPort} (new, ${caller} range)`);
+        }
+      } else {
+        logs.push(`[3/8] Port: ${actualPort} (explicit)`);
+      }
 
       if (createDb && dbName) {
         const dbResult = await service.createDatabase(
@@ -423,6 +442,18 @@ export function createDeployMethods(service: SSHService) {
         return { success: false, message: `Deployment failed at build phase:\n${buildResult.error}\n${buildResult.output}`, logs };
       }
 
+      const buildOutputCheck = await service.executeCommand(
+        `[ -d "${appDir}/dist" ] && ls ${appDir}/dist/ | head -3 || echo "NO_DIST"`,
+        5000
+      );
+      const pkgStartScript = JSON.parse(
+        (await service.executeCommand(`cd ${appDir} && node -e "console.log(JSON.stringify(require('./package.json').scripts?.start || ''))"`, 5000)).output || '""'
+      );
+      if (buildOutputCheck.output?.includes("NO_DIST") && pkgStartScript.includes("dist/")) {
+        return { success: false, message: `Build completed but produced no dist/ output. The start script expects dist/ files. Check build configuration.\n${buildResult.output || ""}`, logs };
+      }
+      logs.push(`[7/10] Build: OK${buildOutputCheck.output?.includes("NO_DIST") ? " (no dist/ — may be direct start)" : ""}`);
+
       const hasTestScript = await service.executeCommand(
         `cd ${appDir} && node -e "const p=require('./package.json'); process.exit(p.scripts?.test && p.scripts.test !== 'echo \\"Error: no test specified\\" && exit 1' ? 0 : 1)" 2>/dev/null`,
         5000
@@ -469,18 +500,18 @@ export function createDeployMethods(service: SSHService) {
       }
 
       logs.push(`[10/10] Starting with PM2...`);
-      const startScript = [
+      const pm2StartScript = [
         `pm2 delete ${appName} 2>/dev/null || true`,
         `cd ${appDir} && pm2 start ecosystem.config.cjs 2>&1`,
         `pm2 save`,
       ].join(" && ");
-      const startResult = await service.executeCommand(startScript, 30000);
+      const startResult = await service.executeCommand(pm2StartScript, 30000);
 
       if (!startResult.success) {
         return { success: false, message: `Deployment failed at start phase:\n${startResult.error}\n${startResult.output}`, logs };
       }
 
-      const nginxDomain = domain || `${appName}.ulyssepro.org`;
+      const nginxDomain = resolveAppDomain(appName, domain);
       const proxyConfigName = normalizeNginxName(appName);
       const nginxConf = proxyNginxBlock(nginxDomain, appName, actualPort);
 
@@ -557,7 +588,7 @@ export function createDeployMethods(service: SSHService) {
       copyEnvFrom?: string;
     }): Promise<{ success: boolean; message: string; stagingUrl?: string; productionUrl?: string; port?: number; logs?: string[] }> {
       const stagingAppName = `${params.appName}-dev`;
-      const stagingDomain = `${params.appName}.dev.ulyssepro.org`;
+      const stagingDomain = `${stagingAppName}.ulyssepro.org`;
       const productionDomain = `${params.appName}.ulyssepro.org`;
 
       console.log(`[SSH] Deploying staging: ${stagingAppName} → ${stagingDomain}`);
@@ -960,7 +991,7 @@ export function createDeployMethods(service: SSHService) {
         else if (buildOut !== "DIST_OK") serveDir = appDir;
 
         {
-          const nginxDomain = `${appName}.ulyssepro.org`;
+          const nginxDomain = resolveAppDomain(appName);
           const spaNginxConf = staticNginxBlock(nginxDomain, serveDir);
           await service.writeRemoteFile(`/etc/nginx/sites-available/${appName}`, spaNginxConf);
           const nginxReload = await service.executeCommand(
@@ -983,21 +1014,61 @@ export function createDeployMethods(service: SSHService) {
         if (!buildResult.success) return { success: false, message: `Build failed: ${buildResult.error}`, logs };
       }
 
+      const portResult = await service.executeCommand(
+        `grep -oP '"PORT":\\s*"\\K[0-9]+' ${appDir}/ecosystem.config.cjs 2>/dev/null || grep -oP 'PORT="?\\K[0-9]+' ${appDir}/.env 2>/dev/null || echo "0"`,
+        5000
+      );
+      const appPort = parseInt(portResult.output?.trim() || "0", 10);
+
+      if (appPort > 0) {
+        const nginxPortResult = await service.executeCommand(
+          `grep -oP 'server 127.0.0.1:\\K[0-9]+' /etc/nginx/sites-enabled/${normalizeNginxName(appName)} 2>/dev/null || echo "0"`,
+          5000
+        );
+        const nginxPort = parseInt(nginxPortResult.output?.trim() || "0", 10);
+        if (nginxPort > 0 && nginxPort !== appPort) {
+          logs.push(`Port fix: nginx had ${nginxPort}, app uses ${appPort} — regenerating nginx config`);
+          const nginxDomain = resolveAppDomain(appName);
+          const proxyConfigName = normalizeNginxName(appName);
+          const nginxConf = proxyNginxBlock(nginxDomain, appName, appPort);
+          await service.writeRemoteFile(`/etc/nginx/sites-available/${proxyConfigName}`, nginxConf);
+          await service.executeCommand(
+            `ln -sf /etc/nginx/sites-available/${proxyConfigName} /etc/nginx/sites-enabled/${proxyConfigName} && nginx -t 2>&1 && systemctl reload nginx`,
+            10000
+          );
+        }
+      }
+
       const restartResult = await service.executeCommand(`pm2 restart ${appName} 2>&1 | tail -5`, 15000);
       logs.push(`Restart: ${restartResult.success ? "OK" : restartResult.error || "failed"}`);
 
-      const healthCheck = await service.executeCommand(
-        `sleep 3 && pm2 show ${appName} 2>/dev/null | grep status | head -1`,
-        10000
-      );
-      logs.push(`Health: ${healthCheck.output?.trim() || "unknown"}`);
+      if (appPort > 0) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const healthCheck = await service.executeCommand(
+            `sleep 3 && curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:${appPort}/ 2>/dev/null || echo "000"`,
+            15000
+          );
+          const httpCode = healthCheck.output?.trim() || "000";
+          if (httpCode !== "000") {
+            logs.push(`Health: HTTP ${httpCode} on port ${appPort}`);
+            break;
+          }
+          if (attempt === 3) logs.push(`Health: app not responding on port ${appPort} after ${attempt} attempts`);
+        }
+      } else {
+        const healthCheck = await service.executeCommand(
+          `sleep 3 && pm2 show ${appName} 2>/dev/null | grep status | head -1`,
+          10000
+        );
+        logs.push(`Health: ${healthCheck.output?.trim() || "unknown"}`);
+      }
 
       return { success: true, message: `App "${appName}" updated from ${branch}\n${logs.join("\n")}`, logs };
     },
 
     async deployPlaceholderPages(slug: string, projectName: string): Promise<{ success: boolean; message: string; urls: { staging: string; production: string } }> {
       const prodDomain = `${slug}.ulyssepro.org`;
-      const stagingDomain = `${slug}.dev.ulyssepro.org`;
+      const stagingDomain = `${slug}-dev.ulyssepro.org`;
       const prodDir = `/var/www/placeholder/${slug}`;
       const stagingDir = `/var/www/placeholder/${slug}-dev`;
       const logs: string[] = [];

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, RotateCcw, Zap, Users, Plus, MessageSquare, Trash2, X, Reply, ChevronRight, PanelLeftClose, PanelLeft, Crown } from "lucide-react";
+import { Send, RotateCcw, Zap, Users, Plus, MessageSquare, Trash2, X, Reply, ChevronRight, PanelLeftClose, PanelLeft, Crown, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -397,6 +397,15 @@ export default function SuperChat() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between px-3 md:px-5 py-2.5 border-b border-white/10 glass-panel sticky top-0 z-30">
           <div className="flex items-center gap-2.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-xl"
+              onClick={() => window.location.href = "/"}
+              data-testid="button-back-dashboard"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
