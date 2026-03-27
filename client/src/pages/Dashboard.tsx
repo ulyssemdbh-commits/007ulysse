@@ -38,7 +38,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Send, Volume2, VolumeX, Sparkles, Activity, Plus, History, Mic, MicOff, Brain, LogOut, AlertTriangle, X, FolderOpen, Stethoscope, Zap, BookOpen, Pencil, MapPin, Camera, Eye, Music, Phone, PhoneOff, Menu, Check, Trophy, DollarSign, Settings, Mail, Store, ListTodo, BarChart3, ChevronsUp, ChevronsDown, ShieldCheck, ShieldAlert, ShieldQuestion, Wand2, GitBranch, Copy } from "lucide-react";
+import { Send, Volume2, VolumeX, Sparkles, Activity, Plus, History, Mic, MicOff, Brain, LogOut, AlertTriangle, X, FolderOpen, Stethoscope, Zap, BookOpen, Pencil, MapPin, Camera, Eye, Music, Phone, PhoneOff, Menu, Check, Trophy, DollarSign, Settings, Mail, Store, ListTodo, BarChart3, ChevronsUp, ChevronsDown, ShieldCheck, ShieldAlert, ShieldQuestion, Wand2, GitBranch, Copy, Users } from "lucide-react";
 import { useLocation } from "wouter";
 import { ImageEditor } from "@/components/ImageEditor";
 import { StudioPanel } from "@/components/StudioPanel";
@@ -1344,6 +1344,9 @@ export default function Dashboard() {
             <Button size="icon" variant="outline" onClick={() => navigate("/sports/predictions")} title="Djedou Pronos" data-testid="button-goto-pronos">
               <Trophy className="w-4 h-4" />
             </Button>
+            <Button size="icon" variant="outline" onClick={() => navigate("/superchat")} title="SuperChat" data-testid="button-goto-superchat">
+              <Users className="w-4 h-4" />
+            </Button>
 
             <div className="w-px h-6 bg-border mx-1" />
             <ThemeToggle />
@@ -1432,6 +1435,10 @@ export default function Dashboard() {
                   <button onClick={() => { setBurgerMenuOpen(false); navigate("/sports/predictions"); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover-elevate" data-testid="menu-goto-pronos">
                     <Trophy className="w-4 h-4 shrink-0 text-muted-foreground" />
                     <span className="flex-1 text-left">Djedou Pronos</span>
+                  </button>
+                  <button onClick={() => { setBurgerMenuOpen(false); navigate("/superchat"); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover-elevate" data-testid="menu-goto-superchat">
+                    <Users className="w-4 h-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 text-left">SuperChat</span>
                   </button>
                   <div className="border-t my-1" />
                   <AlertDialog>
@@ -2036,6 +2043,7 @@ export default function Dashboard() {
             { label: "Insights", icon: BarChart3, action: () => navigate("/ulysse-insights"), color: "text-cyan-400" },
             { label: "DevOps", icon: GitBranch, action: () => navigate("/devops"), color: "text-indigo-400" },
             { label: "Iris DevOps", icon: Sparkles, action: () => navigate("/devops-iris"), color: "text-amber-400" },
+            { label: "SuperChat", icon: Users, action: () => navigate("/superchat"), color: "text-violet-400" },
             { label: "Diag", icon: Stethoscope, action: () => navigate("/diagnostics"), color: "text-slate-400" },
             { label: "Réglages", icon: Settings, action: () => navigate("/settings"), color: "text-slate-300" },
           ];
