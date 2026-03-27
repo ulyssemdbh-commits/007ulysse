@@ -4247,4 +4247,32 @@ export type InsertCobaChatSession = z.infer<typeof insertCobaChatSessionSchema>;
 
 export const insertCobaChatMessageSchema = createInsertSchema(cobaChatMessages).omit({ id: true, createdAt: true });
 export type CobaChatMessage = typeof cobaChatMessages.$inferSelect;
+
+export const superChatSessions = pgTable("superchat_sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  title: text("title").default("SuperChat"),
+  activePersonas: text("active_personas").array().default(["ulysse", "iris", "alfred", "maxai"]),
+  messageCount: integer("message_count").notNull().default(0),
+  lastMessageAt: timestamp("last_message_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const superChatMessages = pgTable("superchat_messages", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull(),
+  sender: text("sender").notNull(),
+  senderName: text("sender_name").notNull(),
+  content: text("content").notNull(),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSuperChatSessionSchema = createInsertSchema(superChatSessions).omit({ id: true, createdAt: true, lastMessageAt: true, messageCount: true });
+export type SuperChatSession = typeof superChatSessions.$inferSelect;
+export type InsertSuperChatSession = z.infer<typeof insertSuperChatSessionSchema>;
+
+export const insertSuperChatMessageSchema = createInsertSchema(superChatMessages).omit({ id: true, createdAt: true });
+export type SuperChatMessage = typeof superChatMessages.$inferSelect;
+export type InsertSuperChatMessage = z.infer<typeof insertSuperChatMessageSchema>;
 export type InsertCobaChatMessage = z.infer<typeof insertCobaChatMessageSchema>;

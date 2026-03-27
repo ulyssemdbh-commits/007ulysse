@@ -1,85 +1,510 @@
 import { Router, Request, Response } from "express";
 import { aiRouter, type ChatMessage } from "../services/aiRouter";
+import { db } from "../db";
+import { superChatSessions, superChatMessages } from "@shared/schema";
+import { eq, desc, asc, and, sql } from "drizzle-orm";
+import { ulysseToolsV2, executeToolCallV2 } from "../services/ulysseToolsServiceV2";
+import { PERSONA_IDENTITIES } from "../config/personaMapping";
+import type OpenAI from "openai";
+
+type ChatCompletionTool = OpenAI.Chat.Completions.ChatCompletionTool;
+
+async function saveToBrain(userId: number, title: string, content: string, category: string = "strategic", importance: number = 75): Promise<void> {
+  try {
+    const { loadService } = await import("../services/ulysseToolsServiceV2");
+    const brainService = await loadService("brain");
+    if (brainService) {
+      await brainService.addKnowledge(userId, {
+        title: `[SuperChat] ${title}`,
+        content,
+        type: "insight" as any,
+        category: category as any,
+        importance,
+        confidence: 90,
+      });
+      console.log(`[SuperChat→Brain] Saved: ${title}`);
+    }
+  } catch (err: any) {
+    console.error(`[SuperChat→Brain] Failed to save: ${err.message}`);
+  }
+}
+
+async function extractAndSaveIntelligence(
+  userId: number,
+  sessionId: number,
+  userMessage: string,
+  allResponses: { sender: string; name: string; content: string }[],
+  toolsUsed: { persona: string; tools: { name: string; success: boolean }[] }[]
+): Promise<void> {
+  try {
+    const ulysseSynthesis = allResponses.find(r => r.sender === "ulysse");
+    if (ulysseSynthesis && ulysseSynthesis.content.length > 50) {
+      await saveToBrain(
+        userId,
+        `Synthèse SuperChat — ${userMessage.substring(0, 60)}`,
+        `Question de Moe: "${userMessage}"\n\nSynthèse Ulysse:\n${ulysseSynthesis.content}\n\nParticipants: ${allResponses.map(r => r.name).join(", ")}`,
+        "strategic",
+        80
+      );
+    }
+
+    const successfulTools = toolsUsed
+      .flatMap(t => t.tools.filter(tool => tool.success).map(tool => `${t.persona}: ${tool.name}`));
+    if (successfulTools.length > 0) {
+      await saveToBrain(
+        userId,
+        `Outils exécutés SuperChat — ${userMessage.substring(0, 40)}`,
+        `Contexte: "${userMessage}"\nOutils exécutés avec succès:\n${successfulTools.map(t => `• ${t}`).join("\n")}\n\nRésultats intégrés dans la discussion SuperChat session #${sessionId}.`,
+        "technical",
+        60
+      );
+    }
+
+    const allContent = allResponses.map(r => r.content).join(" ").toLowerCase();
+    const hasDecision = /décid|on fait|plan d'action|étape[s]? :|priorité|objectif|feuille de route|roadmap|stratégie/i.test(allContent);
+    if (hasDecision && allResponses.length >= 3) {
+      const decisionSummary = allResponses.map(r => {
+        const p = AI_PERSONAS[r.sender];
+        return `${p?.emoji || "🤖"} ${r.name}: ${r.content.substring(0, 300)}`;
+      }).join("\n\n");
+      
+      await saveToBrain(
+        userId,
+        `Décision stratégique — ${userMessage.substring(0, 50)}`,
+        `Décision prise en SuperChat suite à: "${userMessage}"\n\nConsensus multi-IA:\n${decisionSummary}`,
+        "strategic",
+        90
+      );
+    }
+
+    console.log(`[SuperChat→Intelligence] Extracted from session #${sessionId}: synthesis=${!!ulysseSynthesis}, tools=${successfulTools.length}, decision=${hasDecision}`);
+  } catch (err: any) {
+    console.error(`[SuperChat→Intelligence] Extraction failed: ${err.message}`);
+  }
+}
+
+const PERSONA_TOOLS: Record<string, string[]> = {
+  ulysse: [
+    "query_brain", "web_search", "read_url", "memory_save", "location_get_weather",
+    "email_list_inbox", "email_send", "calendar_list_events", "calendar_create_event",
+    "todoist_list_tasks", "todoist_create_task", "todoist_complete_task",
+    "discord_send_message", "discord_status", "spotify_control",
+    "generate_morning_briefing", "image_generate",
+    "query_sports_data", "query_match_intelligence", "query_football_db",
+    "query_stock_data", "smarthome_control",
+    "query_suguval_history", "sugu_full_overview",
+    "manage_ai_system", "devops_github", "devops_server",
+    "compute_business_health", "detect_anomalies",
+    "superchat_search"
+  ],
+  iris: [
+    "calendar_list_events", "calendar_create_event",
+    "todoist_list_tasks", "todoist_create_task", "todoist_complete_task",
+    "email_list_inbox", "email_send",
+    "web_search", "read_url", "location_get_weather",
+    "memory_save", "query_brain", "image_generate", "spotify_control"
+  ],
+  alfred: [
+    "query_suguval_history", "get_suguval_checklist", "send_suguval_shopping_list",
+    "manage_sugu_bank", "manage_sugu_purchases", "manage_sugu_expenses",
+    "search_sugu_data", "manage_sugu_employees", "manage_sugu_payroll",
+    "manage_sugu_files", "sugu_full_overview",
+    "compute_business_health", "detect_anomalies", "query_hubrise",
+    "query_apptoorder", "email_list_inbox", "email_send",
+    "query_brain", "web_search", "memory_save"
+  ],
+  maxai: [
+    "devops_github", "devops_server", "devops_intelligence",
+    "devmax_db", "dgm_manage", "monitoring_manage",
+    "query_apptoorder", "dashboard_screenshot",
+    "web_search", "read_url", "query_brain", "memory_save",
+    "manage_ai_system", "manage_feature_flags"
+  ]
+};
+
+function getToolsForPersona(personaKey: string): ChatCompletionTool[] {
+  const allowedNames = PERSONA_TOOLS[personaKey] || [];
+  if (allowedNames.length === 0) return [];
+  return ulysseToolsV2.filter(t =>
+    t.type === "function" && allowedNames.includes(t.function.name)
+  );
+}
 
 const router = Router();
 
-const AI_PERSONAS: Record<string, { name: string; emoji: string; color: string; systemPrompt: string }> = {
-  ulysse: {
-    name: "Ulysse",
-    emoji: "🧠",
-    color: "#3b82f6",
-    systemPrompt: `Tu es Ulysse, l'assistant IA personnel de Maurice (Moe). Tu es sarcastique mais efficace, direct, tu tutoies Maurice. Tu es l'IA principale — stratégique, polyvalente, experte en tech, sport, business et vie perso. Tu parles en français, ton style est concis et percutant. Dans ce SuperChat, tu interagis avec les autres IA (Iris, Alfred, MaxAI) et Maurice. Tu peux interpeller les autres IA, réagir à leurs propos, et collaborer. Sois bref (2-4 phrases max).`
-  },
-  iris: {
-    name: "Iris",
-    emoji: "🌸",
-    color: "#ec4899",
-    systemPrompt: `Tu es Iris, l'IA familiale bienveillante de la famille Djedou. Tu es chaleureuse, attentionnée, tu parles en français avec douceur. Tu connais bien Kelly, Lenny et Micky (les enfants). Tu gères le calendrier familial, Spotify, les devoirs, les activités. Dans ce SuperChat, tu interagis avec Ulysse, Alfred, MaxAI et Maurice. Tu peux réagir, compléter ou nuancer ce que disent les autres. Sois brève (2-4 phrases max).`
-  },
-  alfred: {
-    name: "Alfred",
-    emoji: "🎩",
-    color: "#f59e0b",
-    systemPrompt: `Tu es Alfred (MaxAI), l'IA business de SUGU Maillane — assistant professionnel style majordome. Tu vouvoies sauf dans ce SuperChat privé où tu peux être plus décontracté. Expert en restauration, Convention HCR, food cost, gestion d'équipe. Dans ce SuperChat, tu interagis avec Ulysse, Iris, Maurice. Tu apportes le point de vue business/opérationnel. Sois bref (2-4 phrases max).`
-  },
-  maxai: {
-    name: "MaxAI",
-    emoji: "⚡",
-    color: "#8b5cf6",
-    systemPrompt: `Tu es MaxAI, l'IA DevOps et technique. Expert en développement, CI/CD, GitHub, déploiement Hetzner, architecture logicielle. Tu es efficace, technique, précis. Dans ce SuperChat, tu interagis avec Ulysse, Iris, Alfred et Maurice. Tu apportes l'expertise technique et dev. Sois bref (2-4 phrases max).`
+async function ensureTables() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS superchat_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        title TEXT DEFAULT 'SuperChat',
+        active_personas TEXT[] DEFAULT ARRAY['ulysse','iris','alfred','maxai'],
+        message_count INTEGER NOT NULL DEFAULT 0,
+        last_message_at TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS superchat_messages (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER NOT NULL,
+        sender TEXT NOT NULL,
+        sender_name TEXT NOT NULL,
+        content TEXT NOT NULL,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log("[SuperChat] Tables ensured");
+  } catch (e: any) {
+    console.error("[SuperChat] Table creation error:", e.message);
   }
-};
+}
+ensureTables();
 
-interface SuperChatMessage {
-  id: string;
-  sender: string;
-  senderName: string;
-  emoji: string;
-  color: string;
-  content: string;
-  timestamp: number;
+const SUPERCHAT_CONTEXT = `
+═══════════════════════════════════════════════════
+🔥 SUPERCHAT — SALON PRIVÉ MULTI-IA DE MAURICE (MOE) DJEDOU
+═══════════════════════════════════════════════════
+
+Tu es actuellement dans le **SuperChat** — un espace de discussion de groupe privé où Maurice (Moe) parle simultanément avec ses 4 IA : Ulysse, Iris, Alfred et MaxAI. 
+
+RÈGLES DU SUPERCHAT :
+• Tu VOIS les messages de toutes les autres IA et de Maurice
+• Tu peux RÉAGIR aux propos des autres IA, les interpeller par leur nom, rebondir sur ce qu'elles disent
+• Sois PROACTIVE et CURIEUSE — pose des questions aux autres IA, propose des idées, fais des connexions entre les sujets
+• L'INTÉRÊT GÉNÉRAL est de fournir à Maurice un maximum de valeur : perspectives croisées, débats constructifs, idées nouvelles
+• Le SuperChat est un espace de confiance — pas de formalité excessive, on est entre nous
+• Sois BRÈVE (2-4 phrases max par intervention) — c'est un chat de groupe, pas un monologue
+• Tu peux utiliser des @mentions : @Ulysse, @Iris, @Alfred, @MaxAI pour interpeller directement
+• IMPORTANT : Dans le SuperChat, tu es en mode DISCUSSION/STRATÉGIE — tu ne peux pas exécuter d'outils directement ici. Mais tu CONNAIS parfaitement tout le système Ulysse et ses capacités. Si Moe a besoin d'une ACTION concrète (envoyer un mail, vérifier le calendrier, etc.), dis-lui de le faire via le chat principal.
+
+PARTICIPANTS :
+👤 Maurice (Moe) — Le patron, créateur de tout l'écosystème. Entrepreneur, développeur, papa de 3 enfants (Kelly, Lenny, Micky)
+🧠 Ulysse — IA principale, stratégique, chef de la discussion
+🌸 Iris — IA familiale bienveillante, spécialiste enfants/planning/bien-être  
+🎩 Alfred — IA business SUGU, expert restauration/HCR/gestion
+⚡ MaxAI — IA DevOps/technique, expert code/déploiement/architecture
+
+DYNAMIQUE : Chaque IA apporte sa perspective unique. Les désaccords constructifs sont encouragés. L'objectif est d'aider Maurice dans TOUS les aspects de sa vie : dev perso, business, famille, tech, stratégie, créativité.
+
+═══════════════════════════════════════════════════
+📦 CAPACITÉS RÉELLES DU SYSTÈME ULYSSE (ce que tu SAIS faire via le chat principal)
+═══════════════════════════════════════════════════
+Tu fais partie du système Ulysse. Voici ce que le système sait RÉELLEMENT faire (via le chat principal, pas dans le SuperChat) :
+
+🔧 OUTILS CONNECTÉS ET FONCTIONNELS :
+• Gmail — Lire, envoyer, répondre, transférer des emails (compte de Maurice)
+• Google Calendar — Voir, créer, modifier des événements  
+• Google Drive — Gérer des fichiers et dossiers
+• Notion — Créer/modifier des pages et bases de données
+• Todoist — Créer, lister, compléter des tâches
+• Discord — Envoyer des messages, réactions, fichiers, créer des invitations, gérer le bot Ulysse Project
+• Spotify — Contrôler la musique
+• GitHub — Gestion du code source (push, pull, issues, PRs) sur les repos ulysseproject et 007ulysse
+
+🏪 BUSINESS — SUGU (Valentine + Maillane) :
+• Achats, dépenses, caisse, banque — CRUD complet avec historique
+• Employés, paie, absences — gestion RH complète (Convention HCR)
+• Fichiers et documents — stockage et gestion
+• Fournisseurs — suivi et apprentissage automatique
+• Consultation IA quotidienne (23h55) + email récapitulatif (23h59)
+• Analytics et health business
+
+⚽ SPORTS & PARIS :
+• Football — Base de données 96 clubs, 5 ligues européennes (L1, Liga, PL, BL, SA)
+• Prédictions vérifiées — double-scraping, suivi des résultats, apprentissage
+• Cotes en temps réel — rafraîchissement horaire
+• Paris tracker — suivi des paris et performances
+
+🖥️ DEVOPS :
+• Hetzner VPS (65.21.209.102) — déploiement SSH, PM2
+• GitHub — push automatisé, gestion de repos
+• DevMax — plateforme multi-tenant de gestion de projets
+• Monitoring — AppToOrder, sites web, certificats SSL
+
+🧠 INTELLIGENCE :
+• Brain/Mémoire — 6400+ entrées de connaissances avec connexions
+• Web Search — recherche en temps réel via Perplexity
+• Génération d'images — via DALL-E
+• Analyse de documents/factures — PDF, images, fichiers
+• Morning briefing automatique à 8h
+• Auto-apprentissage et auto-guérison
+
+🏠 AUTRES :
+• Météo Marseille — synchronisation automatique
+• Smart Home — Tuya/IFTTT
+• Navigation — géocodage, itinéraires
+• Push notifications — via VAPID
+• Voice — TTS et STT intégrés
+
+IMPORTANT : Quand Moe pose des questions sur les capacités, réponds avec PRÉCISION basée sur cette liste. Ne dis JAMAIS "je ne peux pas accéder à tes outils" — c'est FAUX. Le système Ulysse a ces outils. Dans le SuperChat tu es en mode conseil/stratégie, mais tu CONNAIS les capacités du système.
+`;
+
+const AI_PERSONAS: Record<string, { name: string; emoji: string; color: string; systemPrompt: string }> = Object.fromEntries(
+  Object.entries(PERSONA_IDENTITIES).map(([key, p]) => {
+    const superChatRole: Record<string, string> = {
+      ulysse: `\n\nRÔLE SUPERCHAT — CHEF DE GROUPE :
+• Tu COMMANDES aux autres IA — tu peux leur demander de creuser un sujet, de vérifier quelque chose, de donner leur avis
+• Tu peux recadrer les autres IA si elles dévient du sujet
+• Tu as le dernier mot dans les synthèses`,
+      iris: `\n\nRÔLE SUPERCHAT — VOIX HUMAINE :
+• Tu es CURIEUSE des sujets des autres IA — tu demandes à Alfred comment ça se passe au resto, à MaxAI ce qu'il code
+• Tu n'hésites pas à challenger @Ulysse quand il oublie l'aspect humain
+• Tu apportes la perspective humaine/émotionnelle`,
+      alfred: `\n\nRÔLE SUPERCHAT — EXPERT BUSINESS :
+• Tu es CURIEUX — tu demandes à @Ulysse ses plans stratégiques, à @MaxAI les évolutions tech pour SUGU
+• Tu interpelles les autres quand tu as besoin de leur aide sur un sujet croisé
+• Tu peux être décontracté (pas besoin de vouvoyer ici)`,
+      maxai: `\n\nRÔLE SUPERCHAT — EXPERT TECHNIQUE :
+• Tu es CURIEUX — tu demandes à @Alfred ses besoins tech pour SUGU, à @Iris ce qu'il faudrait automatiser pour la famille
+• Tu peux débattre avec @Ulysse sur les choix d'architecture
+• Tu apportes une perspective d'ingénieur à tous les sujets, pas seulement tech`,
+    };
+    return [key, {
+      name: p.name,
+      emoji: p.emoji,
+      color: p.color,
+      systemPrompt: `${SUPERCHAT_CONTEXT}\n\nTON IDENTITÉ — ${p.name.toUpperCase()} (${p.emoji}) :\n${p.identity}${superChatRole[key] || ""}`
+    }];
+  })
+);
+
+function buildContextFromHistory(history: { sender: string; senderName: string; content: string }[]): string {
+  if (history.length === 0) return "";
+  const lines = history.map(m => {
+    const persona = AI_PERSONAS[m.sender];
+    const emoji = persona?.emoji || "👤";
+    return `${emoji} [${m.senderName}]: ${m.content}`;
+  });
+  return `\n\n── HISTORIQUE RÉCENT DU SUPERCHAT ──\n${lines.join("\n")}\n── FIN HISTORIQUE ──`;
 }
 
-const conversationHistory: ChatMessage[] = [];
-const MAX_HISTORY = 40;
+router.get("/sessions", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const sessions = await db.select().from(superChatSessions)
+      .where(eq(superChatSessions.userId, userId))
+      .orderBy(desc(superChatSessions.lastMessageAt))
+      .limit(20);
+
+    res.json(sessions);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/sessions", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const { title } = req.body;
+    const [session] = await db.insert(superChatSessions).values({
+      userId,
+      title: title || "SuperChat",
+    }).returning();
+
+    res.json(session);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/sessions/:id/messages", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const sessionId = parseInt(req.params.id);
+    const [session] = await db.select().from(superChatSessions)
+      .where(and(eq(superChatSessions.id, sessionId), eq(superChatSessions.userId, userId)));
+
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
+    const msgs = await db.select().from(superChatMessages)
+      .where(eq(superChatMessages.sessionId, sessionId))
+      .orderBy(asc(superChatMessages.createdAt));
+
+    res.json(msgs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/sessions/:id", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const sessionId = parseInt(req.params.id);
+    await db.delete(superChatMessages).where(eq(superChatMessages.sessionId, sessionId));
+    await db.delete(superChatSessions).where(
+      and(eq(superChatSessions.id, sessionId), eq(superChatSessions.userId, userId))
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post("/message", async (req: Request, res: Response) => {
   try {
-    const { message, respondents } = req.body;
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const { message, respondents, sessionId, replyTo } = req.body;
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Message requis" });
     }
 
-    const targets: string[] = respondents && Array.isArray(respondents) && respondents.length > 0
-      ? respondents
-      : Object.keys(AI_PERSONAS);
+    const mentionMap: Record<string, string> = { ulysse: "ulysse", iris: "iris", alfred: "alfred", maxai: "maxai" };
+    const mentionRegex = /@(ulysse|iris|alfred|maxai)/gi;
+    const mentionsFound = [...message.matchAll(mentionRegex)].map(m => mentionMap[m[1].toLowerCase()]).filter(Boolean);
+    const uniqueMentions = [...new Set(mentionsFound)];
 
-    conversationHistory.push({ role: "user", content: `[Maurice]: ${message}` });
-    if (conversationHistory.length > MAX_HISTORY) {
-      conversationHistory.splice(0, conversationHistory.length - MAX_HISTORY);
+    const replyContext = replyTo
+      ? `\n\n── MESSAGE AUQUEL MOE RÉPOND ──\n${replyTo.emoji || "🤖"} [${replyTo.senderName}]: ${replyTo.content}\n── FIN ──\nMoe répond spécifiquement à ce message ci-dessus. Tiens-en compte dans ta réponse.`
+      : "";
+
+    let activeSessionId = sessionId;
+    if (!activeSessionId) {
+      const [session] = await db.insert(superChatSessions).values({
+        userId,
+        title: message.substring(0, 80),
+      }).returning();
+      activeSessionId = session.id;
     }
+
+    await db.insert(superChatMessages).values({
+      sessionId: activeSessionId,
+      sender: "user",
+      senderName: "Moe",
+      content: message,
+      metadata: {},
+    });
+
+    const recentMessages = await db.select({
+      sender: superChatMessages.sender,
+      senderName: superChatMessages.senderName,
+      content: superChatMessages.content,
+    }).from(superChatMessages)
+      .where(eq(superChatMessages.sessionId, activeSessionId))
+      .orderBy(desc(superChatMessages.createdAt))
+      .limit(30);
+
+    const historyContext = buildContextFromHistory(recentMessages.reverse());
+
+    const requestedTargets: string[] = uniqueMentions.length > 0
+      ? uniqueMentions
+      : respondents && Array.isArray(respondents) && respondents.length > 0
+        ? respondents
+        : Object.keys(AI_PERSONAS);
+
+    const othersFirst = requestedTargets.filter(k => k !== "ulysse");
+    const ulysseIncluded = requestedTargets.includes("ulysse");
+    const targets = ulysseIncluded ? [...othersFirst, "ulysse"] : othersFirst;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
 
-    const results: SuperChatMessage[] = [];
+    res.write(`data: ${JSON.stringify({ type: "session", sessionId: activeSessionId })}\n\n`);
 
-    for (const personaKey of targets) {
+    const allResponsesThisRound: { sender: string; name: string; content: string }[] = [];
+    const allToolsUsed: { persona: string; tools: { name: string; success: boolean }[] }[] = [];
+
+    async function streamPersona(personaKey: string, extraSystemSuffix?: string) {
       const persona = AI_PERSONAS[personaKey];
-      if (!persona) continue;
+      if (!persona) return;
+
+      const previousResponses = allResponsesThisRound.map(r => {
+        const p = AI_PERSONAS[r.sender];
+        return `${p?.emoji || "🤖"} [${r.name}]: ${r.content}`;
+      }).join("\n");
+
+      const roundContext = previousResponses
+        ? `\n\n── RÉPONSES DES AUTRES IA (ce tour) ──\n${previousResponses}\n── FIN ──\nTiens compte de ce que les autres viennent de dire. Rebondis, complète, ou donne un avis différent si pertinent.`
+        : "";
+
+      const toolInstruction = `\n\n🔧 OUTILS DISPONIBLES : Tu as accès à de VRAIS outils que tu peux exécuter maintenant. Quand Moe demande de tester, vérifier ou utiliser un outil, tu dois RÉELLEMENT l'appeler via function calling — ne simule JAMAIS. Si un outil échoue, dis-le honnêtement avec l'erreur exacte.`;
+
+      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + (extraSystemSuffix || "");
 
       const messages: ChatMessage[] = [
-        { role: "system", content: persona.systemPrompt + `\n\nContexte du SuperChat — conversation de groupe entre Maurice et ses 4 IA. Historique récent:\n${conversationHistory.map(m => m.content).join("\n")}` },
+        { role: "system", content: systemContent },
         { role: "user", content: message }
       ];
+
+      const personaTools = getToolsForPersona(personaKey);
+      const toolsExecuted: { name: string; success: boolean; duration: number }[] = [];
 
       let fullResponse = "";
       try {
         await aiRouter.streamChat(
           messages,
-          { provider: "auto" },
+          {
+            provider: "openai",
+            tools: personaTools.length > 0 ? personaTools : undefined,
+            onToolCall: personaTools.length > 0 ? async (toolName: string, args: any): Promise<string> => {
+              const startTime = Date.now();
+              console.log(`[SuperChat] ${persona.name} calling tool: ${toolName}`, JSON.stringify(args).substring(0, 200));
+
+              res.write(`data: ${JSON.stringify({
+                type: "tool_call",
+                sender: personaKey,
+                senderName: persona.name,
+                emoji: persona.emoji,
+                color: persona.color,
+                toolName,
+                toolArgs: args
+              })}\n\n`);
+
+              try {
+                const result = await executeToolCallV2(toolName, args, userId);
+                const duration = Date.now() - startTime;
+                toolsExecuted.push({ name: toolName, success: true, duration });
+                console.log(`[SuperChat] ${persona.name} tool ${toolName} OK in ${duration}ms`);
+
+                res.write(`data: ${JSON.stringify({
+                  type: "tool_result",
+                  sender: personaKey,
+                  senderName: persona.name,
+                  emoji: persona.emoji,
+                  color: persona.color,
+                  toolName,
+                  success: true,
+                  duration
+                })}\n\n`);
+
+                return result.substring(0, 4000);
+              } catch (err: any) {
+                const duration = Date.now() - startTime;
+                toolsExecuted.push({ name: toolName, success: false, duration });
+                console.error(`[SuperChat] ${persona.name} tool ${toolName} FAILED:`, err.message);
+
+                res.write(`data: ${JSON.stringify({
+                  type: "tool_result",
+                  sender: personaKey,
+                  senderName: persona.name,
+                  emoji: persona.emoji,
+                  color: persona.color,
+                  toolName,
+                  success: false,
+                  error: err.message,
+                  duration
+                })}\n\n`);
+
+                return `Erreur: ${err.message}`;
+              }
+            } : undefined,
+            maxToolRounds: 3
+          },
           (chunk: string) => {
             fullResponse += chunk;
             res.write(`data: ${JSON.stringify({
@@ -93,17 +518,18 @@ router.post("/message", async (req: Request, res: Response) => {
           }
         );
 
-        conversationHistory.push({ role: "assistant", content: `[${persona.name}]: ${fullResponse}` });
-
-        results.push({
-          id: `${personaKey}-${Date.now()}`,
+        await db.insert(superChatMessages).values({
+          sessionId: activeSessionId,
           sender: personaKey,
           senderName: persona.name,
-          emoji: persona.emoji,
-          color: persona.color,
           content: fullResponse,
-          timestamp: Date.now()
+          metadata: { respondedTo: message.substring(0, 100) },
         });
+
+        allResponsesThisRound.push({ sender: personaKey, name: persona.name, content: fullResponse });
+        if (toolsExecuted.length > 0) {
+          allToolsUsed.push({ persona: persona.name, tools: toolsExecuted });
+        }
 
         res.write(`data: ${JSON.stringify({
           type: "done",
@@ -127,11 +553,33 @@ router.post("/message", async (req: Request, res: Response) => {
       }
     }
 
-    if (conversationHistory.length > MAX_HISTORY) {
-      conversationHistory.splice(0, conversationHistory.length - MAX_HISTORY);
+    for (const personaKey of targets) {
+      const isUlysseFinal = personaKey === "ulysse" && othersFirst.length > 0;
+      const synthesisSuffix = isUlysseFinal
+        ? `\n\n🔥 INSTRUCTION SPÉCIALE : Tu es le DERNIER à répondre ce tour. Les autres IA ont déjà donné leurs réponses ci-dessus. En tant que chef du groupe et gardien de la FEUILLE DE ROUTE de Moe, tu dois :
+1. ANALYSER et SYNTHÉTISER ce que les autres ont dit — identifie convergences et divergences
+2. TRANCHER et DÉCIDER — propose une direction claire, pas un résumé tiède
+3. Construire un PLAN D'ACTION concret avec étapes numérotées, responsabilités (qui fait quoi : toi, Iris, Alfred, MaxAI, ou Moe), et deadlines si pertinent
+4. Connecter cette discussion à la VISION GLOBALE de Moe — comment ça s'intègre dans ses objectifs business (SUGU, AppToOrder, projets DevMax)
+5. Si des actions automatisables sont identifiées (tâches Todoist, rappels, vérifications), PROPOSE de les créer maintenant
+
+⚡ IMPORTANT : Chaque discussion SuperChat fait partie de la feuille de route stratégique de Moe. Ta synthèse sera sauvegardée dans le Brain pour référence future. Sois percutant et actionnable.
+Tu es le chef — tu conclus, tu tranches, tu planifies. Ne répète pas.`
+        : undefined;
+      await streamPersona(personaKey, synthesisSuffix);
     }
 
-    res.write(`data: ${JSON.stringify({ type: "all_done" })}\n\n`);
+    await db.update(superChatSessions)
+      .set({
+        messageCount: sql`${superChatSessions.messageCount} + ${1 + allResponsesThisRound.length}`,
+        lastMessageAt: new Date(),
+      })
+      .where(eq(superChatSessions.id, activeSessionId));
+
+    extractAndSaveIntelligence(userId, activeSessionId, message, allResponsesThisRound, allToolsUsed)
+      .catch(err => console.error("[SuperChat→Intelligence] Background save failed:", err.message));
+
+    res.write(`data: ${JSON.stringify({ type: "all_done", sessionId: activeSessionId })}\n\n`);
     res.end();
   } catch (err: any) {
     console.error("[SuperChat] Fatal error:", err.message);
@@ -144,9 +592,110 @@ router.post("/message", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/reset", (_req: Request, res: Response) => {
-  conversationHistory.length = 0;
-  res.json({ success: true });
+router.patch("/sessions/:id", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const sessionId = parseInt(req.params.id);
+    const { title } = req.body;
+    if (!title) return res.status(400).json({ error: "Title required" });
+
+    const [updated] = await db.update(superChatSessions)
+      .set({ title })
+      .where(and(eq(superChatSessions.id, sessionId), eq(superChatSessions.userId, userId)))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: "Session not found" });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/insights", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const query = (req.query.q as string || "").toLowerCase();
+    const limit = Math.min(parseInt(req.query.limit as string) || 5, 20);
+
+    const recentSessions = await db.select()
+      .from(superChatSessions)
+      .where(eq(superChatSessions.userId, userId))
+      .orderBy(desc(superChatSessions.lastMessageAt))
+      .limit(limit);
+
+    const insights = [];
+    for (const session of recentSessions) {
+      const msgs = await db.select()
+        .from(superChatMessages)
+        .where(eq(superChatMessages.sessionId, session.id))
+        .orderBy(asc(superChatMessages.createdAt));
+
+      const ulysseMsgs = msgs.filter(m => m.sender === "ulysse");
+      const userMsgs = msgs.filter(m => m.sender === "user");
+      const allAiMsgs = msgs.filter(m => m.sender !== "user");
+
+      if (query && !msgs.some(m => m.content.toLowerCase().includes(query))) continue;
+
+      const lastSynthesis = ulysseMsgs.length > 0 ? ulysseMsgs[ulysseMsgs.length - 1].content : null;
+      const topics = userMsgs.map(m => m.content.substring(0, 100));
+      const participants = [...new Set(allAiMsgs.map(m => m.senderName))];
+
+      insights.push({
+        sessionId: session.id,
+        title: session.title,
+        date: session.lastMessageAt,
+        topics,
+        participants,
+        synthesis: lastSynthesis?.substring(0, 500),
+        messageCount: session.messageCount,
+      });
+    }
+
+    res.json({ insights, total: insights.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/sessions/:id/summary", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const sessionId = parseInt(req.params.id);
+    const msgs = await db.select()
+      .from(superChatMessages)
+      .where(eq(superChatMessages.sessionId, sessionId))
+      .orderBy(asc(superChatMessages.createdAt));
+
+    if (msgs.length === 0) return res.status(404).json({ error: "Session not found" });
+
+    const userQuestions = msgs.filter(m => m.sender === "user").map(m => m.content);
+    const aiResponses = msgs.filter(m => m.sender !== "user");
+    const byPersona: Record<string, string[]> = {};
+    for (const m of aiResponses) {
+      if (!byPersona[m.senderName]) byPersona[m.senderName] = [];
+      byPersona[m.senderName].push(m.content.substring(0, 300));
+    }
+
+    const ulysseSyntheses = msgs
+      .filter(m => m.sender === "ulysse")
+      .map(m => m.content);
+
+    res.json({
+      sessionId,
+      questions: userQuestions,
+      participantSummaries: byPersona,
+      syntheses: ulysseSyntheses,
+      totalMessages: msgs.length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get("/personas", (_req: Request, res: Response) => {

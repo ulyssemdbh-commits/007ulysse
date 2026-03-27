@@ -511,6 +511,23 @@ export const ulysseToolsV2: ChatCompletionTool[] = [
     }
   },
 
+  // === SUPERCHAT INTELLIGENCE TOOL ===
+  {
+    type: "function",
+    function: {
+      name: "superchat_search",
+      description: "Recherche dans les discussions SuperChat (Iris, Alfred, MaxAI, Ulysse). Permet de retrouver les synthèses, décisions et insights des sessions multi-IA précédentes.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Mot-clé ou sujet à rechercher dans les discussions SuperChat" },
+          limit: { type: "number", description: "Nombre max de sessions à retourner (défaut: 5)" }
+        },
+        required: ["query"]
+      }
+    }
+  },
+
   // === IMAGE TOOLS ===
   {
     type: "function",
@@ -916,7 +933,7 @@ export interface OrchestrationResult {
 }
 
 // Dynamic service loaders with fallbacks
-async function loadService(serviceName: string): Promise<any> {
+export async function loadService(serviceName: string): Promise<any> {
   try {
     switch (serviceName) {
       case 'suguval':
@@ -1166,6 +1183,10 @@ export async function executeToolCallV2Internal(toolName: string, args: Record<s
     // Memory tools
     case "memory_save":
       return await executeMemorySave(args, userId);
+
+    // SuperChat intelligence
+    case "superchat_search":
+      return await executeSuperChatSearch(args, userId);
 
     // Image tools
     case "image_generate":
@@ -2838,6 +2859,64 @@ async function executeDiscordVoiceStatus(userId: number): Promise<string> {
       server: guilds[0].name,
       voice_channels: voiceStatus,
       total_in_voice: voiceStatus.reduce((sum, vc) => sum + vc.member_count, 0)
+    });
+  } catch (err: any) {
+    return JSON.stringify({ error: err.message });
+  }
+}
+
+async function executeSuperChatSearch(args: { query: string; limit?: number }, userId: number): Promise<string> {
+  try {
+    const { db } = await import("../db");
+    const { superChatSessions, superChatMessages } = await import("@shared/schema");
+    const { eq, desc, asc } = await import("drizzle-orm");
+
+    const query = (args.query || "").toLowerCase();
+    const maxResults = Math.min(args.limit || 5, 10);
+
+    const sessions = await db.select()
+      .from(superChatSessions)
+      .where(eq(superChatSessions.userId, userId))
+      .orderBy(desc(superChatSessions.lastMessageAt))
+      .limit(20);
+
+    const results = [];
+    for (const session of sessions) {
+      const msgs = await db.select()
+        .from(superChatMessages)
+        .where(eq(superChatMessages.sessionId, session.id))
+        .orderBy(asc(superChatMessages.createdAt));
+
+      const matches = msgs.filter(m => m.content.toLowerCase().includes(query));
+      if (matches.length === 0 && !session.title?.toLowerCase().includes(query)) continue;
+
+      const ulysseSynthesis = [...msgs].reverse().find(m => m.sender === "ulysse");
+      const participants = [...new Set(msgs.filter(m => m.sender !== "user").map(m => m.senderName))];
+      const userQuestions = msgs.filter(m => m.sender === "user").map(m => m.content.substring(0, 100));
+
+      results.push({
+        sessionId: session.id,
+        title: session.title,
+        date: session.lastMessageAt,
+        participants,
+        questions: userQuestions,
+        synthesis: ulysseSynthesis?.content?.substring(0, 500) || "Pas de synthèse",
+        relevantExcerpts: matches.slice(0, 3).map(m => ({
+          from: m.senderName,
+          excerpt: m.content.substring(0, 200)
+        }))
+      });
+
+      if (results.length >= maxResults) break;
+    }
+
+    if (results.length === 0) {
+      return JSON.stringify({ message: `Aucune discussion SuperChat trouvée pour "${args.query}"`, results: [] });
+    }
+
+    return JSON.stringify({
+      message: `${results.length} discussion(s) SuperChat trouvée(s) pour "${args.query}"`,
+      results
     });
   } catch (err: any) {
     return JSON.stringify({ error: err.message });
