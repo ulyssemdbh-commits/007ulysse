@@ -52,6 +52,7 @@ const DevOpsIris = lazy(() => import("@/pages/DevOpsIris"));
 const DevOpsMaxPage = lazy(() => import("@/pages/DevOpsMax"));
 const DevMaxAdminPage = lazy(() => import("@/pages/DevMaxAdmin"));
 const CobaProPage = lazy(() => import("@/pages/CobaPro"));
+const SuperChat = lazy(() => import("@/pages/SuperChat"));
 const IrisDashboard = lazy(() => import("@/pages/IrisDashboard"));
 const IrisHomework = lazy(() => import("@/pages/IrisHomework"));
 const IrisFiles = lazy(() => import("@/pages/IrisFiles"));
@@ -297,6 +298,13 @@ function AppRouter() {
         {() => (
           <ProtectedRoute>
             <LazyPage><Assistant /></LazyPage>
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/superchat">
+        {() => (
+          <ProtectedRoute>
+            <LazyPage><SuperChat /></LazyPage>
           </ProtectedRoute>
         )}
       </Route>
