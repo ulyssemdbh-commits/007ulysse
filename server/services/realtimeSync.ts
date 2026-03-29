@@ -126,10 +126,14 @@ const connectedClients = new Map<WebSocket, { userId?: number; deviceId?: string
 
 let syncWss: WebSocketServer | null = null;
 
+// Max inbound WebSocket message size (64 KB) — prevents memory exhaustion
+const WS_MAX_MESSAGE_BYTES = 64 * 1024;
+
 export function setupRealtimeSync(): WebSocketServer {
-  syncWss = new WebSocketServer({ 
+  syncWss = new WebSocketServer({
     noServer: true,
-    perMessageDeflate: false
+    perMessageDeflate: false,
+    maxPayload: WS_MAX_MESSAGE_BYTES,
   });
 
   console.log("Realtime sync WebSocket server initialized on /ws/sync");
@@ -176,6 +180,11 @@ export function setupRealtimeSync(): WebSocketServer {
 
     ws.on("message", (data) => {
       try {
+        // Reject oversized messages (defence-in-depth alongside maxPayload)
+        if (data.toString().length > WS_MAX_MESSAGE_BYTES) {
+          ws.send(JSON.stringify({ type: "error", error: "Message too large", timestamp: Date.now() }));
+          return;
+        }
         const message = JSON.parse(data.toString());
         
         // Handle ping/pong heartbeat
@@ -273,7 +282,7 @@ export function setupRealtimeSync(): WebSocketServer {
             userId: ws.userId!,
             data: message.data,
             timestamp: Date.now()
-          });
+          }, ws); // exclude sender to avoid echo loop
           return;
         }
 
@@ -738,9 +747,14 @@ export function getConnectedDevices(userId: number): string[] {
   return devices;
 }
 
+// Max characters forwarded to /talking via WebSocket — mirrors the HTTP TTS cap
+const TTS_WS_MAX_LENGTH = 4000;
+
 // Send TTS request to /talking app for a specific user
 // This is used when chat sends a message and /talking should speak it
 export function sendTTSToTalking(userId: number, text: string, origin: "chat" | "voice" = "chat"): boolean {
+  if (!text || typeof text !== "string") return false;
+  const truncated = text.length > TTS_WS_MAX_LENGTH ? text.slice(0, TTS_WS_MAX_LENGTH) : text;
   let sent = false;
   connectedClients.forEach((info, client) => {
     if (info.userId === userId && info.deviceId === "talking" && client.readyState === WebSocket.OPEN) {
@@ -748,13 +762,13 @@ export function sendTTSToTalking(userId: number, text: string, origin: "chat" | 
         client.send(JSON.stringify({
           type: "tts_request",
           data: {
-            text,
+            text: truncated,
             origin,
             timestamp: Date.now()
           }
         }));
         sent = true;
-        console.log(`[RealtimeSync] Sent TTS request to /talking for user ${userId}: "${text.substring(0, 50)}..."`);
+        console.log(`[RealtimeSync] Sent TTS request to /talking for user ${userId}: "${truncated.substring(0, 50)}..."`);
       } catch (error) {
         console.error("[RealtimeSync] Error sending TTS to talking:", error);
       }
@@ -765,6 +779,8 @@ export function sendTTSToTalking(userId: number, text: string, origin: "chat" | 
 
 // Send a message to /talking app indicating assistant response is ready
 export function notifyTalkingOfResponse(userId: number, content: string, messageId?: string): boolean {
+  if (!content || typeof content !== "string") return false;
+  const truncated = content.length > TTS_WS_MAX_LENGTH ? content.slice(0, TTS_WS_MAX_LENGTH) : content;
   let sent = false;
   connectedClients.forEach((info, client) => {
     if (info.userId === userId && info.deviceId === "talking" && client.readyState === WebSocket.OPEN) {
@@ -772,7 +788,7 @@ export function notifyTalkingOfResponse(userId: number, content: string, message
         client.send(JSON.stringify({
           type: "chat_response",
           data: {
-            content,
+            content: truncated,
             messageId,
             timestamp: Date.now(),
             speakIt: true // Tells /talking to speak this response
