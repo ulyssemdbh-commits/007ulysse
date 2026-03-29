@@ -135,8 +135,15 @@ async function deployHetzner() {
     `git pull https://${PAT}@github.com/ulyssemdbh-commits/ulysseproject.git main 2>&1 | tail -5`,
     "npm install --production 2>&1 | tail -3",
     "npm run build 2>&1 | tail -8",
-    "pm2 restart all 2>&1 | tail -5",
-    "pm2 list",
+    // Copy built dist to /var/www/ulysse/ (where PM2 id 164 runs from)
+    "mkdir -p /var/www/ulysse/dist /var/www/ulysse/dist/public /var/www/ulysse/dist/html",
+    "cp -f dist/index.cjs /var/www/ulysse/dist/index.cjs",
+    "cp -rf dist/public/ /var/www/ulysse/dist/public/",
+    "cp -rf dist/html/ /var/www/ulysse/dist/html/",
+    // Ensure native externalized modules are present (pdfkit, fontkit, restructure, googleapis)
+    "cd /var/www/ulysse && python3 -c \"import subprocess; r=subprocess.run(['npm','install','--prefix','.','pdfkit','fontkit','googleapis@148.0.0'],capture_output=True,text=True); print(r.stdout[-200:]); print('EXIT:',r.returncode)\"",
+    "pm2 restart ulysse 2>&1 | tail -3",
+    "sleep 5 && pm2 status ulysse | grep '│ 164'",
     "echo '✅ Hetzner deploy done'"
   ].join(" && ");
 
