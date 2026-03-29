@@ -31,6 +31,8 @@ const FILES_TO_PUSH = [
   "client/src/pages/ScreenMonitor.tsx",
   "client/src/App.tsx",
   "client/src/Sidebar.tsx",
+  // Build config
+  "script/build.ts",
   // Deployment script itself
   "scripts/deploy_all.ts",
   "scripts/github_push_api.ts",
