@@ -134,6 +134,8 @@ const PERSONA_TOOLS: Record<string, string[]> = {
     "query_apptoorder", "dashboard_screenshot",
     // Task management (MaxAI orchestre les queues de tâches)
     "task_queue_manage", "work_journal_manage",
+    // Fichiers & documentation (analyse code, génération rapports, kanban, PDF)
+    "analyze_file", "generate_file", "kanban_create_task", "pdf_master",
     // Recherche & mémoire
     "web_search", "read_url", "query_brain", "memory_save", "superchat_search",
     // Commax — lecture analytics uniquement (MaxAI propose des automatisations basées sur les stats)
