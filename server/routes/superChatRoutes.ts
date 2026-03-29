@@ -530,7 +530,7 @@ router.post("/message", async (req: Request, res: Response) => {
                 return `Erreur: ${err.message}`;
               }
             } : undefined,
-            maxToolRounds: 3
+            maxToolRounds: 8
           },
           (chunk: string) => {
             fullResponse += chunk;
@@ -594,6 +594,39 @@ router.post("/message", async (req: Request, res: Response) => {
 Tu es le chef — tu conclus, tu tranches, tu planifies. Ne répète pas.`
         : undefined;
       await streamPersona(personaKey, synthesisSuffix);
+    }
+
+    // CROSS-PERSONA TRIGGERS: detect if a persona's response requires another persona to act
+    const CROSS_PERSONA_TRIGGERS: Record<string, { patterns: RegExp[]; target: string; instruction: string }[]> = {
+      alfred: [
+        { patterns: [/MaxAI.*devrait|côté technique|infrastructure|deploy|serveur|bug.*critique/i], target: "maxai", instruction: "Alfred a identifié un besoin technique. Exécute l'action DevOps demandée." },
+        { patterns: [/Iris.*devrait|communiquer|poster|réseaux sociaux|communication/i], target: "iris", instruction: "Alfred recommande une action de communication. Rédige et propose le contenu." },
+      ],
+      maxai: [
+        { patterns: [/Alfred.*devrait|impact business|analyse financière|CA|revenus|coûts/i], target: "alfred", instruction: "MaxAI a identifié un impact business. Fournis l'analyse financière." },
+        { patterns: [/Iris.*devrait|communiquer.*incident|informer.*utilisateurs/i], target: "iris", instruction: "MaxAI demande une communication d'incident. Rédige le message." },
+      ],
+      iris: [
+        { patterns: [/MaxAI.*devrait|bug|erreur technique|problème.*site|lien.*cassé/i], target: "maxai", instruction: "Iris a remonté un problème technique. Diagnostique et répare." },
+        { patterns: [/Alfred.*devrait|budget|dépenses|investissement|ROI/i], target: "alfred", instruction: "Iris soulève une question business. Fournis les chiffres et recommandations." },
+      ],
+    };
+
+    const triggeredPersonas = new Set<string>();
+    for (const resp of allResponsesThisRound) {
+      const triggers = CROSS_PERSONA_TRIGGERS[resp.sender];
+      if (!triggers) continue;
+      for (const trigger of triggers) {
+        if (triggeredPersonas.has(trigger.target)) continue;
+        if (targets.includes(trigger.target)) continue;
+        const matched = trigger.patterns.some(p => p.test(resp.content));
+        if (matched) {
+          triggeredPersonas.add(trigger.target);
+          console.log(`[SuperChat] 🔗 Cross-trigger: ${resp.sender} → ${trigger.target}`);
+          res.write(`data: ${JSON.stringify({ type: "cross_trigger", from: resp.sender, to: trigger.target, reason: trigger.instruction })}\n\n`);
+          await streamPersona(trigger.target, `\n\n🔗 DÉCLENCHEMENT AUTOMATIQUE : ${trigger.instruction}\nContexte : tu as été appelé automatiquement par ${AI_PERSONAS[resp.sender]?.name || resp.sender} qui a identifié un besoin dans ton domaine. Agis concrètement.`);
+        }
+      }
     }
 
     await db.update(superChatSessions)
