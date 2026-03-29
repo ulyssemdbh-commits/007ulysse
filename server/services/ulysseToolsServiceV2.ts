@@ -6,6 +6,8 @@ import { analyticsToolDefs, executeBetsTrackerQuery, executeSuguAnalyticsQuery, 
 import { integrationToolDefs, executeNotionManage, executeDriveManage, executeTradingAlerts, executeNavigationManage, executeVideoAnalysis, executeMonitoringManage } from "./tools/integrationTools";
 import { utilityToolDefs, executeSuguBankManagement, executeSuguFilesManagement, executeSuguFullOverview, executeBusinessHealth, executeDetectAnomalies, executeQueryHubrise, executeManageFeatureFlags, executeSearchNearbyPlaces, executeGeocodeAddress, executeSuguPurchasesManagement, executeSuguExpensesManagement, executeSearchSuguData, executeSuguEmployeesManagement, executeSuguPayrollManagement, executeQueryAppData, executeQueryAppToOrder, executeQueryCoba, executeCobaBusinessTool, executeSensoryHub, executeGenerateSelfReflection, executeManageAISystem, executeAppNavigate, executeDevopsGithub, executeDevopsServer } from "./tools/utilityTools";
 import { communicationToolDefs } from "./tools/communicationTools";
+import { commaxToolDefs, executeCommaxManage } from "./tools/commaxTools";
+import { screenMonitorToolDefs, executeScreenMonitorManage } from "./tools/screenMonitorTools";
 
 export const ulysseToolsV2: ChatCompletionTool[] = [
   // === DATA TOOLS (lecture de données) ===
@@ -686,6 +688,61 @@ EXEMPLE CORRECT pour facture PDF:
   {
     type: "function",
     function: {
+      name: "manage_3d_file",
+      description: `Gère les fichiers 3D (STL et 3MF) pour l'impression 3D.
+Actions disponibles:
+- "create": Créer un fichier STL ou 3MF à partir de formes primitives (box, sphere, cylinder, pyramid, torus)
+- "analyze": Analyser un fichier STL/3MF existant (triangles, dimensions, volume, surface, maillage)
+- "edit": Modifier un STL existant (scale, translate, rotate, merge)
+- "convert": Convertir STL↔3MF
+
+EXEMPLES:
+Créer un cube 20x20x20mm:
+{"action":"create","format":"stl","shape":"box","dimensions":{"width":20,"height":20,"depth":20}}
+
+Créer une sphère:
+{"action":"create","format":"3mf","shape":"sphere","dimensions":{"radius":15}}
+
+Analyser un fichier uploadé:
+{"action":"analyze","file_id":"123"}
+
+Éditer (agrandir 2x):
+{"action":"edit","file_id":"123","operations":[{"type":"scale","params":{"x":2,"y":2,"z":2}}]}
+
+Convertir STL→3MF:
+{"action":"convert","file_id":"123","target_format":"3mf"}`,
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["create", "analyze", "edit", "convert"], description: "Action à effectuer" },
+          format: { type: "string", enum: ["stl", "3mf"], description: "Format de sortie (pour create)" },
+          shape: { type: "string", enum: ["box", "sphere", "cylinder", "pyramid", "torus"], description: "Forme primitive (pour create)" },
+          dimensions: { type: "object", description: "Dimensions de la forme: {width, height, depth} pour box, {radius} pour sphere, {radius, height} pour cylinder, {base, height} pour pyramid, {majorRadius, minorRadius} pour torus" },
+          stl_format: { type: "string", enum: ["ascii", "binary"], description: "Format STL (ascii ou binary, défaut: ascii)" },
+          file_name: { type: "string", description: "Nom du fichier de sortie" },
+          file_id: { type: "string", description: "ID du fichier existant (pour analyze/edit/convert)" },
+          file_path: { type: "string", description: "Chemin du fichier existant (alternatif à file_id)" },
+          operations: { 
+            type: "array", 
+            items: { 
+              type: "object",
+              properties: {
+                type: { type: "string", enum: ["scale", "translate", "rotate", "merge"] },
+                params: { type: "object", description: "Paramètres: scale={x,y,z}, translate={x,y,z}, rotate={angle}" },
+                mergeFilePath: { type: "string" }
+              }
+            },
+            description: "Opérations d'édition (pour edit)" 
+          },
+          target_format: { type: "string", enum: ["stl", "3mf"], description: "Format cible (pour convert)" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "export_analysis",
       description: "Exporte les résultats d'une analyse de fichier vers un nouveau format (Excel, PDF, etc.). Utile pour convertir les données extraites d'une facture en tableau Excel.",
       parameters: {
@@ -913,6 +970,8 @@ NE DIS JAMAIS "je ne peux pas générer un PDF". Tu PEUX et tu DOIS utiliser ce 
   ...integrationToolDefs,
   ...utilityToolDefs,
   ...communicationToolDefs,
+  ...commaxToolDefs,
+  ...screenMonitorToolDefs,
 ].filter((tool, index, arr) => {
   const firstIndex = arr.findIndex(t => t.function.name === tool.function.name);
   return firstIndex === index;
@@ -1231,6 +1290,8 @@ export async function executeToolCallV2Internal(toolName: string, args: Record<s
     // Universal file generation tools
     case "generate_file":
       return await executeGenerateFile(args, userId);
+    case "manage_3d_file":
+      return await executeManage3DFile(args, userId);
     case "export_analysis":
       return await executeExportAnalysis(args, userId);
     case "export_invoice_excel":
@@ -1299,6 +1360,14 @@ export async function executeToolCallV2Internal(toolName: string, args: Record<s
       return await executeSuguAnalyticsQuery(args);
     case "query_daily_summary":
       return await executeDailySummaryQuery(args, userId);
+
+    // Commax — Community Management (Iris)
+    case "commax_manage":
+      return await executeCommaxManage(args, userId);
+
+    // Screen Monitor — Vision + Prise en main bureau (Ulysse)
+    case "screen_monitor_manage":
+      return await executeScreenMonitorManage(args, userId);
 
     // === AUTOMATION FEATURES ===
     case "generate_morning_briefing":
@@ -4327,6 +4396,117 @@ async function persistGeneratedFile(
 }
 
 // === UNIVERSAL FILE GENERATION ===
+async function executeManage3DFile(args: {
+  action: "create" | "analyze" | "edit" | "convert";
+  format?: "stl" | "3mf";
+  shape?: "box" | "sphere" | "cylinder" | "pyramid" | "torus";
+  dimensions?: Record<string, number>;
+  stl_format?: "ascii" | "binary";
+  file_name?: string;
+  file_id?: string;
+  file_path?: string;
+  operations?: Array<{ type: string; params: Record<string, number>; mergeFilePath?: string }>;
+  target_format?: "stl" | "3mf";
+}, userId?: number): Promise<string> {
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const { stl3mfService } = await import("./stl3mfService");
+    const { action, format, shape, dimensions, stl_format, file_name, file_id, file_path: argFilePath, operations, target_format } = args;
+
+    console.log(`[3DFile] Action: ${action}, format: ${format}, shape: ${shape}`);
+
+    let resolvedPath = argFilePath;
+    if (file_id && !resolvedPath) {
+      const possibleDirs = ["uploads", "generated_files", "media_library"];
+      const allFiles = possibleDirs.flatMap(dir => {
+        try { return fs.readdirSync(dir).map(f => path.join(dir, f)); } catch { return []; }
+      });
+      resolvedPath = allFiles.find(f => f.includes(file_id) || path.basename(f).startsWith(file_id));
+      if (!resolvedPath) {
+        const { storage } = await import("../storage");
+        const files = await (storage as any).getRecentFiles?.(userId || 1, 50);
+        if (files) {
+          const found = files.find((f: any) => String(f.id) === file_id || f.fileName?.includes(file_id));
+          if (found) resolvedPath = found.filePath || found.path;
+        }
+      }
+    }
+
+    switch (action) {
+      case "create": {
+        if (!shape) return JSON.stringify({ success: false, error: "Forme requise (box, sphere, cylinder, pyramid, torus)" });
+        const outputFormat = format || "stl";
+
+        if (outputFormat === "3mf") {
+          const result = stl3mfService.generate3MF({ shape, dimensions, fileName: file_name });
+          await persistGeneratedFile(result, userId || 1, `3D ${shape} (3MF)`);
+          return JSON.stringify({ success: true, message: `Fichier 3MF créé: ${result.fileName}`, ...result });
+        } else {
+          const result = stl3mfService.generateSTL({ shape, dimensions, format: stl_format || "ascii", fileName: file_name });
+          await persistGeneratedFile(result, userId || 1, `3D ${shape} (STL)`);
+          return JSON.stringify({
+            success: true,
+            message: `Fichier STL créé: ${result.fileName}`,
+            fileName: result.fileName,
+            fileType: result.fileType,
+            size: result.size,
+            downloadUrl: result.downloadUrl,
+            analysis: {
+              triangles: result.analysis.triangleCount,
+              vertices: result.analysis.vertexCount,
+              dimensions: result.analysis.dimensions,
+              volume: result.analysis.volume,
+              surfaceArea: result.analysis.surfaceArea,
+            }
+          });
+        }
+      }
+      case "analyze": {
+        if (!resolvedPath) return JSON.stringify({ success: false, error: "Fichier non trouvé. Fournir file_id ou file_path." });
+        const analysis = stl3mfService.analyzeFile(resolvedPath);
+        const formatted = stl3mfService.formatAnalysisForAI(analysis);
+        return JSON.stringify({ success: true, analysis: formatted, raw: analysis });
+      }
+      case "edit": {
+        if (!resolvedPath) return JSON.stringify({ success: false, error: "Fichier non trouvé. Fournir file_id ou file_path." });
+        if (!operations || operations.length === 0) return JSON.stringify({ success: false, error: "Opérations requises" });
+        const result = stl3mfService.editSTL(resolvedPath, operations as any);
+        await persistGeneratedFile({ ...result, fileType: "stl", size: fs.statSync(result.filePath).size, downloadUrl: `/api/files/generated/${result.fileName}` }, userId || 1, "STL édité");
+        return JSON.stringify({
+          success: true,
+          message: `Fichier édité: ${result.fileName}`,
+          fileName: result.fileName,
+          downloadUrl: `/api/files/generated/${result.fileName}`,
+          analysis: {
+            triangles: result.analysis.triangleCount,
+            dimensions: result.analysis.dimensions,
+            volume: result.analysis.volume,
+          }
+        });
+      }
+      case "convert": {
+        if (!resolvedPath) return JSON.stringify({ success: false, error: "Fichier non trouvé. Fournir file_id ou file_path." });
+        const ext = path.extname(resolvedPath).toLowerCase();
+        let result;
+        if (target_format === "3mf" || (ext === ".stl" && !target_format)) {
+          result = stl3mfService.convertSTLto3MF(resolvedPath, file_name);
+        } else {
+          result = stl3mfService.convert3MFtoSTL(resolvedPath, file_name);
+        }
+        const stats = fs.statSync(result.filePath);
+        await persistGeneratedFile({ ...result, fileType: target_format || "3mf", size: stats.size, downloadUrl: `/api/files/generated/${result.fileName}` }, userId || 1, `Conversion → ${target_format || "3mf"}`);
+        return JSON.stringify({ success: true, message: `Converti: ${result.fileName}`, ...result, downloadUrl: `/api/files/generated/${result.fileName}` });
+      }
+      default:
+        return JSON.stringify({ success: false, error: `Action inconnue: ${action}` });
+    }
+  } catch (error: any) {
+    console.error("[3DFile] Error:", error.message);
+    return JSON.stringify({ success: false, error: error.message });
+  }
+}
+
 async function executeGenerateFile(args: { 
   format: "excel" | "csv" | "pdf" | "word" | "json" | "markdown";
   content_description?: string;
