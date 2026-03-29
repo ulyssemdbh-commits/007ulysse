@@ -180,7 +180,7 @@ export const aiRouter = {
         config.tools,
         config.onToolCall,
         config.toolChoice || "auto",
-        config.maxToolRounds || 5
+        config.maxToolRounds || 10
       );
     }
 
@@ -217,7 +217,7 @@ export const aiRouter = {
     tools?: ChatCompletionTool[],
     onToolCall?: (name: string, args: any) => Promise<string>,
     toolChoice: "auto" | "required" | "none" = "auto",
-    maxToolRounds: number = 5
+    maxToolRounds: number = 10
   ): Promise<string> {
     // Agentic loop: supports multi-tool chaining (up to maxToolRounds rounds)
     let conversationMessages: any[] = messages as any[];
@@ -302,11 +302,18 @@ export const aiRouter = {
         conversationMessages = [...conversationMessages, assistantMsg];
 
         // Execute all tool calls and add results
+        const CRITICAL_TOOLS = new Set([
+          "devops_github", "devops_server", "email_send", "email_reply",
+          "commax_manage", "dgm_manage", "manage_ai_system"
+        ]);
+        let hasCriticalAction = false;
+
         for (const tc of pendingToolCalls.filter(tc => tc.name && tc.id)) {
           try {
             const args = JSON.parse(tc.arguments || "{}");
             console.log(`[AIRouter] Tool round ${round}: ${tc.name}`, JSON.stringify(args).slice(0, 120));
             const result = await onToolCall!(tc.name, args);
+            if (CRITICAL_TOOLS.has(tc.name)) hasCriticalAction = true;
             conversationMessages.push({
               role: "tool",
               tool_call_id: tc.id,
@@ -321,6 +328,15 @@ export const aiRouter = {
             });
           }
         }
+
+        // Post-action validation: after critical tools, inject verification instruction
+        if (hasCriticalAction && round < maxToolRounds - 1) {
+          conversationMessages.push({
+            role: "system",
+            content: "⚡ POST-ACTION VALIDATION: Tu viens d'exécuter une action critique. AVANT de répondre à l'utilisateur, VÉRIFIE le résultat : appelle un outil de vérification si disponible (ex: devops_server status après un deploy, query après un write DB, etc.). Si la vérification échoue, tente un fix automatique ou signale clairement l'échec."
+          });
+        }
+
         // Continue loop for next round
         continue;
       }
