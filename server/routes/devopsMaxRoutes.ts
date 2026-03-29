@@ -1212,13 +1212,18 @@ router.post("/toggle-cicd", async (req: Request, res: Response) => {
     const projectId = req.headers["x-devmax-project"] as string;
     if (!projectId) return res.status(400).json({ error: "Project ID requis" });
     const { enabled, branch } = req.body;
+    // Sanitize branch for use in later SSH commands (in addition to SQL parameterization)
+    const safeBranch = typeof branch === "string" ? branch.replace(/[^a-zA-Z0-9/_.-]/g, "") : undefined;
 
-    const updates: string[] = [];
-    if (typeof enabled === "boolean") updates.push(`cicd_enabled = ${enabled}`);
-    if (branch) updates.push(`cicd_branch = '${branch.replace(/'/g, "")}'`);
-    updates.push(`updated_at = NOW()`);
-
-    await db.execute(sql.raw(`UPDATE devmax_projects SET ${updates.join(", ")} WHERE id = '${projectId}'`));
+    if (typeof enabled === "boolean" && safeBranch !== undefined) {
+      await db.execute(sql`UPDATE devmax_projects SET cicd_enabled = ${enabled}, cicd_branch = ${safeBranch}, updated_at = NOW() WHERE id = ${projectId}`);
+    } else if (typeof enabled === "boolean") {
+      await db.execute(sql`UPDATE devmax_projects SET cicd_enabled = ${enabled}, updated_at = NOW() WHERE id = ${projectId}`);
+    } else if (safeBranch !== undefined) {
+      await db.execute(sql`UPDATE devmax_projects SET cicd_branch = ${safeBranch}, updated_at = NOW() WHERE id = ${projectId}`);
+    } else {
+      await db.execute(sql`UPDATE devmax_projects SET updated_at = NOW() WHERE id = ${projectId}`);
+    }
     res.json({ success: true, enabled, branch });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1367,10 +1372,13 @@ router.post("/env-vars", async (req: Request, res: Response) => {
       const { sshService } = await import("../services/sshService");
       const slug = repo.deploySlug;
       const envDir = environment === "production" ? slug : `${slug}-dev`;
-      await sshService.executeCommand(
-        `cd /var/www/apps/${envDir} 2>/dev/null && (grep -q "^${key}=" .env 2>/dev/null && sed -i "s|^${key}=.*|${key}=${value}|" .env || echo "${key}=${value}" >> .env)`,
-        10000
-      ).catch(() => {});
+      const allVars = await db.execute(sql`
+        SELECT key, value FROM devmax_env_vars
+        WHERE project_id = ${projectId} AND (environment = ${environment} OR environment = 'all')
+        ORDER BY key
+      `).then((r: any) => r.rows || r);
+      const envContent = allVars.map((v: any) => `${v.key}=${v.value}`).join("\n");
+      await sshService.writeRemoteFile(`/var/www/apps/${envDir}/.env`, envContent).catch(() => {});
     }
     await logDevmaxActivity(req, "env-var-set", key, { environment, isSecret });
     res.json({ success: true, message: `Variable ${key} mise à jour` });
@@ -1431,11 +1439,18 @@ router.get("/notifications", async (req: Request, res: Response) => {
     const tenantId = session?.tenant_id;
     const projectId = req.headers["x-devmax-project"] as string;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    let q = "SELECT id, type, title, message, channel, status, read_at, created_at, project_id, metadata FROM devmax_notifications WHERE 1=1";
-    if (tenantId) q += ` AND tenant_id = '${tenantId.replace(/'/g, "")}'`;
-    if (projectId) q += ` AND project_id = '${projectId.replace(/'/g, "")}'`;
-    q += ` ORDER BY created_at DESC LIMIT ${limit}`;
-    const notifications = await db.execute(sql.raw(q)).then((r: any) => r.rows || r);
+
+    let notifications: any[];
+    if (tenantId && projectId) {
+      notifications = await db.execute(sql`SELECT id, type, title, message, channel, status, read_at, created_at, project_id, metadata FROM devmax_notifications WHERE tenant_id = ${tenantId} AND project_id = ${projectId} ORDER BY created_at DESC LIMIT ${limit}`).then((r: any) => r.rows || r);
+    } else if (tenantId) {
+      notifications = await db.execute(sql`SELECT id, type, title, message, channel, status, read_at, created_at, project_id, metadata FROM devmax_notifications WHERE tenant_id = ${tenantId} ORDER BY created_at DESC LIMIT ${limit}`).then((r: any) => r.rows || r);
+    } else if (projectId) {
+      notifications = await db.execute(sql`SELECT id, type, title, message, channel, status, read_at, created_at, project_id, metadata FROM devmax_notifications WHERE project_id = ${projectId} ORDER BY created_at DESC LIMIT ${limit}`).then((r: any) => r.rows || r);
+    } else {
+      notifications = await db.execute(sql`SELECT id, type, title, message, channel, status, read_at, created_at, project_id, metadata FROM devmax_notifications ORDER BY created_at DESC LIMIT ${limit}`).then((r: any) => r.rows || r);
+    }
+
     const unread = notifications.filter((n: any) => !n.read_at).length;
     res.json({ notifications, unread });
   } catch (error: any) {

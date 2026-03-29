@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db } from "../db";
 import { devmaxSessions, devmaxActivityLog } from "@shared/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, SQL } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { sql } from "drizzle-orm";
 import { githubService, withGitHubToken } from "../services/githubService";
@@ -1793,12 +1793,12 @@ router.post("/journal/add", async (req: Request, res: Response) => {
     if (!projectId || !entryType || !title) return res.status(400).json({ error: "projectId, entryType et title requis" });
     if (!(await verifyProjectAccess(session, projectId))) return res.status(403).json({ error: "Accès refusé à ce projet" });
 
-    const filesArr = Array.isArray(filesChanged) ? `{${filesChanged.map((f: string) => `"${f}"`).join(",")}}` : null;
+    const filesArr = Array.isArray(filesChanged) ? filesChanged.map(String) : null;
 
     await db.execute(sql`
       INSERT INTO devmax_project_journal (project_id, session_id, entry_type, title, description, files_changed, metadata)
       VALUES (${projectId}, ${token}, ${entryType}, ${title}, ${description || null}, 
-        ${filesArr ? sql.raw(`'${filesArr}'`) : null}::text[],
+        ${filesArr}::text[],
         ${metadata ? JSON.stringify(metadata) : null}::jsonb)
     `);
 
@@ -1823,11 +1823,12 @@ router.get("/journal/:projectId", async (req: Request, res: Response) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const entryType = req.query.type as string;
 
-    let query = `SELECT * FROM devmax_project_journal WHERE project_id = '${projectId.replace(/'/g, "''")}'`;
-    if (entryType) query += ` AND entry_type = '${entryType.replace(/'/g, "''")}'`;
-    query += ` ORDER BY created_at DESC LIMIT ${limit}`;
-
-    const rows = await db.execute(sql.raw(query)).then((r: any) => r.rows || r);
+    let rows: any[];
+    if (entryType) {
+      rows = await db.execute(sql`SELECT * FROM devmax_project_journal WHERE project_id = ${projectId} AND entry_type = ${entryType} ORDER BY created_at DESC LIMIT ${limit}`).then((r: any) => r.rows || r);
+    } else {
+      rows = await db.execute(sql`SELECT * FROM devmax_project_journal WHERE project_id = ${projectId} ORDER BY created_at DESC LIMIT ${limit}`).then((r: any) => r.rows || r);
+    }
 
     res.json({ entries: rows, total: rows.length });
   } catch (e: any) {
@@ -2612,17 +2613,25 @@ router.put("/admin/tenants/:tenantId/integrations/:integrationId", requireAdminA
   try {
     const { tenantId, integrationId } = req.params;
     const { credentials, config, enabled, status } = req.body;
-    const sets: string[] = [];
+
+    const setParts: SQL[] = [];
     if (credentials !== undefined) {
-      sets.push(`credentials = '${JSON.stringify(credentials).replace(/'/g, "''")}'::jsonb`);
-      const hasCredentials = Object.values(credentials).some((v: any) => v && String(v).trim());
-      sets.push(`status = '${hasCredentials ? 'connected' : 'disconnected'}'`);
+      const hasCredentials = Object.values(credentials as Record<string, any>).some((v: any) => v && String(v).trim());
+      setParts.push(sql`credentials = ${JSON.stringify(credentials)}::jsonb`);
+      setParts.push(sql`status = ${hasCredentials ? 'connected' : 'disconnected'}`);
     }
-    if (config !== undefined) sets.push(`config = '${JSON.stringify(config).replace(/'/g, "''")}'::jsonb`);
-    if (enabled !== undefined) sets.push(`enabled = ${enabled}`);
-    if (status) sets.push(`status = '${status}'`);
-    sets.push(`updated_at = NOW()`);
-    await db.execute(sql.raw(`UPDATE devmax_integrations SET ${sets.join(", ")} WHERE id = '${integrationId}' AND tenant_id = '${tenantId}'`));
+    if (config !== undefined) {
+      setParts.push(sql`config = ${JSON.stringify(config)}::jsonb`);
+    }
+    if (enabled !== undefined) {
+      setParts.push(sql`enabled = ${enabled}`);
+    }
+    if (status && credentials === undefined) {
+      setParts.push(sql`status = ${status}`);
+    }
+    setParts.push(sql`updated_at = NOW()`);
+
+    await db.execute(sql`UPDATE devmax_integrations SET ${sql.join(setParts, sql`, `)} WHERE id = ${integrationId} AND tenant_id = ${tenantId}`);
     await logAdminAudit(req, "integration_updated", "integration", integrationId, null, req.body);
     res.json({ success: true });
   } catch (e: any) {
