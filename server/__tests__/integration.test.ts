@@ -88,45 +88,45 @@ describe("Environment Validation", () => {
 // ============================================================================
 
 describe("Path Traversal Protection", () => {
-    it("should block .. in filenames", () => {
-        const { isSafeFilename } = require("../utils/validation");
+    it("should block .. in filenames", async () => {
+        const { isSafeFilename } = await import("../utils/validation");
 
         expect(isSafeFilename("../../../etc/passwd")).toBe(false);
         expect(isSafeFilename("..\\..\\windows\\system32")).toBe(false);
         expect(isSafeFilename("test/../../../.env")).toBe(false);
     });
 
-    it("should block forward slashes", () => {
-        const { isSafeFilename } = require("../utils/validation");
+    it("should block forward slashes", async () => {
+        const { isSafeFilename } = await import("../utils/validation");
 
         expect(isSafeFilename("path/to/file")).toBe(false);
         expect(isSafeFilename("path\\to\\file")).toBe(false);
     });
 
-    it("should block null bytes", () => {
-        const { isSafeFilename } = require("../utils/validation");
+    it("should block null bytes", async () => {
+        const { isSafeFilename } = await import("../utils/validation");
 
         expect(isSafeFilename("test\0.txt")).toBe(false);
     });
 
-    it("should block hidden files", () => {
-        const { isSafeFilename } = require("../utils/validation");
+    it("should block hidden files", async () => {
+        const { isSafeFilename } = await import("../utils/validation");
 
         expect(isSafeFilename(".env")).toBe(false);
         expect(isSafeFilename(".htaccess")).toBe(false);
     });
 
-    it("should allow valid filenames", () => {
-        const { isSafeFilename } = require("../utils/validation");
+    it("should allow valid filenames", async () => {
+        const { isSafeFilename } = await import("../utils/validation");
 
         expect(isSafeFilename("document.pdf")).toBe(true);
         expect(isSafeFilename("photo-2026.jpg")).toBe(true);
         expect(isSafeFilename("report_final_v2.xlsx")).toBe(true);
     });
 
-    it("should validate path stays within base directory", () => {
-        const { isPathWithinBase } = require("../utils/validation");
-        const path = require("path");
+    it("should validate path stays within base directory", async () => {
+        const { isPathWithinBase } = await import("../utils/validation");
+        const path = await import("path");
         const baseDir = path.resolve("/downloads");
 
         expect(isPathWithinBase("file.txt", baseDir)).toBe(true);
@@ -139,8 +139,8 @@ describe("Path Traversal Protection", () => {
 // ============================================================================
 
 describe("Input Validation", () => {
-    it("should validate positive integer IDs", () => {
-        const { validateId } = require("../utils/validation");
+    it("should validate positive integer IDs", async () => {
+        const { validateId } = await import("../utils/validation");
 
         expect(validateId("1")).toBe(1);
         expect(validateId("42")).toBe(42);
@@ -152,8 +152,8 @@ describe("Input Validation", () => {
         expect(() => validateId("3.14")).toThrow();
     });
 
-    it("should validate pagination", () => {
-        const { validatePagination } = require("../utils/validation");
+    it("should validate pagination", async () => {
+        const { validatePagination } = await import("../utils/validation");
 
         const result = validatePagination({ page: "2", limit: "10" });
         expect(result.page).toBe(2);
@@ -161,15 +161,15 @@ describe("Input Validation", () => {
         expect(result.offset).toBe(10);
     });
 
-    it("should cap pagination limit at 100", () => {
-        const { validatePagination } = require("../utils/validation");
+    it("should cap pagination limit at 100", async () => {
+        const { validatePagination } = await import("../utils/validation");
 
         const result = validatePagination({ page: "1", limit: "500" });
         expect(result.limit).toBe(100);
     });
 
-    it("should validate email addresses", () => {
-        const { validateEmail } = require("../utils/validation");
+    it("should validate email addresses", async () => {
+        const { validateEmail } = await import("../utils/validation");
 
         expect(validateEmail("user@example.com")).toBe("user@example.com");
         expect(validateEmail("Test@Example.COM")).toBe("test@example.com");
@@ -179,8 +179,8 @@ describe("Input Validation", () => {
         expect(() => validateEmail("")).toThrow();
     });
 
-    it("should validate URLs", () => {
-        const { validateUrl } = require("../utils/validation");
+    it("should validate URLs", async () => {
+        const { validateUrl } = await import("../utils/validation");
 
         expect(validateUrl("https://example.com")).toBe("https://example.com/");
         expect(validateUrl("http://localhost:3000/path")).toBe("http://localhost:3000/path");
@@ -189,8 +189,8 @@ describe("Input Validation", () => {
         expect(() => validateUrl("not-a-url")).toThrow();
     });
 
-    it("should validate date strings", () => {
-        const { validateDateString } = require("../utils/validation");
+    it("should validate date strings", async () => {
+        const { validateDateString } = await import("../utils/validation");
 
         const date = validateDateString("2026-02-08");
         expect(date).toBeInstanceOf(Date);
@@ -198,15 +198,15 @@ describe("Input Validation", () => {
         expect(() => validateDateString("not-a-date")).toThrow();
     });
 
-    it("should sanitize strings (remove null bytes)", () => {
-        const { sanitizeString } = require("../utils/validation");
+    it("should sanitize strings (remove null bytes)", async () => {
+        const { sanitizeString } = await import("../utils/validation");
 
         expect(sanitizeString("hello\0world")).toBe("helloworld");
         expect(sanitizeString("normal text")).toBe("normal text");
     });
 
-    it("should enforce max length on sanitized strings", () => {
-        const { sanitizeString } = require("../utils/validation");
+    it("should enforce max length on sanitized strings", async () => {
+        const { sanitizeString } = await import("../utils/validation");
 
         const long = "a".repeat(20000);
         expect(sanitizeString(long, 100).length).toBe(100);
@@ -218,8 +218,8 @@ describe("Input Validation", () => {
 // ============================================================================
 
 describe("Error Handling", () => {
-    it("should format UlysseError correctly", () => {
-        const { ValidationError, formatErrorResponse } = require("../utils/errors");
+    it("should format UlysseError correctly", async () => {
+        const { ValidationError, formatErrorResponse } = await import("../utils/errors");
 
         const error = ValidationError.missingRequired("username");
         const response = formatErrorResponse(error);
@@ -229,8 +229,8 @@ describe("Error Handling", () => {
         expect(response.message).toContain("username");
     });
 
-    it("should format database errors as 500", () => {
-        const { DatabaseError, formatErrorResponse } = require("../utils/errors");
+    it("should format database errors as 500", async () => {
+        const { DatabaseError, formatErrorResponse } = await import("../utils/errors");
 
         const error = DatabaseError.connectionFailed(new Error("Connection refused"));
         const response = formatErrorResponse(error);
@@ -239,8 +239,8 @@ describe("Error Handling", () => {
         expect(response.code).toBe("DB_ERROR");
     });
 
-    it("should format integration errors as 502", () => {
-        const { IntegrationError, formatErrorResponse } = require("../utils/errors");
+    it("should format integration errors as 502", async () => {
+        const { IntegrationError, formatErrorResponse } = await import("../utils/errors");
 
         const error = IntegrationError.notAvailable("Spotify", "Not configured");
         const response = formatErrorResponse(error);
@@ -249,8 +249,8 @@ describe("Error Handling", () => {
         expect(response.code).toBe("SPOTIFY_ERROR");
     });
 
-    it("should format unknown errors safely", () => {
-        const { formatErrorResponse } = require("../utils/errors");
+    it("should format unknown errors safely", async () => {
+        const { formatErrorResponse } = await import("../utils/errors");
 
         const response = formatErrorResponse(new Error("Something went wrong"));
 
@@ -259,8 +259,8 @@ describe("Error Handling", () => {
         expect(response.message).toBe("Something went wrong");
     });
 
-    it("should format non-Error objects", () => {
-        const { formatErrorResponse } = require("../utils/errors");
+    it("should format non-Error objects", async () => {
+        const { formatErrorResponse } = await import("../utils/errors");
 
         const response = formatErrorResponse("string error");
 
@@ -274,18 +274,18 @@ describe("Error Handling", () => {
 // ============================================================================
 
 describe("CORS Configuration", () => {
-    it("should allow ulysseproject.org origins", () => {
-        const { isAllowedOrigin } = require("../middleware/security");
+    it("should allow ulysseproject.org origins", async () => {
+        const { isAllowedOrigin } = await import("../middleware/security");
 
         expect(isAllowedOrigin("https://ulysseproject.org")).toBe(true);
         expect(isAllowedOrigin("https://www.ulysseproject.org")).toBe(true);
     });
 
-    it("should allow custom origins via ALLOWED_ORIGINS env", () => {
+    it("should allow custom origins via ALLOWED_ORIGINS env", async () => {
         const originalOrigins = process.env.ALLOWED_ORIGINS;
         process.env.ALLOWED_ORIGINS = "https://custom-app.example.com";
 
-        const { isAllowedOrigin } = require("../middleware/security");
+        const { isAllowedOrigin } = await import("../middleware/security");
 
         expect(isAllowedOrigin("https://custom-app.example.com")).toBe(true);
 
@@ -293,17 +293,17 @@ describe("CORS Configuration", () => {
         else delete process.env.ALLOWED_ORIGINS;
     });
 
-    it("should allow null/undefined origin (same-origin)", () => {
-        const { isAllowedOrigin } = require("../middleware/security");
+    it("should allow null/undefined origin (same-origin)", async () => {
+        const { isAllowedOrigin } = await import("../middleware/security");
 
         expect(isAllowedOrigin(undefined)).toBe(true);
     });
 
-    it("should block unknown origins in production", () => {
+    it("should block unknown origins in production", async () => {
         const originalEnv = process.env.NODE_ENV;
         process.env.NODE_ENV = "production";
 
-        const { isAllowedOrigin } = require("../middleware/security");
+        const { isAllowedOrigin } = await import("../middleware/security");
 
         expect(isAllowedOrigin("https://evil-site.com")).toBe(false);
 
@@ -316,8 +316,8 @@ describe("CORS Configuration", () => {
 // ============================================================================
 
 describe("Integration Defaults", () => {
-    it("should identify optional services", () => {
-        const { isReplitIntegration } = require("../services/integrationDefaults");
+    it("should identify optional services", async () => {
+        const { isReplitIntegration } = await import("../services/integrationDefaults");
 
         expect(isReplitIntegration("spotify")).toBe(true);
         expect(isReplitIntegration("notion")).toBe(true);
@@ -325,13 +325,13 @@ describe("Integration Defaults", () => {
         expect(isReplitIntegration("openai")).toBe(false);
     });
 
-    it("should report unavailable when env vars missing", () => {
+    it("should report unavailable when env vars missing", async () => {
         const originalSpotifyId = process.env.SPOTIFY_CLIENT_ID;
         const originalSpotifySecret = process.env.SPOTIFY_CLIENT_SECRET;
         delete process.env.SPOTIFY_CLIENT_ID;
         delete process.env.SPOTIFY_CLIENT_SECRET;
 
-        const { getIntegrationStatus } = require("../services/integrationDefaults");
+        const { getIntegrationStatus } = await import("../services/integrationDefaults");
 
         const status = getIntegrationStatus("spotify");
         expect(status.available).toBe(false);
