@@ -31,7 +31,6 @@ const allowlist = [
   "ws",
   "zod",
   "zod-validation-error",
-  "googleapis",
 ];
 
 // ESM-only packages that must be externalized (cannot be bundled into CJS)
