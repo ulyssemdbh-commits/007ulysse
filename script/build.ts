@@ -31,6 +31,7 @@ const allowlist = [
   "ws",
   "zod",
   "zod-validation-error",
+  "googleapis",
 ];
 
 // ESM-only packages that must be externalized (cannot be bundled into CJS)
@@ -49,6 +50,8 @@ const alwaysExternal = [
   "playwright",
   "puppeteer",
   "puppeteer-core",
+  "pdfkit",
+  "fontkit",
 ];
 
 async function buildAll() {
