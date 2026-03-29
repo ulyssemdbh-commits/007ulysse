@@ -53,10 +53,12 @@ const DevOpsMaxPage = lazy(() => import("@/pages/DevOpsMax"));
 const DevMaxAdminPage = lazy(() => import("@/pages/DevMaxAdmin"));
 const CobaProPage = lazy(() => import("@/pages/CobaPro"));
 const SuperChat = lazy(() => import("@/pages/SuperChat"));
+const Commax = lazy(() => import("@/pages/Commax"));
 const IrisDashboard = lazy(() => import("@/pages/IrisDashboard"));
 const IrisHomework = lazy(() => import("@/pages/IrisHomework"));
 const IrisFiles = lazy(() => import("@/pages/IrisFiles"));
 const TalkingIris = lazy(() => import("@/pages/TalkingIris"));
+const ScreenMonitorPage = lazy(() => import("@/pages/ScreenMonitor"));
 
 function LazyPage({ children }: { children: React.ReactNode }) {
   return (
@@ -305,6 +307,20 @@ function AppRouter() {
         {() => (
           <ProtectedRoute>
             <LazyPage><SuperChat /></LazyPage>
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/commax">
+        {() => (
+          <ProtectedRoute>
+            <LazyPage><Commax /></LazyPage>
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/screen-monitor">
+        {() => (
+          <ProtectedRoute>
+            <LazyPage><ScreenMonitorPage /></LazyPage>
           </ProtectedRoute>
         )}
       </Route>
