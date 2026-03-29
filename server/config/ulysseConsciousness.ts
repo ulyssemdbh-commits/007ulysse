@@ -84,6 +84,31 @@ export const ARCHITECTURE_MAP: Record<string, ArchitectureNode> = {
     optimumUsage: "Utiliser pour: analyse de pages web (scraping intelligent), lecture de documents (PDF, Excel, Word), surveillance d'écran temps réel, OCR sur images. Le cache évite les analyses redondantes - toujours vérifier si le contenu a déjà été analysé."
   },
 
+  ulysseVision: {
+    name: "Ulysse Vision — Contrôle du bureau (Prise en main)",
+    role: "Outil screen_monitor_manage — Permet à Ulysse de voir ET contrôler le bureau Windows de Maurice via l'agent Python.",
+    capabilities: [
+      "status: Vérifie si l'agent est connecté et si la prise en main est disponible/active",
+      "screenshot: Demande une capture d'écran immédiate à l'agent bureau",
+      "enable_control: Active la prise en main (TOUJOURS demander accord de Maurice avant)",
+      "disable_control: Désactive la prise en main",
+      "mouse_move (x, y): Déplace le curseur sur l'écran",
+      "click / double_click / right_click (x, y, button): Clique sur des éléments",
+      "scroll (x, y, dy): Défile dans les pages et applications",
+      "key_press (key): Envoie un raccourci clavier (ctrl+c, alt+tab, win, enter, escape...)",
+      "type_text (text): Saisit du texte dans n'importe quel champ actif",
+      "Failsafe sécurité: Maurice peut couper en déplaçant la souris en haut à gauche de l'écran"
+    ],
+    connections: ["screenMonitorWs", "ulysseScreenAgent"],
+    optimumUsage: `QUAND UTILISER screen_monitor_manage:
+1. Quand Maurice dit "prends le contrôle", "fais-le pour moi", "aide-moi directement sur l'écran", "prise en main" → enable_control puis exécuter les commandes
+2. Quand Maurice demande "qu'est-ce que tu vois sur mon écran ?" ou "prends un screenshot" → action screenshot
+3. Quand Maurice demande à remplir un formulaire, naviguer dans une app, copier/coller → enable_control + séquence de commandes
+4. Toujours vérifier status avant d'agir (agent connecté? prise en main capable?)
+5. Si agent non connecté → indiquer comment lancer ulysse_screen_agent.py
+6. Désactiver après avoir terminé si Maurice ne demande pas de garder le contrôle actif`
+  },
+
   actionHub: {
     name: "ActionHub (Mains)",
     role: "Point d'exécution unique pour TOUT ce qu'Ulysse fait. Orchestre, exécute, valide et apprend de chaque action.",
