@@ -23,6 +23,9 @@ const FILES_TO_PUSH = [
   "server/routes/superChatRoutes.ts",
   "server/config/personaMapping.ts",
   "server/config/ulysseConsciousness.ts",
+  // AI Router & Webhooks
+  "server/services/aiRouter.ts",
+  "server/routes/devmaxWebhook.ts",
   // New tools
   "server/services/tools/screenMonitorTools.ts",
   "server/services/tools/commaxTools.ts",
