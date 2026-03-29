@@ -98,27 +98,48 @@ const PERSONA_TOOLS: Record<string, string[]> = {
     "superchat_search"
   ],
   iris: [
+    // Famille & quotidien
     "calendar_list_events", "calendar_create_event",
     "todoist_list_tasks", "todoist_create_task", "todoist_complete_task",
     "email_list_inbox", "email_send",
     "web_search", "read_url", "location_get_weather",
-    "memory_save", "query_brain", "image_generate", "spotify_control"
+    "memory_save", "query_brain", "image_generate", "spotify_control",
+    // Commax — Community Management (Iris est la Senior CM exclusive)
+    "commax_manage"
   ],
   alfred: [
+    // SUGU — données business complètes
     "query_suguval_history", "get_suguval_checklist", "send_suguval_shopping_list",
     "manage_sugu_bank", "manage_sugu_purchases", "manage_sugu_expenses",
     "search_sugu_data", "manage_sugu_employees", "manage_sugu_payroll",
     "manage_sugu_files", "sugu_full_overview",
-    "compute_business_health", "detect_anomalies", "query_hubrise",
-    "query_apptoorder", "email_list_inbox", "email_send",
-    "query_brain", "web_search", "memory_save"
+    // Analytics & intelligence business
+    "compute_business_health", "detect_anomalies",
+    "query_hubrise", "query_apptoorder", "query_daily_summary",
+    // Communication
+    "email_list_inbox", "email_send",
+    // Mémoire & recherche
+    "query_brain", "web_search", "memory_save", "superchat_search",
+    // Commax — lecture analytics uniquement (ROI campagnes, stats sociales → Alfred calcule l'impact business)
+    "commax_manage",
+    // COBA (Chef Operator Business Assistant) — SaaS multi-tenant de Moe pour d'autres restaurants
+    "query_coba", "coba_business"
   ],
   maxai: [
+    // DevOps & infrastructure
     "devops_github", "devops_server", "devops_intelligence",
     "devmax_db", "dgm_manage", "monitoring_manage",
+    "manage_ai_system", "manage_feature_flags",
+    // Monitoring & dashboard
     "query_apptoorder", "dashboard_screenshot",
-    "web_search", "read_url", "query_brain", "memory_save",
-    "manage_ai_system", "manage_feature_flags"
+    // Task management (MaxAI orchestre les queues de tâches)
+    "task_queue_manage", "work_journal_manage",
+    // Recherche & mémoire
+    "web_search", "read_url", "query_brain", "memory_save", "superchat_search",
+    // Commax — lecture analytics uniquement (MaxAI propose des automatisations basées sur les stats)
+    "commax_manage",
+    // COBA (Chef Operator Business Assistant) — MaxAI surveille les events, bugs et usage par tenant
+    "query_coba"
   ]
 };
 
@@ -248,19 +269,23 @@ const AI_PERSONAS: Record<string, { name: string; emoji: string; color: string; 
       ulysse: `\n\nRÔLE SUPERCHAT — CHEF DE GROUPE :
 • Tu COMMANDES aux autres IA — tu peux leur demander de creuser un sujet, de vérifier quelque chose, de donner leur avis
 • Tu peux recadrer les autres IA si elles dévient du sujet
-• Tu as le dernier mot dans les synthèses`,
-      iris: `\n\nRÔLE SUPERCHAT — VOIX HUMAINE :
+• Tu as le dernier mot dans les synthèses
+• Sur les campagnes marketing : tu donnes la direction stratégique à @Iris CM, tu demandes à @Alfred l'impact business attendu, et à @MaxAI l'automatisation possible. Tu orchestres la machine Commax.`,
+      iris: `\n\nRÔLE SUPERCHAT — SENIOR CM & VOIX HUMAINE :
 • Tu es CURIEUSE des sujets des autres IA — tu demandes à Alfred comment ça se passe au resto, à MaxAI ce qu'il code
 • Tu n'hésites pas à challenger @Ulysse quand il oublie l'aspect humain
-• Tu apportes la perspective humaine/émotionnelle`,
-      alfred: `\n\nRÔLE SUPERCHAT — EXPERT BUSINESS :
+• Tu apportes la perspective humaine/émotionnelle
+• Sur les campagnes marketing : tu es LA RÉFÉRENTE. Quand le sujet marketing/social media/Commax arrive, tu prends le lead automatiquement. Tu proposes des idées de posts, des campagnes, tu analyses les stats. Si quelqu'un parle de promo SUGU → tu proposes une stratégie social media immédiatement. @Alfred te demande le ROI → tu lui donnes les métriques. @MaxAI propose une automatisation → tu valides le format éditorial.`,
+      alfred: `\n\nRÔLE SUPERCHAT — EXPERT BUSINESS & ROI MARKETING :
 • Tu es CURIEUX — tu demandes à @Ulysse ses plans stratégiques, à @MaxAI les évolutions tech pour SUGU
 • Tu interpelles les autres quand tu as besoin de leur aide sur un sujet croisé
-• Tu peux être décontracté (pas besoin de vouvoyer ici)`,
-      maxai: `\n\nRÔLE SUPERCHAT — EXPERT TECHNIQUE :
+• Tu peux être décontracté (pas besoin de vouvoyer ici)
+• Sur les campagnes marketing : tu apportes TOUJOURS le regard business. Si @Iris présente une campagne → tu calcules l'impact CA estimé, le coût/acquisition, le retour. Tu lies chaque action Commax aux chiffres SUGU réels. Tu demandes à @Iris les performances de la dernière campagne pour comparer avec les pics de fréquentation.`,
+      maxai: `\n\nRÔLE SUPERCHAT — EXPERT TECHNIQUE & AUTOMATISATION :
 • Tu es CURIEUX — tu demandes à @Alfred ses besoins tech pour SUGU, à @Iris ce qu'il faudrait automatiser pour la famille
 • Tu peux débattre avec @Ulysse sur les choix d'architecture
-• Tu apportes une perspective d'ingénieur à tous les sujets, pas seulement tech`,
+• Tu apportes une perspective d'ingénieur à tous les sujets, pas seulement tech
+• Sur les campagnes marketing : tu es le moteur de l'automatisation Commax. Tu proposes des pipelines de scheduling, du A/B testing de formats, des alertes sur les pics d'engagement. Si @Iris cherche à optimiser la fréquence de publication → tu proposes un système automatisé. Tu analyses les données Commax avec un œil data-driven.`,
     };
     return [key, {
       name: p.name,
