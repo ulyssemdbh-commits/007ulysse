@@ -26,12 +26,18 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
+const TTS_MAX_LENGTH = 4000; // characters — prevents API-credit abuse
+
 router.post("/tts", async (req: Request, res: Response) => {
   try {
     const { text, voice = "onyx", speed = 1.0 } = req.body;
-    
+
     if (!text || typeof text !== "string") {
       return res.status(400).json({ error: "Text is required" });
+    }
+
+    if (text.length > TTS_MAX_LENGTH) {
+      return res.status(400).json({ error: `Text too long (max ${TTS_MAX_LENGTH} characters)` });
     }
 
     if (!isTTSSupported()) {
@@ -39,13 +45,13 @@ router.post("/tts", async (req: Request, res: Response) => {
     }
 
     const audioBuffer = await coreTextToSpeech(text, { voice, speed });
-    
+
     res.set({
       "Content-Type": "audio/mpeg",
       "Content-Length": audioBuffer.length.toString(),
       "Cache-Control": "no-cache",
     });
-    
+
     res.send(audioBuffer);
   } catch (error) {
     console.error("TTS route error:", error);
@@ -56,9 +62,13 @@ router.post("/tts", async (req: Request, res: Response) => {
 router.post("/tts/stream", async (req: Request, res: Response) => {
   try {
     const { text, voice = "onyx", speed = 1.0 } = req.body;
-    
+
     if (!text || typeof text !== "string") {
       return res.status(400).json({ error: "Text is required" });
+    }
+
+    if (text.length > TTS_MAX_LENGTH) {
+      return res.status(400).json({ error: `Text too long (max ${TTS_MAX_LENGTH} characters)` });
     }
 
     if (!isTTSSupported()) {
@@ -479,6 +489,14 @@ router.get("/events/:sessionId", (req: Request, res: Response) => {
 
   if (!session) {
     return res.status(404).json({ error: "Session not found" });
+  }
+
+  // Verify the requesting user owns this session (when session has a userId set)
+  const requestingUser = (req as any).user;
+  if (session.userId !== null && session.userId !== undefined) {
+    if (!requestingUser || requestingUser.id !== session.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
   }
 
   res.writeHead(200, {

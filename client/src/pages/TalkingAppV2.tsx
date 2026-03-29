@@ -38,10 +38,10 @@ const triggerHaptic = (style: "light" | "medium" | "heavy" | "success" | "warnin
 };
 
 const TALKING_USERS = [
-  { id: "maurice", name: "Maurice", username: "Maurice", persona: "ulysse", pin: "2792" },
-  { id: "kelly", name: "Kelly", username: "KellyIris001", persona: "iris", pin: "1470" },
-  { id: "lenny", name: "Lenny", username: "LennyIris002", persona: "iris", pin: "2580" },
-  { id: "micky", name: "Micky", username: "MickyIris003", persona: "iris", pin: "3690" },
+  { id: "maurice", name: "Maurice", username: "Maurice", persona: "ulysse" },
+  { id: "kelly", name: "Kelly", username: "KellyIris001", persona: "iris" },
+  { id: "lenny", name: "Lenny", username: "LennyIris002", persona: "iris" },
+  { id: "micky", name: "Micky", username: "MickyIris003", persona: "iris" },
 ];
 
 export default function TalkingAppV2() {
@@ -689,50 +689,49 @@ export default function TalkingAppV2() {
     setPinCode(newPin);
     setPinError(false);
     triggerHaptic("light");
-    
+
     if (newPin.length === 4) {
-      const matchedUser = TALKING_USERS.find(u => u.pin === newPin);
-      if (matchedUser) {
-        triggerHaptic("success");
-        setPinStep("logging");
-        handlePinLogin(matchedUser, newPin);
-      } else {
-        triggerHaptic("error");
-        setPinError(true);
-        setTimeout(() => {
-          setPinCode("");
-          setPinError(false);
-        }, 500);
-      }
+      // Do NOT validate PIN client-side — let the server decide
+      setPinStep("logging");
+      handlePinLogin(newPin);
     }
   };
-  
+
   const handlePinDelete = () => {
     if (pinCode.length > 0) {
       setPinCode(pinCode.slice(0, -1));
       triggerHaptic("light");
     }
   };
-  
-  const handlePinLogin = async (user: typeof TALKING_USERS[0], pin: string) => {
+
+  const handlePinLogin = async (pin: string) => {
     setIsSubmitting(true);
     try {
       const response = await fetch("/api/talking/pin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username: user.username, pin }),
+        body: JSON.stringify({ pin }),
       });
-      
+
       if (response.ok) {
-        toast({ title: `Bienvenue ${user.name}` });
+        const data = await response.json();
+        triggerHaptic("success");
+        toast({ title: `Bienvenue ${data.user?.displayName || data.user?.username || ""}` });
         window.location.reload();
       } else {
-        toast({ title: "Erreur", description: "Connexion echouee", variant: "destructive" });
-        setPinStep("pin");
-        setPinCode("");
+        triggerHaptic("error");
+        setPinError(true);
+        const data = await response.json();
+        toast({ title: "Erreur", description: data.error || "Connexion échouée", variant: "destructive" });
+        setTimeout(() => {
+          setPinStep("pin");
+          setPinCode("");
+          setPinError(false);
+        }, 500);
       }
     } catch (error) {
+      triggerHaptic("error");
       toast({ title: "Erreur", description: "Impossible de se connecter", variant: "destructive" });
       setPinStep("pin");
       setPinCode("");

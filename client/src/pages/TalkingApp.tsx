@@ -88,10 +88,10 @@ export default function TalkingApp({ irisMode = false }: { irisMode?: boolean } 
   const [pinError, setPinError] = useState(false);
   
   const ALL_TALKING_USERS = [
-    { id: "maurice", name: "Maurice", username: "Maurice", persona: "ulysse", pin: "2792" },
-    { id: "kelly", name: "Kelly", username: "KellyIris001", persona: "iris", pin: "1470" },
-    { id: "lenny", name: "Lenny", username: "LennyIris002", persona: "iris", pin: "2580" },
-    { id: "micky", name: "Micky", username: "MickyIris003", persona: "iris", pin: "3690" },
+    { id: "maurice", name: "Maurice", username: "Maurice", persona: "ulysse" },
+    { id: "kelly", name: "Kelly", username: "KellyIris001", persona: "iris" },
+    { id: "lenny", name: "Lenny", username: "LennyIris002", persona: "iris" },
+    { id: "micky", name: "Micky", username: "MickyIris003", persona: "iris" },
   ];
   const TALKING_USERS = irisMode ? ALL_TALKING_USERS.filter(u => u.persona === "iris") : ALL_TALKING_USERS;
   const [isInCall, setIsInCall] = useState(false);
@@ -312,21 +312,11 @@ export default function TalkingApp({ irisMode = false }: { irisMode?: boolean } 
     setPinCode(newPin);
     setPinError(false);
     triggerHaptic("light");
-    
+
     if (newPin.length === 4) {
-      const matchedUser = TALKING_USERS.find(u => u.pin === newPin);
-      if (matchedUser) {
-        triggerHaptic("success");
-        setPinStep("logging");
-        handlePinLogin(matchedUser, newPin);
-      } else {
-        triggerHaptic("error");
-        setPinError(true);
-        setTimeout(() => {
-          setPinCode("");
-          setPinError(false);
-        }, 500);
-      }
+      // Do NOT validate PIN client-side — let the server decide
+      setPinStep("logging");
+      handlePinLogin(newPin);
     }
   };
 
@@ -337,26 +327,34 @@ export default function TalkingApp({ irisMode = false }: { irisMode?: boolean } 
     }
   };
 
-  const handlePinLogin = async (user: typeof TALKING_USERS[0], pin: string) => {
+  const handlePinLogin = async (pin: string) => {
     setIsSubmitting(true);
     try {
       const response = await fetch("/api/talking/pin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username: user.username, pin }),
+        body: JSON.stringify({ pin }),
       });
-      
+
       if (response.ok) {
-        toast({ title: `Bienvenue ${user.name}` });
+        const data = await response.json();
+        triggerHaptic("success");
+        toast({ title: `Bienvenue ${data.user?.displayName || data.user?.username || ""}` });
         window.location.reload();
       } else {
+        triggerHaptic("error");
+        setPinError(true);
         const data = await response.json();
-        toast({ title: "Erreur", description: data.message || "Connexion échouée", variant: "destructive" });
-        setPinStep("pin");
-        setPinCode("");
+        toast({ title: "Erreur", description: data.error || "Connexion échouée", variant: "destructive" });
+        setTimeout(() => {
+          setPinStep("pin");
+          setPinCode("");
+          setPinError(false);
+        }, 500);
       }
     } catch (error: any) {
+      triggerHaptic("error");
       toast({ title: "Erreur", description: "Impossible de se connecter", variant: "destructive" });
       setPinStep("pin");
       setPinCode("");

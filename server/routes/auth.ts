@@ -279,9 +279,10 @@ router.post("/max-auto-login", authLimiter, async (req, res) => {
   }
 });
 
+// PIN-only schema: the client sends only the PIN, the server resolves the user.
+// This keeps PINs off the frontend JS bundle.
 const talkingPinSchema = z.object({
-  username: z.string().min(1),
-  pin: z.string().length(4),
+  pin: z.string().length(4).regex(/^\d{4}$/, "Le PIN doit être 4 chiffres"),
 });
 
 const TALKING_USER_PINS: Record<string, string> = {};
@@ -304,32 +305,30 @@ try {
 router.post("/talking/pin-login", authLimiter, async (req, res) => {
   try {
     const data = talkingPinSchema.parse(req.body);
-    
-    const expectedPin = TALKING_USER_PINS[data.username];
-    if (!expectedPin) {
-      return res.status(403).json({ error: "Utilisateur non autorisé" });
-    }
-    
-    if (data.pin !== expectedPin) {
+
+    // Resolve username from PIN server-side — never trust the client to send a username
+    const entry = Object.entries(TALKING_USER_PINS).find(([, p]) => p === data.pin);
+    if (!entry) {
       return res.status(401).json({ error: "Code PIN invalide" });
     }
-    
+    const username = entry[0];
+
     const userAgent = req.headers["user-agent"];
     const ipAddress = req.ip || req.connection?.remoteAddress;
-    
-    const user = await authService.findUserByUsername(data.username);
+
+    const user = await authService.findUserByUsername(username);
     if (!user) {
       return res.status(404).json({ error: "Utilisateur introuvable" });
     }
-    
+
     const session = await authService.createSessionForUser(user.id, userAgent, ipAddress);
-    
+
     if (session) {
       setSessionCookie(res, session.id);
     }
-    
-    console.log(`[Talking PIN] User ${data.username} logged in via PIN`);
-    
+
+    console.log(`[Talking PIN] User ${username} logged in via PIN`);
+
     res.json({
       success: true,
       user: {
