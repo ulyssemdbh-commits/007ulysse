@@ -121,6 +121,11 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 ### Ulysse Tools V2
 - Over 86 tool handlers covering data/memory, restaurant management (SUGU), sports intelligence (Djedou Pronos), communication/productivity, web/research (MARS V2), DevOps (GitHub Bridge, server actions, integrated browser), file/image/PDF processing, and utilities.
 
+### Observability & Prometheus
+- **`/metrics` endpoint**: Prometheus-compatible text format, scrapable by any Prometheus instance.
+- Exposes: `ulysse_uptime_seconds`, `ulysse_health_status`, `process_resident_memory_bytes`, `process_heap_used_bytes`, `ulysse_ai_requests_total`, `ulysse_ai_latency_avg_ms`, `ulysse_ai_tokens_total{direction}`, `ulysse_ai_errors_total`, `ulysse_ai_provider_requests_total{provider}`, `ulysse_preload_total`, `ulysse_cache_operations_total{result}`, `ulysse_api_error_rate`, `ulysse_job_success_rate`, `ulysse_ai_cost_usd_24h`.
+- **Memory leak safeguards**: ContextOptimizer cache capped at 500 entries with 60s eviction timer, feedback buffer capped at 100, domain adjustments at 50. Voice pcmBuffer capped at 50MB with oldest-chunk trimming.
+
 ### Scalability & Performance Layer
 - Production-grade middleware providing backpressure guards, concurrency limiting, circuit breaker registry, plan-aware tenant rate limiting, request prioritization, and health monitoring.
 - Utilizes Redis for distributed rate limiting, session store, and caching.
@@ -134,8 +139,12 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 - Concurrency limit of 4 simultaneous jobs.
 
 ### Infrastructure
-- **Hetzner VPS**: Primary production server (Ubuntu 24.04). App runs at `/var/www/ulysse` via PM2.
-- **CI/CD Pipeline**: Replit → GitHub → Webhook on Hetzner for auto-deployment.
+- **Hetzner VPS**: Primary production server (Ubuntu 24.04). App runs at `/var/www/ulysse` via PM2 (id 164, port 5000).
+- **CI/CD Pipeline — DevOpsMax 100% Autonome**:
+  1. `scripts/github_push_api.ts` — Full project push (775 files) via Git Trees API with chunked progress tracking (200 files/run, resume from checkpoint). Targets both `007ulysse` and `ulysseproject` repos.
+  2. GitHub webhooks on both repos → `https://ulyssepro.org/webhook/deploy` → nginx → port 9000 → `webhook-server.cjs` (PM2 id 30) → `/opt/ulysse/deploy.sh`
+  3. `deploy.sh` (fully autonomous, no Replit needed): `git fetch 007ulysse main` → `git reset --hard` → `npm ci --include=dev` → `npm i pdfkit fontkit restructure` → `NODE_OPTIONS=--max-old-space-size=3072 npx tsx script/build.ts` → `pm2 restart ulysse` → health check HTTP 200
+  4. Deploy script also at `scripts/hetzner_deploy.sh` (synced to GitHub)
 - **File Storage (SUGU)**: Dual-mode with Replit Object Storage (development) and local filesystem (production).
 - Enables 47 server actions via SSH.
 - **Port & URL Convention**: Dynamic port allocation with PostgreSQL advisory lock (race-condition safe) and standardized URL structure (`{slug}.ulyssepro.org` for production / `{slug}.dev.ulyssepro.org` for staging) with Cloudflare proxy SSL.

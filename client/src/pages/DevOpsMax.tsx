@@ -3793,7 +3793,20 @@ APRES chaque deploy, lance TOUJOURS url_diagnose_all pour verifier staging ET pr
       }
     } catch (err: any) {
       if (err.name === "AbortError") return;
-      setMessages(prev => [...prev, { role: "assistant", content: "Erreur de communication." }]);
+      const retryCount = (err._retryCount || 0);
+      if (retryCount < 2 && (err.message === "Erreur" || err.message === "Failed to fetch" || err.message?.includes("network") || err.message?.includes("NetworkError"))) {
+        console.log(`[MaxAI] Retry ${retryCount + 1}/2...`);
+        err._retryCount = retryCount + 1;
+        const delay = (retryCount + 1) * 2000;
+        setMessages(prev => [...prev, { role: "assistant", content: `⏳ Connexion interrompue, nouvelle tentative (${retryCount + 1}/2)...` }]);
+        await new Promise(r => setTimeout(r, delay));
+        setMessages(prev => prev.slice(0, -1));
+        setIsLoading(false);
+        abortRef.current = null;
+        return handleSend(messageContent, undefined, undefined, isAutoContinue);
+      }
+      const errDetail = err.message === "Erreur" ? "Le serveur n'a pas pu traiter la requête." : (err.message || "Connexion perdue.");
+      setMessages(prev => [...prev, { role: "assistant", content: `⚠️ ${errDetail} Réessaie ou reformule ta demande en ciblant un dossier spécifique.` }]);
     } finally {
       setIsLoading(false);
       abortRef.current = null;

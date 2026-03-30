@@ -56,6 +56,7 @@ import uiSnapshotRoutes from "./routes/uiSnapshotRoutes";
 import dashboardScreenshotRoutes from "./routes/dashboardScreenshot";
 import path from "path";
 import fs from "fs";
+import yaml from "js-yaml";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -186,6 +187,22 @@ export async function registerRoutes(
     }
   });
 
+  // Swagger UI - API Documentation
+  try {
+    const swaggerUi = await import("swagger-ui-express");
+    const apiDocPath = path.join(process.cwd(), "server", "docs", "api.yaml");
+    if (fs.existsSync(apiDocPath)) {
+      const apiDoc = yaml.load(fs.readFileSync(apiDocPath, "utf8")) as any;
+      app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(apiDoc, {
+        customCss: '.swagger-ui .topbar { display: none }',
+        customSiteTitle: 'Ulysse AI - API Documentation',
+      }));
+      console.log("[Swagger] API docs available at /api/docs");
+    }
+  } catch (e: any) {
+    console.warn("[Swagger] Could not load API docs:", e.message);
+  }
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ 
@@ -193,6 +210,16 @@ export async function registerRoutes(
       timestamp: Date.now(),
       authenticated: !!(req.session as any)?.userId 
     });
+  });
+
+  app.get("/metrics", async (req, res) => {
+    try {
+      const { metricsService } = await import("./services/metricsService");
+      res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+      res.send(metricsService.toPrometheus());
+    } catch (error: any) {
+      res.status(500).send(`# Error generating metrics\n# ${error.message}\n`);
+    }
   });
 
   // AI Router status endpoint - get available providers

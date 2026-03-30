@@ -392,6 +392,14 @@ function handleAudioChunk(session: VoiceSession, data: Buffer) {
     
     const totalSize = session.pcmBuffer.reduce((acc, b) => acc + b.length, 0);
     
+    const MAX_PCM_BUFFER_BYTES = 50 * 1024 * 1024;
+    if (totalSize > MAX_PCM_BUFFER_BYTES) {
+      console.warn(`[Voice] pcmBuffer exceeded ${MAX_PCM_BUFFER_BYTES / 1024 / 1024}MB, trimming oldest chunks`);
+      while (session.pcmBuffer.length > 1 && session.pcmBuffer.reduce((a, b) => a + b.length, 0) > MAX_PCM_BUFFER_BYTES / 2) {
+        session.pcmBuffer.shift();
+      }
+    }
+    
     // Pass audio chunk to TurnDetector
     if (session.turnDetector) {
       const samples = new Int16Array(data.buffer, data.byteOffset, data.length / 2);

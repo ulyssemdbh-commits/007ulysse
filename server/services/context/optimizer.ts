@@ -44,21 +44,28 @@ class ContextOptimizerService {
   private feedbackBuffer: FeedbackEntry[] = [];
   private domainScoreAdjustments: Map<string, number> = new Map();
   private feedbackTimer: NodeJS.Timeout | null = null;
+  private cacheEvictionTimer: NodeJS.Timeout | null = null;
   private cacheHits = 0;
   private cacheMisses = 0;
   
+  private readonly MAX_CACHE_SIZE = 500;
+  private readonly MAX_FEEDBACK_BUFFER = 100;
+  private readonly MAX_DOMAIN_ADJUSTMENTS = 50;
+  private readonly CACHE_EVICTION_INTERVAL = 60 * 1000;
+
   private readonly DOMAIN_TTL: Record<string, number> = {
-    trading: 60 * 1000,      // 1 minute (volatile)
-    sports: 5 * 60 * 1000,   // 5 minutes
-    general: 10 * 60 * 1000, // 10 minutes
-    sugu: 5 * 60 * 1000,     // 5 minutes
-    default: 3 * 60 * 1000   // 3 minutes
+    trading: 60 * 1000,
+    sports: 5 * 60 * 1000,
+    general: 10 * 60 * 1000,
+    sugu: 5 * 60 * 1000,
+    default: 3 * 60 * 1000
   };
   
-  private readonly FEEDBACK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  private readonly FEEDBACK_INTERVAL = 5 * 60 * 1000;
   
   constructor() {
     this.startFeedbackTimer();
+    this.startCacheEviction();
   }
   
   private startFeedbackTimer(): void {
@@ -70,6 +77,43 @@ class ContextOptimizerService {
       }
     }, this.FEEDBACK_INTERVAL);
     console.log(`${LOG_PREFIX} Feedback timer started (${this.FEEDBACK_INTERVAL / 1000}s interval)`);
+  }
+
+  private startCacheEviction(): void {
+    if (this.cacheEvictionTimer) return;
+    this.cacheEvictionTimer = setInterval(() => {
+      this.evictExpiredEntries();
+    }, this.CACHE_EVICTION_INTERVAL);
+  }
+
+  private evictExpiredEntries(): void {
+    const now = Date.now();
+    let evicted = 0;
+    for (const [key, entry] of this.contextCache) {
+      if (now - entry.cachedAt > entry.ttl) {
+        this.contextCache.delete(key);
+        evicted++;
+      }
+    }
+    if (this.contextCache.size > this.MAX_CACHE_SIZE) {
+      const entries = Array.from(this.contextCache.entries())
+        .sort((a, b) => a[1].cachedAt - b[1].cachedAt);
+      const toRemove = entries.slice(0, this.contextCache.size - this.MAX_CACHE_SIZE);
+      for (const [key] of toRemove) {
+        this.contextCache.delete(key);
+        evicted++;
+      }
+    }
+    if (this.domainScoreAdjustments.size > this.MAX_DOMAIN_ADJUSTMENTS) {
+      const oldest = Array.from(this.domainScoreAdjustments.keys())
+        .slice(0, this.domainScoreAdjustments.size - this.MAX_DOMAIN_ADJUSTMENTS);
+      for (const key of oldest) {
+        this.domainScoreAdjustments.delete(key);
+      }
+    }
+    if (evicted > 0) {
+      console.log(`${LOG_PREFIX} Evicted ${evicted} expired cache entries (remaining: ${this.contextCache.size})`);
+    }
   }
 
   async getFullContext(userId: number): Promise<{
@@ -251,6 +295,10 @@ class ContextOptimizerService {
     };
     
     this.feedbackBuffer.push(entry);
+    
+    if (this.feedbackBuffer.length >= this.MAX_FEEDBACK_BUFFER) {
+      this.feedbackBuffer = this.feedbackBuffer.slice(-50);
+    }
     
     if (this.feedbackBuffer.length >= 10) {
       this.processFeedbackBufferInternal();

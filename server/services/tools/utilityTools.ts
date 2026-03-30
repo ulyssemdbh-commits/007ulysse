@@ -1524,10 +1524,15 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                     return aCode - bCode || a.path.localeCompare(b.path);
                 });
 
+                const isLargeRepo = allItems.length > 500;
+                const maxRootFiles = isLargeRepo ? 15 : 30;
+                const maxSubFiles = isLargeRepo ? 25 : 50;
+                const maxDirs = isLargeRepo ? 20 : 50;
+
                 if (!browsePath) {
                     const codeDirList = dirSummary.filter(d => d.category === "code").map(d => d.name);
                     const subdirsDetail: Record<string, string[]> = {};
-                    for (const codeDir of codeDirList) {
+                    for (const codeDir of codeDirList.slice(0, 8)) {
                         const prefix2 = codeDir + "/";
                         const subItems = allItems.filter((f: any) => f.path.startsWith(prefix2));
                         const subs = new Set<string>();
@@ -1535,27 +1540,39 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                             const relParts = si.path.slice(prefix2.length).split("/");
                             if (relParts.length > 1) subs.add(relParts[0]);
                         }
-                        if (subs.size > 0) subdirsDetail[codeDir] = Array.from(subs).sort();
+                        if (subs.size > 0) {
+                            const sorted = Array.from(subs).sort();
+                            subdirsDetail[codeDir] = sorted.length > 15 ? [...sorted.slice(0, 12), `... +${sorted.length - 12} more`] : sorted;
+                        }
+                    }
+
+                    const trimmedDirs = dirSummary.slice(0, maxDirs);
+                    if (dirSummary.length > maxDirs) {
+                        trimmedDirs.push({ name: "...", type: "summary", files: dirSummary.slice(maxDirs).reduce((s, d) => s + d.files, 0), totalSize: 0, subdirs: 0, category: "other" } as any);
                     }
 
                     return JSON.stringify({
                         path: "/",
-                        directories: dirSummary,
+                        repoSize: { totalFiles: allItems.length, totalDirs: dirs.size, isLarge: isLargeRepo },
+                        directories: trimmedDirs,
                         codeStructure: subdirsDetail,
-                        files: sortedFiles.slice(0, 30),
-                        totalFiles: allItems.length,
-                        totalDirs: dirs.size,
-                        hint: "Utilise browse_files avec path='client/src' ou path='server/services' pour explorer un sous-dossier. IMPORTANT: explore automatiquement les dossiers de code (category='code') sans demander confirmation."
+                        files: sortedFiles.slice(0, maxRootFiles),
+                        hint: isLargeRepo
+                            ? "Repo volumineux. Explore par dossier: browse_files path='client/src' ou path='server/services'. Ne tente PAS d'explorer tout le repo d'un coup."
+                            : "Utilise browse_files avec path='client/src' ou path='server/services' pour explorer un sous-dossier."
                     });
                 }
 
+                const trimmedDirs = dirSummary.slice(0, maxDirs);
                 return JSON.stringify({
                     path: browsePath,
-                    directories: dirSummary,
-                    files: sortedFiles.slice(0, 50),
+                    directories: trimmedDirs,
+                    files: sortedFiles.slice(0, maxSubFiles),
                     totalFiles: filtered.length,
                     totalDirs: dirs.size,
-                    hint: "Utilise browse_files avec path='sous-dossier' pour explorer plus en profondeur. Continue l'exploration automatiquement."
+                    hint: filtered.length > maxSubFiles
+                        ? `${filtered.length - maxSubFiles} fichiers non affichés. Cible un sous-dossier spécifique pour voir plus.`
+                        : "Utilise browse_files avec path='sous-dossier' pour explorer plus en profondeur."
                 });
             }
             case "list_workflows": {

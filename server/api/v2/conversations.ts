@@ -37,6 +37,124 @@ import { UlysseCoreEngine } from "../../services/core/UlysseCoreEngine";
 
 const memoryService = new MemoryService();
 
+const TOOL_RESULT_LIMITS: Record<string, number> = {
+  browse_files: 8000,
+  get_file: 20000,
+  search_code: 10000,
+  list_commits: 6000,
+  list_prs: 6000,
+  list_issues: 6000,
+  debug_app: 10000,
+  architecture_analyze: 12000,
+  security_scan: 10000,
+  profile_app: 8000,
+  db_inspect: 8000,
+  default: 15000,
+};
+
+function compressToolResult(rawResult: string, toolName?: string, toolArgs?: any): string {
+  const limit = TOOL_RESULT_LIMITS[toolArgs?.action || ""] || TOOL_RESULT_LIMITS[toolName || ""] || TOOL_RESULT_LIMITS.default;
+  if (rawResult.length <= limit) return rawResult;
+
+  const action = toolArgs?.action || toolName || "tool";
+  try {
+    const parsed = JSON.parse(rawResult);
+
+    if (action === "browse_files" && parsed.codeStructure) {
+      for (const dir of Object.keys(parsed.codeStructure)) {
+        const subs = parsed.codeStructure[dir];
+        if (Array.isArray(subs) && subs.length > 20) {
+          parsed.codeStructure[dir] = [...subs.slice(0, 15), `... +${subs.length - 15} more`];
+        }
+      }
+      if (parsed.directories && parsed.directories.length > 30) {
+        parsed.directories = [...parsed.directories.slice(0, 25), { name: "...", type: "summary", filesOmitted: parsed.directories.slice(25).reduce((s: number, d: any) => s + (d.files || 0), 0) }];
+      }
+      if (parsed.files && parsed.files.length > 20) {
+        parsed.files = parsed.files.slice(0, 15);
+        parsed.filesOmitted = true;
+      }
+      const compressed = JSON.stringify(parsed);
+      if (compressed.length <= limit) return compressed;
+    }
+
+    if (action === "get_file" && parsed.content) {
+      if (parsed.content.length > limit - 500) {
+        parsed.content = parsed.content.slice(0, limit - 500);
+        parsed.truncated = true;
+        parsed.hint = "Fichier tronqué. Utilise get_file avec offset/limit pour lire la suite, ou search_code pour trouver un passage spécifique.";
+        return JSON.stringify(parsed);
+      }
+    }
+
+    if ((action === "list_commits" || action === "list_prs" || action === "list_issues") && Array.isArray(parsed)) {
+      if (parsed.length > 20) {
+        const trimmed = parsed.slice(0, 15);
+        trimmed.push({ _summary: `${parsed.length - 15} entrées supplémentaires omises` });
+        return JSON.stringify(trimmed);
+      }
+    }
+
+    if (action === "debug_app" && typeof parsed === "object") {
+      if (parsed.logs && typeof parsed.logs === "string" && parsed.logs.length > 5000) {
+        const logLines = parsed.logs.split("\n");
+        const errorLines = logLines.filter((l: string) => /error|ERR|fatal|crash|ENOENT|EACCES|TypeError|ReferenceError|SyntaxError/i.test(l));
+        parsed.logs = errorLines.length > 0
+          ? errorLines.slice(-30).join("\n") + `\n[... ${logLines.length} lignes total, ${errorLines.length} erreurs extraites]`
+          : logLines.slice(-40).join("\n") + `\n[... ${logLines.length} lignes total, dernières 40 affichées]`;
+        return JSON.stringify(parsed);
+      }
+    }
+  } catch {}
+
+  const truncated = rawResult.slice(0, limit);
+  const lastNewline = truncated.lastIndexOf('\n');
+  const cutPoint = lastNewline > limit * 0.8 ? lastNewline : limit;
+  console.log(`[V2-Compress] ${action} result compressed: ${rawResult.length} → ${cutPoint} chars`);
+  return rawResult.slice(0, cutPoint) + `\n\n[... RÉSULTAT TRONQUÉ — ${rawResult.length} chars total. Cible des fichiers/dossiers spécifiques pour plus de détails.]`;
+}
+
+function compactOldToolResults(messages: any[], maxTotalChars: number = 80000): void {
+  let totalToolChars = 0;
+  const toolMsgIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role === "tool" && typeof messages[i].content === "string") {
+      totalToolChars += messages[i].content.length;
+      toolMsgIndices.push(i);
+    }
+  }
+  if (totalToolChars <= maxTotalChars || toolMsgIndices.length <= 2) return;
+
+  console.log(`[V2-ContextMgr] Tool results total: ${totalToolChars} chars across ${toolMsgIndices.length} messages — compacting old results`);
+  const keepRecent = 3;
+  const oldIndices = toolMsgIndices.slice(0, -keepRecent);
+  for (const idx of oldIndices) {
+    const content = messages[idx].content;
+    if (content.length > 2000) {
+      try {
+        const parsed = JSON.parse(content);
+        const keys = Object.keys(parsed);
+        const summary: any = {};
+        if (parsed.success !== undefined) summary.success = parsed.success;
+        if (parsed.error) summary.error = parsed.error;
+        if (parsed.path) summary.path = parsed.path;
+        if (parsed.totalFiles) summary.totalFiles = parsed.totalFiles;
+        if (parsed.totalDirs) summary.totalDirs = parsed.totalDirs;
+        if (parsed.directories && Array.isArray(parsed.directories)) {
+          summary.directories = parsed.directories.map((d: any) => d.name || d).slice(0, 10);
+          if (parsed.directories.length > 10) summary.directoriesOmitted = parsed.directories.length - 10;
+        }
+        summary._compacted = true;
+        summary._originalKeys = keys.slice(0, 8);
+        messages[idx].content = JSON.stringify(summary);
+        console.log(`[V2-ContextMgr] Compacted tool result at index ${idx}: ${content.length} → ${messages[idx].content.length} chars`);
+      } catch {
+        messages[idx].content = content.slice(0, 500) + `\n[... compacté — ${content.length} chars originaux]`;
+      }
+    }
+  }
+}
+
 // Smart web search detection patterns for MARS
 const realTimeSearchPatterns = [
   // Sports scores and results
@@ -2983,7 +3101,7 @@ Commence par design_dashboard MAINTENANT.`
             workingMessages.push({
               role: "tool",
               tool_call_id: toolCall.id,
-              content: result
+              content: compressToolResult(result, toolName, toolArgs)
             });
           }
           
@@ -3062,6 +3180,8 @@ Commence par design_dashboard MAINTENANT.`
             toolRound++;
             const followMaxTokens = devopsCtx ? 16384 : 4096;
 
+            compactOldToolResults(workingMessages, devopsCtx ? 60000 : 40000);
+
             const lastFewTools = toolCallHistory.slice(-4);
             const isToolLoop = lastFewTools.length >= 3 && new Set(lastFewTools).size === 1;
             const lastFewSigs = toolCallSignatures.slice(-3);
@@ -3112,11 +3232,43 @@ Ne dis pas "je vais vérifier" — APPELLE LES OUTILS MAINTENANT.`
               });
             } catch (followErr: any) {
               const isFollowQuota = followErr.status === 429 || followErr.code === 'insufficient_quota' || followErr.message?.includes('insufficient_quota') || followErr.message?.includes('exceeded your current quota');
-              const isRetryable = isFollowQuota || followErr.status === 500 || followErr.status === 503 || followErr.message?.includes('ECONNREFUSED');
+              const isContextOverflow = followErr.code === 'context_length_exceeded' || followErr.message?.includes('maximum context length') || followErr.message?.includes('context_length_exceeded') || followErr.message?.includes("This model's maximum context length");
+              const isRetryable = isFollowQuota || isContextOverflow || followErr.status === 500 || followErr.status === 503 || followErr.message?.includes('ECONNREFUSED');
               console.error(`[V2-Tools] Follow-up failed (model: ${activeModel}):`, followErr.message, followErr.status || '');
               if (isFollowQuota && (_contextFallbackChain[currentProviderIdx]?.provider === "openai")) {
                 markOpenAIDown();
               }
+
+              if (isContextOverflow) {
+                console.log(`[V2-ContextOverflow] Context too large at round ${toolRound} — aggressive compaction + retry`);
+                compactOldToolResults(workingMessages, 20000);
+                const pruneableCount = workingMessages.filter(m => m.role === "tool").length;
+                if (pruneableCount > 4) {
+                  const toolIndices: number[] = [];
+                  for (let i = 0; i < workingMessages.length; i++) {
+                    if (workingMessages[i].role === "tool") toolIndices.push(i);
+                  }
+                  for (const idx of toolIndices.slice(0, -2)) {
+                    const c = workingMessages[idx].content;
+                    if (typeof c === "string" && c.length > 500) {
+                      workingMessages[idx].content = '{"_pruned":true,"reason":"context_overflow"}';
+                    }
+                  }
+                }
+                try {
+                  followUp = await activeClient.chat.completions.create({
+                    model: activeModel,
+                    messages: workingMessages,
+                    max_tokens: Math.min(followMaxTokens, 4096),
+                    tools: relevantTools,
+                    tool_choice: "auto" as const,
+                  });
+                  console.log(`[V2-ContextOverflow] Recovery successful after aggressive compaction`);
+                } catch (retryErr2: any) {
+                  console.error(`[V2-ContextOverflow] Recovery failed:`, retryErr2.message);
+                  break;
+                }
+              } else {
               let recovered = false;
               if (isRetryable) {
                 for (let fi = currentProviderIdx + 1; fi < _contextFallbackChain.length; fi++) {
@@ -3139,6 +3291,7 @@ Ne dis pas "je vais vérifier" — APPELLE LES OUTILS MAINTENANT.`
                 }
               }
               if (!recovered) throw followErr;
+              }
             }
             
             const followChoice = followUp.choices[0];
@@ -3280,7 +3433,7 @@ Ne dis pas "je vais vérifier" — APPELLE LES OUTILS MAINTENANT.`
                 workingMessages.push({
                   role: "tool",
                   tool_call_id: toolCall.id,
-                  content: result
+                  content: compressToolResult(result, toolName, toolArgs)
                 });
               }
               

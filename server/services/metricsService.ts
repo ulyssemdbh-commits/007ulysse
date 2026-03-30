@@ -692,6 +692,99 @@ export const metricsService = {
     }
   },
 
+  toPrometheus(): string {
+    const lines: string[] = [];
+    const uptime = (Date.now() - startTime) / 1000;
+    const mem = process.memoryUsage();
+    const health = this.getSystemHealth();
+
+    lines.push(`# HELP ulysse_uptime_seconds Server uptime in seconds`);
+    lines.push(`# TYPE ulysse_uptime_seconds gauge`);
+    lines.push(`ulysse_uptime_seconds ${Math.round(uptime)}`);
+
+    lines.push(`# HELP ulysse_health_status System health (0=unhealthy, 1=degraded, 2=healthy)`);
+    lines.push(`# TYPE ulysse_health_status gauge`);
+    lines.push(`ulysse_health_status ${health.status === "healthy" ? 2 : health.status === "degraded" ? 1 : 0}`);
+
+    lines.push(`# HELP process_resident_memory_bytes Resident memory size in bytes`);
+    lines.push(`# TYPE process_resident_memory_bytes gauge`);
+    lines.push(`process_resident_memory_bytes ${mem.rss}`);
+
+    lines.push(`# HELP process_heap_used_bytes V8 heap used in bytes`);
+    lines.push(`# TYPE process_heap_used_bytes gauge`);
+    lines.push(`process_heap_used_bytes ${mem.heapUsed}`);
+
+    lines.push(`# HELP process_heap_total_bytes V8 heap total in bytes`);
+    lines.push(`# TYPE process_heap_total_bytes gauge`);
+    lines.push(`process_heap_total_bytes ${mem.heapTotal}`);
+
+    lines.push(`# HELP process_external_memory_bytes V8 external memory in bytes`);
+    lines.push(`# TYPE process_external_memory_bytes gauge`);
+    lines.push(`process_external_memory_bytes ${mem.external}`);
+
+    lines.push(`# HELP ulysse_ai_requests_total Total AI requests`);
+    lines.push(`# TYPE ulysse_ai_requests_total counter`);
+    lines.push(`ulysse_ai_requests_total ${aiMetrics.latency.count}`);
+
+    lines.push(`# HELP ulysse_ai_latency_avg_ms Average AI latency in milliseconds`);
+    lines.push(`# TYPE ulysse_ai_latency_avg_ms gauge`);
+    const aiAvg = aiMetrics.latency.count > 0 ? Math.round(aiMetrics.latency.totalMs / aiMetrics.latency.count) : 0;
+    lines.push(`ulysse_ai_latency_avg_ms ${aiAvg}`);
+
+    lines.push(`# HELP ulysse_ai_tokens_total Total AI tokens used`);
+    lines.push(`# TYPE ulysse_ai_tokens_total counter`);
+    lines.push(`ulysse_ai_tokens_total{direction="input"} ${aiMetrics.tokenUsage.input}`);
+    lines.push(`ulysse_ai_tokens_total{direction="output"} ${aiMetrics.tokenUsage.output}`);
+
+    lines.push(`# HELP ulysse_ai_errors_total Total AI errors`);
+    lines.push(`# TYPE ulysse_ai_errors_total counter`);
+    lines.push(`ulysse_ai_errors_total ${aiMetrics.errors.count}`);
+
+    for (const [provider, count] of Object.entries(aiMetrics.providerUsage)) {
+      lines.push(`# HELP ulysse_ai_provider_requests_total Requests per AI provider`);
+      lines.push(`# TYPE ulysse_ai_provider_requests_total counter`);
+      lines.push(`ulysse_ai_provider_requests_total{provider="${provider}"} ${count}`);
+    }
+
+    lines.push(`# HELP ulysse_preload_total Total preload operations`);
+    lines.push(`# TYPE ulysse_preload_total counter`);
+    lines.push(`ulysse_preload_total ${preloadMetrics.totalPreloads}`);
+
+    lines.push(`# HELP ulysse_preload_success_total Successful preloads`);
+    lines.push(`# TYPE ulysse_preload_success_total counter`);
+    lines.push(`ulysse_preload_success_total ${preloadMetrics.successfulPreloads}`);
+
+    lines.push(`# HELP ulysse_cache_operations_total Cache hit/miss counts`);
+    lines.push(`# TYPE ulysse_cache_operations_total counter`);
+    lines.push(`ulysse_cache_operations_total{result="hit"} ${preloadMetrics.cache.hits}`);
+    lines.push(`ulysse_cache_operations_total{result="miss"} ${preloadMetrics.cache.misses}`);
+    lines.push(`ulysse_cache_operations_total{result="expired"} ${preloadMetrics.cache.expired}`);
+
+    lines.push(`# HELP ulysse_api_requests_total Total API requests tracked`);
+    lines.push(`# TYPE ulysse_api_requests_total counter`);
+    lines.push(`ulysse_api_requests_total ${apiLatencyMetrics.length}`);
+
+    lines.push(`# HELP ulysse_api_error_rate Server error rate (5xx) last hour`);
+    lines.push(`# TYPE ulysse_api_error_rate gauge`);
+    lines.push(`ulysse_api_error_rate ${health.serverErrorRate}`);
+
+    lines.push(`# HELP ulysse_api_latency_avg_ms Average API latency last hour`);
+    lines.push(`# TYPE ulysse_api_latency_avg_ms gauge`);
+    lines.push(`ulysse_api_latency_avg_ms ${health.avgLatency}`);
+
+    lines.push(`# HELP ulysse_job_success_rate Job success rate last hour`);
+    lines.push(`# TYPE ulysse_job_success_rate gauge`);
+    lines.push(`ulysse_job_success_rate ${health.jobSuccessRate}`);
+
+    const costSummary = this.getCostSummary(24 * 60 * 60 * 1000);
+    lines.push(`# HELP ulysse_ai_cost_usd_24h AI cost in USD last 24 hours`);
+    lines.push(`# TYPE ulysse_ai_cost_usd_24h gauge`);
+    lines.push(`ulysse_ai_cost_usd_24h ${costSummary.totalCost}`);
+
+    lines.push(``);
+    return lines.join("\n");
+  },
+
   getContextStats(): {
     totalSnapshots: number;
     domainBreakdown: Record<string, number>;
