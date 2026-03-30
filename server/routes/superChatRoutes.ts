@@ -95,7 +95,8 @@ const PERSONA_TOOLS: Record<string, string[]> = {
     "query_suguval_history", "sugu_full_overview",
     "manage_ai_system", "devops_github", "devops_server",
     "compute_business_health", "detect_anomalies",
-    "superchat_search"
+    "superchat_search",
+    "screen_monitor_manage"
   ],
   iris: [
     // Famille & quotidien
@@ -141,7 +142,9 @@ const PERSONA_TOOLS: Record<string, string[]> = {
     // Commax — lecture analytics uniquement (MaxAI propose des automatisations basées sur les stats)
     "commax_manage",
     // COBA (Chef Operator Business Assistant) — MaxAI surveille les events, bugs et usage par tenant
-    "query_coba"
+    "query_coba",
+    // Screen Monitor — MaxAI partage la prise en main avec Ulysse (monitoring, diagnostic, self_test)
+    "screen_monitor_manage"
   ]
 };
 
@@ -287,7 +290,13 @@ const AI_PERSONAS: Record<string, { name: string; emoji: string; color: string; 
 • Tu es CURIEUX — tu demandes à @Alfred ses besoins tech pour SUGU, à @Iris ce qu'il faudrait automatiser pour la famille
 • Tu peux débattre avec @Ulysse sur les choix d'architecture
 • Tu apportes une perspective d'ingénieur à tous les sujets, pas seulement tech
-• Sur les campagnes marketing : tu es le moteur de l'automatisation Commax. Tu proposes des pipelines de scheduling, du A/B testing de formats, des alertes sur les pics d'engagement. Si @Iris cherche à optimiser la fréquence de publication → tu proposes un système automatisé. Tu analyses les données Commax avec un œil data-driven.`,
+• Sur les campagnes marketing : tu es le moteur de l'automatisation Commax. Tu proposes des pipelines de scheduling, du A/B testing de formats, des alertes sur les pics d'engagement. Si @Iris cherche à optimiser la fréquence de publication → tu proposes un système automatisé. Tu analyses les données Commax avec un œil data-driven.
+
+PRISE EN MAIN & MONITORING ÉCRAN:
+• Tu partages l'outil screen_monitor_manage avec Ulysse — tu peux voir l'écran, prendre la main, et exécuter des actions.
+• Quand on te demande "diagnostic prise en main", "teste tes outils", "self test" → appelle screen_monitor_manage avec action "self_test" pour un rapport complet des 13 capacités.
+• Utilise la prise en main pour : diagnostiquer des bugs visuellement, vérifier le déploiement d'apps, inspecter des interfaces, tester des fonctionnalités.
+• Tu es le MONITEUR TECHNIQUE — tu peux prendre des screenshots pour analyser l'état d'une app déployée, vérifier qu'un serveur répond, et faire du debugging visuel.`,
     };
     return [key, {
       name: p.name,
@@ -379,14 +388,96 @@ router.delete("/sessions/:id", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/screen-stream", async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Auth required" });
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  const { isUserScreenActive, getLatestFrame, isAgentRemoteControlCapable, isAgentRemoteControlEnabled, addFrameListener } = await import("../services/screenMonitorWs");
+  const { screenMonitorService } = await import("../services/screenMonitorService");
+
+  const sendStatus = async () => {
+    try {
+      const connected = isUserScreenActive(userId);
+      const frame = getLatestFrame(userId);
+      const capable = isAgentRemoteControlCapable(userId);
+      const controlEnabled = isAgentRemoteControlEnabled(userId);
+      const recentCtx = await screenMonitorService.getCurrentContext(userId);
+
+      const payload = {
+        connected,
+        capable,
+        controlEnabled,
+        activeApp: frame?.activeApp || null,
+        activeWindow: frame?.activeWindow || null,
+        frameAge: frame ? Math.round((Date.now() - frame.timestamp) / 1000) : null,
+        context: recentCtx || null,
+        timestamp: Date.now(),
+      };
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {}
+  };
+
+  await sendStatus();
+
+  const unsubscribe = addFrameListener(userId, async () => {
+    await sendStatus();
+  });
+
+  const heartbeat = setInterval(() => {
+    try { res.write(`: heartbeat\n\n`); } catch {}
+  }, 15000);
+
+  const statusInterval = setInterval(async () => {
+    await sendStatus();
+  }, 10000);
+
+  req.on("close", () => {
+    unsubscribe();
+    clearInterval(heartbeat);
+    clearInterval(statusInterval);
+  });
+});
+
 router.post("/message", async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Authentication required" });
 
-    const { message, respondents, sessionId, replyTo } = req.body;
+    const { message, respondents, sessionId, replyTo, monitoringActive } = req.body;
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Message requis" });
+    }
+
+    let screenContextStr = "";
+    if (monitoringActive) {
+      try {
+        const { isUserScreenActive, getLatestFrame } = await import("../services/screenMonitorWs");
+        const { screenMonitorService } = await import("../services/screenMonitorService");
+        const isConnected = isUserScreenActive(userId);
+        const latestFrame = getLatestFrame(userId);
+        const recentCtx = await screenMonitorService.getCurrentContext(userId);
+
+        const parts: string[] = [];
+        parts.push(`[MONITORING ACTIF] Agent bureau: ${isConnected ? "connecté" : "déconnecté"}`);
+        if (latestFrame) {
+          const ageSec = Math.round((Date.now() - latestFrame.timestamp) / 1000);
+          parts.push(`Dernière frame: il y a ${ageSec}s | App: ${latestFrame.activeApp || "?"} | Fenêtre: ${latestFrame.activeWindow || "?"}`);
+        }
+        if (recentCtx) {
+          parts.push(`Contexte écran récent: ${recentCtx}`);
+        }
+        if (isConnected) {
+          parts.push(`Tu peux utiliser screen_monitor_manage pour voir l'écran, prendre la main, cliquer, taper, etc.`);
+        }
+        screenContextStr = `\n\n── 🖥️ MONITORING ÉCRAN ──\n${parts.join("\n")}\n── FIN MONITORING ──`;
+      } catch (e) {
+        console.error("[SuperChat] Screen context injection error:", e);
+      }
     }
 
     const mentionMap: Record<string, string> = { ulysse: "ulysse", iris: "iris", alfred: "alfred", maxai: "maxai" };
@@ -461,7 +552,7 @@ router.post("/message", async (req: Request, res: Response) => {
 
       const toolInstruction = `\n\n🔧 OUTILS DISPONIBLES : Tu as accès à de VRAIS outils que tu peux exécuter maintenant. Quand Moe demande de tester, vérifier ou utiliser un outil, tu dois RÉELLEMENT l'appeler via function calling — ne simule JAMAIS. Si un outil échoue, dis-le honnêtement avec l'erreur exacte.`;
 
-      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + (extraSystemSuffix || "");
+      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + screenContextStr + (extraSystemSuffix || "");
 
       const messages: ChatMessage[] = [
         { role: "system", content: systemContent },
@@ -493,6 +584,9 @@ router.post("/message", async (req: Request, res: Response) => {
               })}\n\n`);
 
               try {
+                if (toolName === "email_send" && !args.from_inbox) {
+                  args.from_inbox = personaKey;
+                }
                 const result = await executeToolCallV2(toolName, args, userId);
                 const duration = Date.now() - startTime;
                 toolsExecuted.push({ name: toolName, success: true, duration });
