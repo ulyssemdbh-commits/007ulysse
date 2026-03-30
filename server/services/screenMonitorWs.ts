@@ -13,10 +13,12 @@ interface AuthenticatedScreenSocket extends WebSocket {
   deviceName?: string;
   isAuthenticated?: boolean;
   httpRequest?: IncomingMessage;
+  remoteControlCapable?: boolean;
+  remoteControlEnabled?: boolean;
 }
 
 interface ScreenMonitorMessage {
-  type: "auth" | "frame" | "control" | "ping";
+  type: "auth" | "frame" | "control" | "ping" | "capability" | "remote_control.status" | "remote_control.result";
   token?: string;
   userId?: number;
   deviceId?: string;
@@ -32,6 +34,52 @@ interface ScreenMonitorMessage {
 
 const connectedScreenClients = new Map<WebSocket, { userId?: number; deviceId?: string }>();
 let screenWss: WebSocketServer | null = null;
+
+const latestFrames = new Map<number, { imageBase64: string; activeApp?: string; activeWindow?: string; timestamp: number }>();
+const frameWaiters = new Map<number, { resolve: (frame: { imageBase64: string; activeApp?: string; activeWindow?: string; timestamp: number }) => void; timer: NodeJS.Timeout }>();
+const frameListeners = new Map<number, Set<(info: { activeApp?: string; activeWindow?: string; timestamp: number }) => void>>();
+
+export function addFrameListener(userId: number, cb: (info: { activeApp?: string; activeWindow?: string; timestamp: number }) => void): () => void {
+  if (!frameListeners.has(userId)) frameListeners.set(userId, new Set());
+  frameListeners.get(userId)!.add(cb);
+  return () => { frameListeners.get(userId)?.delete(cb); };
+}
+
+export function getLatestFrame(userId: number) {
+  return latestFrames.get(userId) || null;
+}
+
+export function waitForNextFrame(userId: number, timeoutMs = 5000): Promise<{ imageBase64: string; activeApp?: string; activeWindow?: string; timestamp: number } | null> {
+  return new Promise((resolve) => {
+    const existing = frameWaiters.get(userId);
+    if (existing) {
+      clearTimeout(existing.timer);
+      existing.resolve(null);
+    }
+
+    const timer = setTimeout(() => {
+      frameWaiters.delete(userId);
+      resolve(null);
+    }, timeoutMs);
+
+    frameWaiters.set(userId, { resolve: (frame) => { clearTimeout(timer); frameWaiters.delete(userId); resolve(frame); }, timer });
+  });
+}
+
+function notifyFrameWaiters(userId: number, frame: { imageBase64: string; activeApp?: string; activeWindow?: string; timestamp: number }) {
+  latestFrames.set(userId, frame);
+  const waiter = frameWaiters.get(userId);
+  if (waiter) {
+    waiter.resolve(frame);
+  }
+  const listeners = frameListeners.get(userId);
+  if (listeners) {
+    const info = { activeApp: frame.activeApp, activeWindow: frame.activeWindow, timestamp: frame.timestamp };
+    for (const cb of listeners) {
+      try { cb(info); } catch {}
+    }
+  }
+}
 
 export function setupScreenMonitorWs(): WebSocketServer {
   screenWss = new WebSocketServer({
@@ -91,6 +139,16 @@ export function setupScreenMonitorWs(): WebSocketServer {
 
         if (message.type === "frame") {
           await handleFrame(ws, message);
+          return;
+        }
+
+        if (message.type === "capability") {
+          handleCapability(ws, message as any);
+          return;
+        }
+
+        if (message.type === "remote_control.status" || message.type === "remote_control.result") {
+          handleRemoteControlFeedback(ws, message as any);
           return;
         }
 
@@ -253,6 +311,13 @@ async function handleFrame(ws: AuthenticatedScreenSocket, message: ScreenMonitor
     timestamp: message.frame.timestamp || Date.now()
   };
 
+  notifyFrameWaiters(ws.userId, {
+    imageBase64: frame.imageBase64,
+    activeApp: frame.activeApp,
+    activeWindow: frame.activeWindow,
+    timestamp: frame.timestamp
+  });
+
   const analysis = await screenMonitorService.processFrame(ws.userId, frame);
 
   if (analysis) {
@@ -279,6 +344,83 @@ async function handleFrame(ws: AuthenticatedScreenSocket, message: ScreenMonitor
       timestamp: Date.now()
     }));
   }
+}
+
+function handleCapability(ws: AuthenticatedScreenSocket, message: any) {
+  if (!ws.userId) return;
+  const capable = !!message.remoteControl;
+  ws.remoteControlCapable = capable;
+  console.log(`${LOG_PREFIX} Agent capability: remoteControl=${capable}, platform=${message.platform}`);
+
+  broadcastToUser(ws.userId, {
+    type: "memory.updated" as any,
+    userId: ws.userId,
+    data: {
+      event: "screen_agent_capability",
+      remoteControlCapable: capable,
+      platform: message.platform,
+      deviceId: ws.deviceId
+    },
+    timestamp: Date.now()
+  });
+}
+
+function handleRemoteControlFeedback(ws: AuthenticatedScreenSocket, message: any) {
+  if (!ws.userId) return;
+
+  if (message.type === "remote_control.status") {
+    ws.remoteControlEnabled = !!message.enabled;
+    console.log(`${LOG_PREFIX} Remote control ${message.enabled ? "ENABLED" : "DISABLED"} for user ${ws.userId}`);
+  }
+
+  broadcastToUser(ws.userId, {
+    type: "memory.updated" as any,
+    userId: ws.userId,
+    data: {
+      event: message.type,
+      enabled: message.enabled,
+      cmd: message.cmd,
+      success: message.success,
+      msg: message.msg
+    },
+    timestamp: Date.now()
+  });
+}
+
+export function sendRemoteControlCommand(userId: number, payload: object): boolean {
+  const entries = Array.from(connectedScreenClients.entries());
+  for (const [ws, info] of entries) {
+    if (info.userId === userId) {
+      try {
+        ws.send(JSON.stringify({ ...payload, timestamp: Date.now() }));
+        return true;
+      } catch (e) {
+        console.error(`${LOG_PREFIX} Failed to send command to agent:`, e);
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+export function isAgentRemoteControlCapable(userId: number): boolean {
+  const entries = Array.from(connectedScreenClients.entries());
+  for (const [ws, info] of entries) {
+    if (info.userId === userId) {
+      return !!(ws as AuthenticatedScreenSocket).remoteControlCapable;
+    }
+  }
+  return false;
+}
+
+export function isAgentRemoteControlEnabled(userId: number): boolean {
+  const entries = Array.from(connectedScreenClients.entries());
+  for (const [ws, info] of entries) {
+    if (info.userId === userId) {
+      return !!(ws as AuthenticatedScreenSocket).remoteControlEnabled;
+    }
+  }
+  return false;
 }
 
 export function handleScreenUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer) {
