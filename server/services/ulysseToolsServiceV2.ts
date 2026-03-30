@@ -2399,9 +2399,6 @@ async function executeEmailSend(args: {
   attachments?: Array<{ file_name: string }>;
 }): Promise<string> {
   const agentMailService = await loadService('agentMail');
-  if (!agentMailService) {
-    return JSON.stringify({ error: "Service Email non disponible" });
-  }
 
   const { to, subject, body, from_inbox = 'ulysse', attachments } = args;
   
@@ -2502,12 +2499,16 @@ async function executeEmailSend(args: {
         attachments: gmailAttachments.length > 0 ? gmailAttachments : undefined 
       });
     } else {
+      if (!agentMailService) {
+        return JSON.stringify({ error: "AgentMail non disponible pour " + from_inbox });
+      }
       result = await agentMailService.sendEmail({ 
         to, 
         subject, 
         body,
         attachments: emailAttachments.length > 0 ? emailAttachments : undefined
       });
+      console.log(`[EmailSend] ${from_inbox} → AgentMail → ${to}`);
     }
     
     return JSON.stringify({ 
