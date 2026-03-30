@@ -31,8 +31,14 @@ const FILES_TO_PUSH = [
   "server/services/tools/screenMonitorTools.ts",
   "server/services/tools/commaxTools.ts",
   "server/services/ulysseToolsServiceV2.ts",
+  // Screen Monitor
+  "server/services/screenMonitorWs.ts",
+  "server/services/screenMonitorService.ts",
+  "server/services/core/CoreConversationIntegration.ts",
   // Frontend
   "client/src/pages/ScreenMonitor.tsx",
+  "client/src/pages/SuperChat.tsx",
+  "client/src/pages/Commax.tsx",
   "client/src/App.tsx",
   "client/src/Sidebar.tsx",
   // Build config
