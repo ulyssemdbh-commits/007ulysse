@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, RotateCcw, Zap, Users, Plus, MessageSquare, Trash2, X, Reply, ChevronRight, PanelLeftClose, PanelLeft, Crown, ArrowLeft } from "lucide-react";
+import { Send, RotateCcw, Zap, Users, Plus, MessageSquare, Trash2, X, Reply, ChevronRight, PanelLeftClose, PanelLeft, Crown, ArrowLeft, Monitor, MonitorOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -98,17 +98,51 @@ function MarkdownContent({ content, color }: { content: string; color?: string }
 
 export default function SuperChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
+
+  // Read URL params for deep-linking (e.g. from Commax Iris widget)
+  const urlParams = new URLSearchParams(window.location.search);
+  const initPersona = urlParams.get("persona");
+  const initMsg = urlParams.get("msg") || "";
+
+  const [input, setInput] = useState(initMsg);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingState, setStreamingState] = useState<StreamingState>({});
   const [toolActivity, setToolActivity] = useState<Record<string, ToolExecution[]>>({});
   const toolActivityRef = useRef<Record<string, ToolExecution[]>>({});
-  const [activePersonas, setActivePersonas] = useState<string[]>(["ulysse", "iris", "alfred", "maxai"]);
+  const [activePersonas, setActivePersonas] = useState<string[]>(
+    initPersona && Object.keys(PERSONA_META).includes(initPersona) ? [initPersona] : ["ulysse", "iris", "alfred", "maxai"]
+  );
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
+  const [monitoringActive, setMonitoringActive] = useState(() => {
+    try { return localStorage.getItem("superchat_monitoring") === "true"; } catch { return false; }
+  });
+  const [screenStatus, setScreenStatus] = useState<{
+    connected: boolean; capable: boolean; controlEnabled: boolean;
+    activeApp: string | null; activeWindow: string | null;
+    frameAge: number | null; context: string | null; timestamp: number;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!monitoringActive) { setScreenStatus(null); return; }
+    let evtSource: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout>;
+    const connect = () => {
+      evtSource = new EventSource("/api/superchat/screen-stream");
+      evtSource.onmessage = (e) => {
+        try { setScreenStatus(JSON.parse(e.data)); } catch {}
+      };
+      evtSource.onerror = () => {
+        evtSource?.close();
+        retryTimer = setTimeout(connect, 5000);
+      };
+    };
+    connect();
+    return () => { evtSource?.close(); clearTimeout(retryTimer); };
+  }, [monitoringActive]);
 
   useEffect(() => { toolActivityRef.current = toolActivity; }, [toolActivity]);
   const { toast } = useToast();
@@ -214,6 +248,7 @@ export default function SuperChat() {
           respondents: activePersonas,
           sessionId: currentSessionId,
           replyTo: replyPayload,
+          monitoringActive,
         })
       });
 
@@ -447,11 +482,69 @@ export default function SuperChat() {
               ))}
             </div>
 
+            <button
+              onClick={() => {
+                const next = !monitoringActive;
+                setMonitoringActive(next);
+                try { localStorage.setItem("superchat_monitoring", String(next)); } catch {}
+              }}
+              data-testid="button-toggle-monitoring"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border ${
+                monitoringActive
+                  ? "border-green-500/30 bg-green-500/10 text-green-400"
+                  : "border-white/5 bg-white/[0.02] text-muted-foreground opacity-50 hover:opacity-80"
+              }`}
+              title={monitoringActive ? "Monitoring actif — cliquer pour désactiver" : "Activer le monitoring écran"}
+            >
+              {monitoringActive ? <Monitor className="w-3.5 h-3.5" /> : <MonitorOff className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{monitoringActive ? "Monitoring" : "Monitor"}</span>
+              {monitoringActive && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+            </button>
+
             <Button variant="ghost" size="icon" onClick={newSession} className="h-8 w-8 rounded-lg" data-testid="button-new-chat">
               <Plus className="w-4 h-4" />
             </Button>
           </div>
         </header>
+
+        {monitoringActive && screenStatus && (
+          <div
+            className={`flex items-center gap-2 px-3 md:px-5 py-2 border-b text-[11px] transition-all ${
+              screenStatus.connected
+                ? "border-green-500/20 bg-green-500/5"
+                : "border-red-500/20 bg-red-500/5"
+            }`}
+            data-testid="monitoring-live-bar"
+          >
+            <div className={`w-2 h-2 rounded-full shrink-0 ${screenStatus.connected ? "bg-green-400 animate-pulse" : "bg-red-400"}`} />
+            <Monitor className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            {screenStatus.connected ? (
+              <>
+                <span className="text-green-400 font-medium shrink-0">LIVE</span>
+                <span className="text-muted-foreground">|</span>
+                <span className="text-foreground truncate">
+                  {screenStatus.activeApp || "Bureau"}
+                  {screenStatus.activeWindow ? ` — ${screenStatus.activeWindow}` : ""}
+                </span>
+                {screenStatus.frameAge !== null && (
+                  <>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="text-muted-foreground shrink-0">
+                      {screenStatus.frameAge < 5 ? "⚡ temps réel" : `il y a ${screenStatus.frameAge}s`}
+                    </span>
+                  </>
+                )}
+                {screenStatus.controlEnabled && (
+                  <span className="ml-auto px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30 shrink-0">
+                    Prise en main
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-red-400">Agent déconnecté — lancer ulysse_screen_agent.py</span>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto px-3 md:px-5 py-4 ios-scroll" data-testid="superchat-messages">
           {messages.length === 0 && !isStreaming && (
