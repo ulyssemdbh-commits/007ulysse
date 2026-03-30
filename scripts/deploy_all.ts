@@ -1,153 +1,233 @@
 import { execSync } from "child_process";
-import * as fs from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 
-const MAURICE_GITHUB_PAT = process.env.MAURICE_GITHUB_PAT;
 const HETZNER_HOST = "65.21.209.102";
 const HETZNER_USER = "root";
-const SSH_KEY = process.env.HETZNER_SSH_KEY || process.env.SSH_PRIVATE_KEY;
+const REMOTE_DIR = "/var/www/ulysse";
+const DIST_CJS = "dist/index.cjs";
+const DIST_PUBLIC = "dist/public";
+const DIST_HTML = "dist/html";
 
-function run(cmd: string, opts?: { cwd?: string; silent?: boolean }): string {
+const HETZNER_SSH_PASSWORD = process.env.HETZNER_SSH_PASSWORD;
+const MAURICE_GITHUB_PAT = process.env.MAURICE_GITHUB_PAT;
+
+const DRY_RUN = process.argv.includes("--dry-run");
+const SKIP_BUILD = process.argv.includes("--skip-build");
+const SKIP_GITHUB = process.argv.includes("--skip-github");
+const SKIP_FRONTEND = process.argv.includes("--skip-frontend");
+
+function log(emoji: string, msg: string) {
+  console.log(`${emoji}  ${msg}`);
+}
+
+function run(cmd: string, opts?: { timeout?: number; silent?: boolean; ignoreError?: boolean }): string {
+  const timeout = opts?.timeout || 120_000;
   try {
-    const out = execSync(cmd, {
-      cwd: opts?.cwd || process.cwd(),
-      encoding: "utf8",
-      timeout: 120000,
-      env: { ...process.env }
-    });
-    if (!opts?.silent) console.log(out.trim());
-    return out.trim();
+    const out = execSync(cmd, { encoding: "utf8", timeout, env: { ...process.env }, stdio: opts?.silent ? "pipe" : "inherit" });
+    return typeof out === "string" ? out.trim() : "";
   } catch (e: any) {
-    console.error(`❌ ERROR: ${cmd}`);
-    console.error(e.stderr || e.message);
+    if (opts?.ignoreError) return e.stdout?.trim() || "";
+    console.error(`FAILED: ${cmd.slice(0, 100)}`);
     throw e;
   }
 }
 
+function sshCmd(command: string, timeout = 30_000): string {
+  const sshPrefix = HETZNER_SSH_PASSWORD
+    ? `sshpass -p "${HETZNER_SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15`
+    : `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15`;
+  return run(`${sshPrefix} ${HETZNER_USER}@${HETZNER_HOST} "${command.replace(/"/g, '\\"')}"`, { timeout, silent: true });
+}
+
+function scpFile(localPath: string, remotePath: string): void {
+  const scpPrefix = HETZNER_SSH_PASSWORD
+    ? `sshpass -p "${HETZNER_SSH_PASSWORD}" scp -o StrictHostKeyChecking=no`
+    : `scp -o StrictHostKeyChecking=no`;
+  run(`${scpPrefix} ${localPath} ${HETZNER_USER}@${HETZNER_HOST}:${remotePath}`, { timeout: 60_000, silent: true });
+}
+
+function scpDir(localPath: string, remotePath: string): void {
+  const scpPrefix = HETZNER_SSH_PASSWORD
+    ? `sshpass -p "${HETZNER_SSH_PASSWORD}" scp -r -o StrictHostKeyChecking=no`
+    : `scp -r -o StrictHostKeyChecking=no`;
+  run(`${scpPrefix} ${localPath} ${HETZNER_USER}@${HETZNER_HOST}:${remotePath}`, { timeout: 120_000, silent: true });
+}
+
 async function main() {
-  console.log("\n🚀 === DÉPLOIEMENT COMPLET ULYSSE ===\n");
+  const startTime = Date.now();
+  const errors: string[] = [];
+  const steps: string[] = [];
 
-  if (!MAURICE_GITHUB_PAT) {
-    throw new Error("MAURICE_GITHUB_PAT non trouvé dans les variables d'environnement");
+  console.log("\n========================================");
+  console.log("  ULYSSE DEPLOY — Full Sync Pipeline");
+  console.log("========================================\n");
+
+  if (DRY_RUN) log("!", "DRY RUN — aucune modification ne sera faite");
+
+  if (!HETZNER_SSH_PASSWORD) {
+    throw new Error("HETZNER_SSH_PASSWORD manquant — impossible de déployer");
   }
 
-  // ─── 1. NETTOYAGE DU VERROU GIT ───────────────────────────────────────────
-  console.log("🔓 Nettoyage verrous git...");
-  const lockFiles = [".git/index.lock", ".git/refs/heads/.lock", ".git/HEAD.lock"];
-  for (const lf of lockFiles) {
-    if (fs.existsSync(lf)) {
-      fs.unlinkSync(lf);
-      console.log(`  Supprimé: ${lf}`);
-    }
-  }
-
-  // ─── 2. GIT STATUS ────────────────────────────────────────────────────────
-  console.log("\n📋 Fichiers modifiés:");
-  const status = run("git status --short");
-  if (!status) {
-    console.log("  (rien à committer)");
-  }
-
-  // ─── 3. GIT ADD + COMMIT ──────────────────────────────────────────────────
-  console.log("\n📦 Staging et commit...");
-  run("git add -A");
-
-  const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-  const commitMsg = `[Ulysse] Mise à jour complète — ${timestamp}\n\n- Alfred: outils COBA (query_coba + coba_business), Commax analytics, superchat_search\n- MaxAI: outils COBA monitoring, task_queue_manage, work_journal_manage\n- Iris: commax_manage complet avec journal obligatoire\n- Screen Monitor: screen_monitor_manage (10 actions, prise en main bureau)\n- Prompts: COBA = Chef Operator Business Assistant documenté dans Alfred + MaxAI`;
-
-  try {
-    run(`git commit -m "${commitMsg.replace(/"/g, "'")}"`);
-    console.log("✅ Commit créé");
-  } catch {
-    console.log("ℹ️  Rien à committer ou déjà commité");
-  }
-
-  // ─── 4. PUSH → ulyssemdbh-commits/ulysseproject ───────────────────────────
-  console.log("\n📤 Push vers ulyssemdbh-commits/ulysseproject...");
-  const remoteUrlUlysse = `https://${MAURICE_GITHUB_PAT}@github.com/ulyssemdbh-commits/ulysseproject.git`;
-
-  try {
-    const currentRemote = run("git remote get-url origin", { silent: true });
-    if (!currentRemote.includes("ulyssemdbh-commits")) {
-      run(`git remote set-url origin ${remoteUrlUlysse}`);
-    }
-  } catch {
-    run(`git remote add origin ${remoteUrlUlysse}`);
-  }
-
-  const currentBranch = run("git rev-parse --abbrev-ref HEAD", { silent: true }) || "main";
-  console.log(`  Branche: ${currentBranch}`);
-  run(`git push origin ${currentBranch} --force-with-lease 2>&1 || git push origin ${currentBranch}`);
-  console.log("✅ Push ulysseproject OK");
-
-  // ─── 5. PUSH → ulyssemdbh-commits/007ulysse ──────────────────────────────
-  console.log("\n📤 Push vers ulyssemdbh-commits/007ulysse...");
-  const remoteUrl007 = `https://${MAURICE_GITHUB_PAT}@github.com/ulyssemdbh-commits/007ulysse.git`;
-
-  const hasRemote007 = (() => {
-    try { run("git remote get-url repo007", { silent: true }); return true; }
-    catch { return false; }
-  })();
-
-  if (hasRemote007) {
-    run(`git remote set-url repo007 ${remoteUrl007}`);
+  // ─── STEP 1: BUILD ──────────────────────────────────────────────────────────
+  if (SKIP_BUILD) {
+    log(">>", "Build ignoré (--skip-build)");
+    if (!existsSync(DIST_CJS)) throw new Error("dist/index.cjs introuvable — lancez le build d'abord");
   } else {
-    run(`git remote add repo007 ${remoteUrl007}`);
+    log(">>", "STEP 1/6 — Build production...");
+    run("NODE_OPTIONS='--max-old-space-size=3072' npx tsx script/build.ts", { timeout: 180_000 });
   }
 
-  run(`git push repo007 ${currentBranch}:main --force-with-lease 2>&1 || git push repo007 ${currentBranch}:main`);
-  console.log("✅ Push 007ulysse OK");
+  // ─── STEP 2: VERIFY BUILD ──────────────────────────────────────────────────
+  log(">>", "STEP 2/6 — Vérification du build...");
+  if (!existsSync(DIST_CJS)) throw new Error("dist/index.cjs n'existe pas après le build");
+  if (!existsSync(DIST_HTML + "/index.html")) throw new Error("dist/html/index.html manquant");
+  if (!existsSync(DIST_PUBLIC)) throw new Error("dist/public/ manquant");
 
-  // ─── 6. DÉPLOIEMENT HETZNER ───────────────────────────────────────────────
-  console.log("\n🖥️  Déploiement sur Hetzner (${HETZNER_HOST})...");
+  const cjsStat = statSync(DIST_CJS);
+  const cjsMB = (cjsStat.size / 1024 / 1024).toFixed(2);
 
-  const sshKeyPath = "/tmp/deploy_key";
-  if (SSH_KEY) {
-    fs.writeFileSync(sshKeyPath, SSH_KEY, { mode: 0o600 });
-    console.log("  Clé SSH configurée");
+  if (cjsStat.size < 500_000) throw new Error(`Build trop petit (${cjsMB}MB) — probablement cassé`);
+  if (cjsStat.size > 25_000_000) throw new Error(`Build trop gros (${cjsMB}MB) — vérifiez l'allowlist`);
+
+  let manifest: any = {};
+  if (existsSync("dist/build-manifest.json")) {
+    manifest = JSON.parse(readFileSync("dist/build-manifest.json", "utf-8"));
+  }
+  steps.push(`Build: ${cjsMB}MB, ${manifest.bundledModuleCount || "?"} modules`);
+  log("OK", `Build vérifié: ${cjsMB}MB`);
+
+  if (DRY_RUN) {
+    console.log("\n[DRY RUN] Arrêt ici — build vérifié, pas de déploiement.");
+    return;
   }
 
-  const sshOpts = SSH_KEY
-    ? `-i ${sshKeyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=30`
-    : `-o StrictHostKeyChecking=no -o ConnectTimeout=30`;
-
-  const deployScript = [
-    "set -e",
-    "echo '📁 Aller dans le dossier projet...'",
-    "cd /root/ulysseproject || cd /home/ulysse/ulysseproject || cd ~/ulysseproject",
-    "echo '⬇️  Git pull...'",
-    `git pull https://${MAURICE_GITHUB_PAT}@github.com/ulyssemdbh-commits/ulysseproject.git main 2>&1 || git pull https://${MAURICE_GITHUB_PAT}@github.com/ulyssemdbh-commits/ulysseproject.git ${currentBranch} 2>&1`,
-    "echo '📦 Install dependencies...'",
-    "npm install --production 2>&1 | tail -5",
-    "echo '🔨 Build...'",
-    "npm run build 2>&1 | tail -10",
-    "echo '♻️  Restart PM2...'",
-    "pm2 restart all 2>&1 || pm2 restart ulysse 2>&1 || pm2 start ecosystem.config.js 2>&1",
-    "pm2 status",
-    "echo '✅ Déploiement Hetzner terminé'"
-  ].join(" && ");
-
+  // ─── STEP 3: BACKUP + HEALTH CHECK HETZNER ─────────────────────────────────
+  log(">>", "STEP 3/6 — Backup Hetzner + test connexion...");
   try {
-    const sshCmd = `ssh ${sshOpts} ${HETZNER_USER}@${HETZNER_HOST} '${deployScript}'`;
-    run(sshCmd);
-    console.log("✅ Déploiement Hetzner OK");
-  } catch (e) {
-    console.warn("⚠️  SSH Hetzner échoué — vérifier la clé SSH ou accès réseau");
-    console.log("   Le push GitHub est fait. Déploiement manuel requis sur Hetzner.");
-    console.log(`   Commande: ssh ${HETZNER_USER}@${HETZNER_HOST} 'cd /root/ulysseproject && git pull && npm run build && pm2 restart all'`);
+    const preHealth = sshCmd("curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:5000/api/v2/health 2>/dev/null || echo '000'");
+    log("OK", `Hetzner pre-deploy: HTTP ${preHealth.trim()}`);
+
+    sshCmd(`mkdir -p ${REMOTE_DIR}/dist/_backup && cp ${REMOTE_DIR}/dist/index.cjs ${REMOTE_DIR}/dist/_backup/index.cjs.bak 2>/dev/null || true`);
+    steps.push("Backup: ancien index.cjs sauvegardé");
+    log("OK", "Backup créé: dist/_backup/index.cjs.bak");
+  } catch (e: any) {
+    errors.push(`Backup warning: ${e.message?.slice(0, 100)}`);
+    log("!!", "Backup échoué (continue quand même)");
   }
 
-  // ─── 7. RÉSUMÉ ────────────────────────────────────────────────────────────
-  console.log("\n" + "=".repeat(50));
-  console.log("✅ DÉPLOIEMENT COMPLET TERMINÉ");
-  console.log("=".repeat(50));
-  console.log(`📌 Branche: ${currentBranch}`);
-  console.log(`🐙 GitHub: ulyssemdbh-commits/ulysseproject → OK`);
-  console.log(`🐙 GitHub: ulyssemdbh-commits/007ulysse → OK`);
-  console.log(`🖥️  Hetzner: ${HETZNER_HOST} → déployé`);
-  console.log("=".repeat(50) + "\n");
+  // ─── STEP 4: DEPLOY FILES ──────────────────────────────────────────────────
+  log(">>", "STEP 4/6 — Upload des fichiers...");
+  try {
+    sshCmd(`mkdir -p ${REMOTE_DIR}/dist/public ${REMOTE_DIR}/dist/html`);
+
+    log("  ", "Uploading index.cjs...");
+    scpFile(DIST_CJS, `${REMOTE_DIR}/dist/index.cjs`);
+    steps.push(`Server: index.cjs (${cjsMB}MB)`);
+
+    log("  ", "Uploading html/index.html...");
+    scpDir(DIST_HTML + "/", `${REMOTE_DIR}/dist/html/`);
+    steps.push("HTML: index.html");
+
+    if (!SKIP_FRONTEND) {
+      log("  ", "Uploading public/ assets...");
+      sshCmd(`rm -rf ${REMOTE_DIR}/dist/public/assets 2>/dev/null || true`);
+      scpDir(DIST_PUBLIC + "/", `${REMOTE_DIR}/dist/public/`);
+      const assetCount = run(`ls dist/public/assets/ 2>/dev/null | wc -l`, { silent: true });
+      steps.push(`Frontend: ${assetCount.trim()} asset files`);
+    } else {
+      log("  ", "Frontend ignoré (--skip-frontend)");
+      steps.push("Frontend: ignoré");
+    }
+
+    log("OK", "Tous les fichiers uploadés");
+  } catch (e: any) {
+    errors.push(`Upload failed: ${e.message?.slice(0, 200)}`);
+    log("!!", "ERREUR UPLOAD — tentative de rollback...");
+    try {
+      sshCmd(`cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs 2>/dev/null && pm2 restart ulysse`);
+      log("<<", "Rollback effectué — ancienne version restaurée");
+    } catch { log("!!", "Rollback échoué aussi"); }
+    throw new Error("Deploy échoué à l'upload");
+  }
+
+  // ─── STEP 5: RESTART + HEALTH CHECK ────────────────────────────────────────
+  log(">>", "STEP 5/6 — Restart PM2 + vérification santé...");
+  try {
+    sshCmd(`cd ${REMOTE_DIR} && npm ls pdfkit 2>/dev/null | grep -q pdfkit || npm install pdfkit fontkit restructure --no-save 2>/dev/null`, 30_000);
+
+    sshCmd("pm2 flush ulysse 2>/dev/null; pm2 restart ulysse", 15_000);
+    log("OK", "PM2 redémarré");
+
+    let healthy = false;
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      const waitSec = attempt <= 3 ? 10 : 15;
+      log("  ", `Health check ${attempt}/6 (attente ${waitSec}s)...`);
+      run(`sleep ${waitSec}`, { silent: true, timeout: 20_000 });
+
+      const httpCode = sshCmd("curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:5000/api/v2/health 2>/dev/null || echo '000'").trim();
+
+      if (httpCode === "200") {
+        log("OK", `Hetzner healthy: HTTP ${httpCode}`);
+        steps.push(`Health: HTTP 200 (attempt ${attempt})`);
+        healthy = true;
+        break;
+      }
+      log("  ", `HTTP ${httpCode} — retry...`);
+    }
+
+    if (!healthy) {
+      errors.push("Health check failed after 6 attempts");
+      log("!!", "HEALTH CHECK ÉCHOUÉ — rollback automatique...");
+      sshCmd(`cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs 2>/dev/null && pm2 restart ulysse`);
+      run("sleep 15", { silent: true, timeout: 20_000 });
+      const rollbackHealth = sshCmd("curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:5000/api/v2/health 2>/dev/null || echo '000'").trim();
+      log("<<", `Rollback: HTTP ${rollbackHealth}`);
+      steps.push(`ROLLBACK: HTTP ${rollbackHealth}`);
+      throw new Error("Deploy échoué — rollback effectué, ancienne version restaurée");
+    }
+
+    const externalCheck = run(`curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://ulyssepro.org/api/v2/health 2>/dev/null || echo '000'`, { silent: true });
+    log("OK", `External: https://ulyssepro.org → HTTP ${externalCheck.trim()}`);
+    steps.push(`External: HTTP ${externalCheck.trim()}`);
+  } catch (e: any) {
+    if (e.message.includes("rollback")) throw e;
+    errors.push(`Restart error: ${e.message?.slice(0, 200)}`);
+    throw e;
+  }
+
+  // ─── STEP 6: PUSH GITHUB ──────────────────────────────────────────────────
+  if (SKIP_GITHUB || !MAURICE_GITHUB_PAT) {
+    log(">>", "GitHub push ignoré");
+    steps.push("GitHub: ignoré");
+  } else {
+    log(">>", "STEP 6/6 — Push GitHub...");
+    try {
+      run("npx tsx scripts/github_push_api.ts", { timeout: 60_000, silent: true });
+      steps.push("GitHub: pushed");
+      log("OK", "GitHub push OK");
+    } catch (e: any) {
+      errors.push(`GitHub push warning: ${e.message?.slice(0, 100)}`);
+      log("!!", "GitHub push échoué (non-bloquant)");
+      steps.push("GitHub: FAILED (non-bloquant)");
+    }
+  }
+
+  // ─── SUMMARY ──────────────────────────────────────────────────────────────
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log("\n========================================");
+  console.log("  DEPLOY COMPLETE");
+  console.log("========================================");
+  steps.forEach(s => console.log(`  ${s}`));
+  if (errors.length) {
+    console.log("\n  Warnings:");
+    errors.forEach(e => console.log(`  !! ${e}`));
+  }
+  console.log(`\n  Durée: ${elapsed}s`);
+  console.log(`  Rollback: sshpass -p $HETZNER_SSH_PASSWORD ssh root@${HETZNER_HOST} "cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs && pm2 restart ulysse"`);
+  console.log("========================================\n");
 }
 
 main().catch((err) => {
-  console.error("\n💥 ERREUR FATALE:", err.message || err);
+  console.error(`\nFATAL: ${err.message}`);
   process.exit(1);
 });
