@@ -3518,9 +3518,14 @@ Réponds UNIQUEMENT avec un JSON valide (pas de markdown, pas de \`\`\`):
 async function parseDocumentWithGPT4oVision(pdfBuffer: Buffer, filename?: string, knowledgeHints?: string): Promise<Partial<ParsedDocumentData> | null> {
     try {
         const { default: OpenAI } = await import("openai");
+        const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+            console.warn("[SUGU] GPT-4o vision: no OpenAI API key available, skipping");
+            return null;
+        }
         const openai = new OpenAI({
-            apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-            baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+            apiKey,
+            baseURL: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ? process.env.AI_INTEGRATIONS_OPENAI_BASE_URL : undefined,
         });
 
         const filenameHint = filename ? `\nNom du fichier: ${filename}` : "";
