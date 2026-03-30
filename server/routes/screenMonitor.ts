@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { screenMonitorService } from "../services/screenMonitorService";
-import { isUserScreenActive, pauseUserSession, resumeUserSession, stopUserSession } from "../services/screenMonitorWs";
+import { isUserScreenActive, pauseUserSession, resumeUserSession, stopUserSession, sendRemoteControlCommand, isAgentRemoteControlCapable, isAgentRemoteControlEnabled } from "../services/screenMonitorWs";
 
 const router = Router();
 
@@ -270,6 +270,102 @@ router.get("/brain-insights", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("[ScreenMonitor] Error getting brain insights:", error);
     res.status(500).json({ error: "Failed to get brain insights" });
+  }
+});
+
+// ─── REMOTE CONTROL (Prise en main) ──────────────────────────
+
+router.get("/remote-control/status", async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId || !requireOwner(req, res)) return;
+
+    const agentConnected = isUserScreenActive(userId);
+    const capable = isAgentRemoteControlCapable(userId);
+    const enabled = isAgentRemoteControlEnabled(userId);
+
+    res.json({
+      agentConnected,
+      remoteControlCapable: capable,
+      remoteControlEnabled: enabled,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to get remote control status" });
+  }
+});
+
+router.post("/remote-control/enable", async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId || !requireOwner(req, res)) return;
+
+    if (!isUserScreenActive(userId)) {
+      return res.status(400).json({ error: "No agent connected" });
+    }
+
+    const sent = sendRemoteControlCommand(userId, { type: "remote_control.enable" });
+    res.json({ success: sent, message: sent ? "Prise en main activée" : "Agent non connecté" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to enable remote control" });
+  }
+});
+
+router.post("/remote-control/disable", async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId || !requireOwner(req, res)) return;
+
+    const sent = sendRemoteControlCommand(userId, { type: "remote_control.disable" });
+    res.json({ success: sent, message: "Prise en main désactivée" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to disable remote control" });
+  }
+});
+
+const remoteControlCmdSchema = z.object({
+  cmd: z.enum(["mouse_move", "click", "double_click", "right_click", "scroll", "key_press", "type_text", "screenshot"]),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  button: z.enum(["left", "right", "middle"]).optional(),
+  key: z.string().optional(),
+  text: z.string().optional(),
+  clicks: z.number().optional(),
+});
+
+router.post("/remote-control/cmd", async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId || !requireOwner(req, res)) return;
+
+    if (!isAgentRemoteControlEnabled(userId)) {
+      return res.status(400).json({ error: "Remote control not enabled" });
+    }
+
+    const cmd = remoteControlCmdSchema.parse(req.body);
+    const sent = sendRemoteControlCommand(userId, { type: "remote_control.cmd", ...cmd });
+    res.json({ success: sent });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: "Invalid command", details: error.errors });
+    }
+    res.status(500).json({ error: "Failed to send command" });
+  }
+});
+
+import path from "path";
+import fs from "fs";
+
+router.get("/download-agent", async (_req: Request, res: Response) => {
+  try {
+    const agentPath = path.join(process.cwd(), "server", "assets", "ulysse_screen_agent.py");
+    if (!fs.existsSync(agentPath)) {
+      return res.status(404).json({ error: "Agent script not found" });
+    }
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Disposition", "attachment; filename=ulysse_screen_agent.py");
+    fs.createReadStream(agentPath).pipe(res);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to download agent" });
   }
 });
 

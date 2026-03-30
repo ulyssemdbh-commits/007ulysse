@@ -32,7 +32,7 @@ const fileUpload = multer({
   }),
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB for videos
   fileFilter: (req, file, cb) => {
-    const allowed = [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".zip", ".txt", ".csv", ".json", ".xml", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".mp4", ".webm", ".mov", ".avi", ".mkv"];
+    const allowed = [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".zip", ".txt", ".csv", ".json", ".xml", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".mp4", ".webm", ".mov", ".avi", ".mkv", ".stl", ".3mf"];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) {
       cb(null, true);
@@ -563,6 +563,125 @@ router.post("/files/generate/zip", requireAuth, async (req, res) => {
   } catch (err: any) {
     console.error("ZIP generation error:", err);
     res.status(500).json({ message: err.message || "Erreur lors de la création de l'archive" });
+  }
+});
+
+router.post("/files/generate/stl", requireAuth, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { stl3mfService } = await import("../services/stl3mfService");
+    const { shape, dimensions, format: stlFormat, fileName } = req.body;
+    if (!shape) return res.status(400).json({ message: "Forme requise (box, sphere, cylinder, pyramid, torus)" });
+    const result = stl3mfService.generateSTL({ shape, dimensions, format: stlFormat || "ascii", fileName });
+    emitFilesUpdated(userId);
+    res.json({ success: true, file: result });
+  } catch (err: any) {
+    console.error("STL generation error:", err);
+    res.status(500).json({ message: err.message || "Erreur lors de la génération STL" });
+  }
+});
+
+router.post("/files/generate/3mf", requireAuth, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { stl3mfService } = await import("../services/stl3mfService");
+    const { shape, dimensions, fileName } = req.body;
+    if (!shape) return res.status(400).json({ message: "Forme requise" });
+    const result = stl3mfService.generate3MF({ shape, dimensions, fileName });
+    emitFilesUpdated(userId);
+    res.json({ success: true, file: result });
+  } catch (err: any) {
+    console.error("3MF generation error:", err);
+    res.status(500).json({ message: err.message || "Erreur lors de la génération 3MF" });
+  }
+});
+
+router.post("/files/analyze-3d", requireAuth, async (req, res) => {
+  try {
+    const { stl3mfService } = await import("../services/stl3mfService");
+    const { filePath } = req.body;
+    if (!filePath) return res.status(400).json({ message: "Chemin de fichier requis" });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "Fichier non trouvé" });
+    const analysis = stl3mfService.analyzeFile(filePath);
+    const formatted = stl3mfService.formatAnalysisForAI(analysis);
+    res.json({ success: true, analysis, formatted });
+  } catch (err: any) {
+    console.error("3D analysis error:", err);
+    res.status(500).json({ message: err.message || "Erreur lors de l'analyse 3D" });
+  }
+});
+
+router.get("/files/3d/:id/analyze", requireAuth, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const fileId = parseInt(req.params.id);
+    const file = await storage.getFile(fileId);
+    if (!file || file.userId !== userId) return res.status(404).json({ message: "Fichier non trouvé" });
+
+    const { stl3mfService } = await import("../services/stl3mfService");
+
+    let filePath = file.storagePath;
+    let tempPath: string | null = null;
+
+    if (filePath.startsWith('/replit-objstore-') || filePath.includes('replit-objstore') || filePath.startsWith('/ulysse-files/')) {
+      const buf = await persistentStorageService.downloadFile(filePath);
+      tempPath = path.join("uploads", `temp-3d-${Date.now()}-${file.originalName}`);
+      fs.writeFileSync(tempPath, buf);
+      filePath = tempPath;
+    } else if (!fs.existsSync(filePath)) {
+      const buf = await persistentStorageService.downloadFile(file.storagePath);
+      tempPath = path.join("uploads", `temp-3d-${Date.now()}-${file.originalName}`);
+      fs.writeFileSync(tempPath, buf);
+      filePath = tempPath;
+    }
+
+    const analysis = stl3mfService.analyzeFile(filePath);
+
+    if (tempPath && fs.existsSync(tempPath)) {
+      fs.unlinkSync(tempPath);
+    }
+
+    res.json(analysis);
+  } catch (err: any) {
+    console.error("3D analysis by ID error:", err);
+    res.status(500).json({ message: err.message || "Erreur lors de l'analyse 3D" });
+  }
+});
+
+router.post("/files/convert-3d", requireAuth, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { stl3mfService } = await import("../services/stl3mfService");
+    const { filePath, targetFormat, outputName } = req.body;
+    if (!filePath) return res.status(400).json({ message: "Chemin de fichier requis" });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "Fichier non trouvé" });
+    let result;
+    if (targetFormat === "3mf") {
+      result = stl3mfService.convertSTLto3MF(filePath, outputName);
+    } else {
+      result = stl3mfService.convert3MFtoSTL(filePath, outputName);
+    }
+    emitFilesUpdated(userId);
+    res.json({ success: true, file: result });
+  } catch (err: any) {
+    console.error("3D convert error:", err);
+    res.status(500).json({ message: err.message || "Erreur lors de la conversion 3D" });
+  }
+});
+
+router.post("/files/edit-stl", requireAuth, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { stl3mfService } = await import("../services/stl3mfService");
+    const { filePath, operations } = req.body;
+    if (!filePath || !operations) return res.status(400).json({ message: "Chemin et opérations requis" });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "Fichier non trouvé" });
+    const result = stl3mfService.editSTL(filePath, operations);
+    emitFilesUpdated(userId);
+    res.json({ success: true, file: result });
+  } catch (err: any) {
+    console.error("STL edit error:", err);
+    res.status(500).json({ message: err.message || "Erreur lors de l'édition STL" });
   }
 });
 

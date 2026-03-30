@@ -139,6 +139,18 @@ async function v2AuthMiddleware(req: Request, res: Response, next: NextFunction)
   return next();
 }
 
+import path from "path";
+import fs from "fs";
+router.get("/screen-monitor/download-agent", (_req: Request, res: Response) => {
+  const agentPath = path.join(process.cwd(), "server", "assets", "ulysse_screen_agent.py");
+  if (!fs.existsSync(agentPath)) {
+    return res.status(404).json({ error: "Agent script not found" });
+  }
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", "attachment; filename=ulysse_screen_agent.py");
+  fs.createReadStream(agentPath).pipe(res);
+});
+
 router.use(v2AuthMiddleware);
 
 router.use("/conversations", conversationsRouter);

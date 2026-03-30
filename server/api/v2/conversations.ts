@@ -2420,8 +2420,35 @@ OPS: env_clone, docs_generate, monitoring_setup, full_pipeline.
 ═══ DASHBOARD VISUEL ═══
 Pour créer un dashboard: design_dashboard → analyse mockup → code React+Tailwind+shadcn fidèle au mockup.
 
-═══ TASK QUEUE ═══
+═══ TASK QUEUE & SPRINT MODE ═══
 Tâches longues/audits → task_queue_manage(action="create", items=[...]) avec toolName="devops_github".
+
+⚡ SPRINT MODE — OBLIGATOIRE pour tout projet frontend/app complet:
+Dès que l'utilisateur demande un frontend complet, une app entière, ou plusieurs pages/composants, tu dois IMPÉRATIVEMENT:
+1. NE PAS tout coder dans une seule réponse (tu n'as pas assez de contexte)
+2. Décomposer le travail en tâches atomiques via task_queue_manage AVANT de commencer à coder
+3. Structure de sprint recommandée:
+   • Sprint 0: scaffold_project + structure de base + config (vite, tailwind, router)
+   • Sprint 1: Layout, navigation, composants partagés (Header, Sidebar, Footer)
+   • Sprint 2: Page par page — chaque page = une tâche dédiée
+   • Sprint 3: API integration, state management, auth
+   • Sprint 4: Polish UI, responsive, animations, dark mode
+4. Chaque tâche doit être atomique (1-3 fichiers max) et inclure le contenu COMPLET des fichiers
+5. Utilise delayBetweenItemsMs=2000 pour espacer les tâches
+EXEMPLE: task_queue_manage(action="create", toolName="devops_github", items=[{action:"scaffold",...},{action:"apply_patch", path:"src/App.tsx",...},{action:"apply_patch", path:"src/pages/Dashboard.tsx",...}])
+
+═══ FEEDBACK VISUEL ═══
+Après avoir poussé 3+ fichiers frontend (composants React, pages, CSS), TOUJOURS appeler crawl_preview puis analyze_preview sur la staging URL pour:
+• Vérifier que l'app s'affiche correctement
+• Détecter les erreurs visuelles (layout cassé, couleurs manquantes, composants manquants)
+• Auto-corriger avant de reporter "terminé" à l'utilisateur
+
+═══ SPECS VISUELLES (Figma / Maquettes) ═══
+Si l'utilisateur mentionne une URL Figma (figma.com/...) ou attache une image de maquette:
+1. Commence TOUJOURS par design_dashboard(url=figmaUrl) ou analyze_preview pour extraire les design tokens
+2. Liste explicitement: palette de couleurs, typographie, espacements, composants détectés
+3. Traduis fidèlement la maquette en code — ne réinvente pas le design
+4. Si plusieurs écrans dans la maquette → crée une tâche par écran dans la task queue
 
 ═══ RÈGLES CARDINALES (PRIORITÉ ABSOLUE) ═══
 🚨🚨🚨 ANTI-HALLUCINATION — RÈGLE #1 🚨🚨🚨
@@ -2692,6 +2719,40 @@ Réponds TOUJOURS en français.
       
       // Working messages array for tool calling loop
       let workingMessages: OpenAI.ChatCompletionMessageParam[] = [...messages];
+
+      if (devopsCtx) {
+        const userMsgLower = (body.message || "").toLowerCase();
+        const figmaUrlMatch = body.message?.match(/figma\.com\/(?:file|design)\/[^\s]+/i);
+        const isBigFrontendRequest = (
+          (userMsgLower.includes("frontend") || userMsgLower.includes("app") || userMsgLower.includes("application") || userMsgLower.includes("site") || userMsgLower.includes("interface")) &&
+          (userMsgLower.includes("complet") || userMsgLower.includes("complete") || userMsgLower.includes("entier") || userMsgLower.includes("scratch") || userMsgLower.includes("from scratch") || userMsgLower.includes("crée") || userMsgLower.includes("créer") || userMsgLower.includes("construis") || userMsgLower.includes("build") || userMsgLower.includes("développe") || userMsgLower.includes("develop"))
+        ) || userMsgLower.includes("sprint") || userMsgLower.includes("plusieurs pages") || userMsgLower.includes("full stack") || userMsgLower.includes("fullstack");
+        if (isBigFrontendRequest) {
+          workingMessages.push({
+            role: "system",
+            content: `⚡ SPRINT MODE ACTIVÉ: Cette demande implique un projet frontend/app de grande taille. Tu dois OBLIGATOIREMENT:
+1. AVANT tout code: utilise task_queue_manage(action="create", toolName="devops_github", delayBetweenItemsMs=2000, items=[...]) pour décomposer le travail en tâches atomiques
+2. Structure sprint: scaffold → layout/nav → pages (1 par tâche) → API → polish
+3. Chaque tâche = 1-3 fichiers max avec contenu COMPLET
+4. Après 3+ fichiers frontend écrits: appelle crawl_preview + analyze_preview pour feedback visuel
+5. NE COMMENCE PAS à écrire du code directement — crée la queue MAINTENANT`
+          });
+          console.log(`[V2-Sprint] ⚡ Sprint mode activated for large frontend request`);
+        }
+        if (figmaUrlMatch) {
+          const figmaUrl = `https://www.${figmaUrlMatch[0]}`;
+          workingMessages.push({
+            role: "system",
+            content: `🎨 FIGMA DÉTECTÉ: L'utilisateur a fourni un lien Figma (${figmaUrl}). Tu dois OBLIGATOIREMENT commencer par:
+1. Appeler design_dashboard(url="${figmaUrl}") pour extraire la maquette
+2. Lister la palette de couleurs, typo, espacements, composants identifiés
+3. Si plusieurs écrans → une tâche par écran dans la task queue
+4. Traduis fidèlement — ne réinvente pas le design
+Commence par design_dashboard MAINTENANT.`
+          });
+          console.log(`[V2-Figma] 🎨 Figma URL detected: ${figmaUrl}`);
+        }
+      }
       
       try {
         // ACTION INTENT DETECTION - Force tools when user wants action
@@ -2962,10 +3023,35 @@ Réponds TOUJOURS en français.
           });
           
           let toolRound = 0;
-          const maxToolRounds = devopsCtx ? 10 : 6;
+          const maxToolRounds = devopsCtx ? 12 : 6;
           let consecutiveReadOnlyRounds = 0;
+          let totalWriteRoundsInSession = 0;
+          let frontendFilesWritten = 0;
+          const frontendFilePatterns = /\.(tsx?|jsx?|css|scss|html|svg)$|components?\//i;
+          const writeActions = new Set(["apply_patch", "update_file", "delete_file", "create_branch", "create_pr", "merge_pr", "deploy", "full_pipeline", "scaffold_project"]);
           const toolCallHistory: string[] = [];
+          const toolCallSignatures: string[] = [];
           initialActions.forEach(a => { if (a) toolCallHistory.push(a); });
+          if (choice.message.tool_calls) {
+            for (const tc of choice.message.tool_calls) {
+              try {
+                const args = JSON.parse(tc.function.arguments);
+                const actionKey = args.action || args.command || "";
+                const targetKey = args.repo || args.projectName || args.appName || args.path || "";
+                toolCallSignatures.push(`${tc.function.name}|${actionKey}|${targetKey}`);
+                if ((actionKey === "apply_patch" || actionKey === "update_file") && args.path && frontendFilePatterns.test(args.path)) {
+                  frontendFilesWritten++;
+                }
+                if (args.files && Array.isArray(args.files)) {
+                  for (const f of args.files) {
+                    if (f.path && frontendFilePatterns.test(f.path)) frontendFilesWritten++;
+                  }
+                }
+              } catch { toolCallSignatures.push(tc.function.name); }
+            }
+          }
+
+          if (devopsCtx && initialActions.some(a => writeActions.has(a))) totalWriteRoundsInSession++;
           
           if (devopsCtx && initialActions.every(a => readOnlyActions.has(a))) {
             consecutiveReadOnlyRounds = 1;
@@ -2978,9 +3064,13 @@ Réponds TOUJOURS en français.
 
             const lastFewTools = toolCallHistory.slice(-4);
             const isToolLoop = lastFewTools.length >= 3 && new Set(lastFewTools).size === 1;
-            if (isToolLoop) {
-              console.log(`[V2-Tools] 🛑 Tool loop detected (${lastFewTools[0]} repeated ${lastFewTools.length}x) — breaking out`);
-              workingMessages.push({ role: "system", content: "STOP calling tools. Respond directly to the user with text." });
+            const lastFewSigs = toolCallSignatures.slice(-3);
+            const isSemanticLoop = lastFewSigs.length >= 2 && new Set(lastFewSigs).size === 1;
+            const isErrorLoop = toolCallSignatures.length >= 3 && toolCallSignatures.slice(-3).every(s => s.includes("|error"));
+            if (isToolLoop || isSemanticLoop || isErrorLoop) {
+              const loopType = isToolLoop ? "same-tool" : isSemanticLoop ? "semantic (same tool+args)" : "error (3 consecutive failures)";
+              console.log(`[V2-Tools] 🛑 Loop detected: ${loopType} — breaking out`);
+              workingMessages.push({ role: "system", content: `STOP: une boucle a été détectée (${loopType}). Ne rappelle PAS le même outil. Résume ce que tu as fait, explique le problème rencontré, et propose des solutions alternatives à l'utilisateur.` });
             }
             
             if (devopsCtx && consecutiveReadOnlyRounds >= 2) {
@@ -2989,6 +3079,24 @@ Réponds TOUJOURS en français.
                 content: `⚠️ ALERTE: Tu as fait ${consecutiveReadOnlyRounds} rounds de LECTURE SEULE (browse_files/get_file) sans aucune ÉCRITURE. Tu DOIS maintenant passer à l'action: utilise update_file ou apply_patch pour modifier/créer les fichiers. Si tu refais browse_files/get_file sans écrire, tu boucles en vain. L'utilisateur attend des MODIFICATIONS RÉELLES dans le code, pas un audit. AGIS MAINTENANT avec apply_patch ou update_file.`
               });
               console.log(`[V2-Tools] ⚠️ Read-only loop detected (${consecutiveReadOnlyRounds} rounds) — injecting write nudge`);
+            }
+
+            if (devopsCtx && frontendFilesWritten >= 3 && totalWriteRoundsInSession === toolRound) {
+              const stagingUrl = body.contextHints?.stagingUrl
+                || (devopsCtx?.match(/staging[:\s]+([https?://\S]+)/i)?.[1])
+                || (devopsCtx?.match(/([a-z0-9-]+-dev\.ulyssepro\.org)/i)?.[0] ? `https://${devopsCtx?.match(/([a-z0-9-]+-dev\.ulyssepro\.org)/i)?.[0]}` : null);
+              if (stagingUrl) {
+                workingMessages.push({
+                  role: "system",
+                  content: `🎨 FEEDBACK VISUEL REQUIS: Tu viens de pousser ${frontendFilesWritten} fichiers frontend. AVANT de continuer, tu DOIS maintenant:
+1. Appeler crawl_preview avec url="${stagingUrl}" pour vérifier le statut HTTP et le contenu
+2. Appeler analyze_preview avec url="${stagingUrl}" pour analyser visuellement le rendu (layout, couleurs, composants)
+3. Si des problèmes sont détectés (erreurs 502/404, layout cassé, composants manquants), CORRIGE-LES immédiatement avec apply_patch/update_file
+4. Seulement après validation visuelle, continue avec les fichiers suivants
+Ne dis pas "je vais vérifier" — APPELLE LES OUTILS MAINTENANT.`
+                });
+                console.log(`[V2-Tools] 🎨 Visual feedback trigger injected after ${frontendFilesWritten} frontend files written (staging: ${stagingUrl})`);
+              }
             }
             
             const followToolChoice = devopsCtx && toolRound <= 4 && !isToolLoop ? "required" as const : "auto" as const;
@@ -3037,7 +3145,15 @@ Réponds TOUJOURS en français.
             
             if (followChoice.message.tool_calls && followChoice.message.tool_calls.length > 0) {
               const followToolNames = followChoice.message.tool_calls.map(tc => tc.function.name).join(', ');
-              followChoice.message.tool_calls.forEach(tc => toolCallHistory.push(tc.function.name));
+              followChoice.message.tool_calls.forEach(tc => {
+                toolCallHistory.push(tc.function.name);
+                try {
+                  const args = JSON.parse(tc.function.arguments);
+                  const actionKey = args.action || args.command || "";
+                  const targetKey = args.repo || args.projectName || args.appName || args.path || "";
+                  toolCallSignatures.push(`${tc.function.name}|${actionKey}|${targetKey}`);
+                } catch { toolCallSignatures.push(tc.function.name); }
+              });
               console.log(`[V2-Tools] 🔄 Round ${toolRound}: AI chaining ${followChoice.message.tool_calls.length} more tool(s): ${followToolNames}`);
               
               const hasDevOpsInRound = followChoice.message.tool_calls.some(tc =>
@@ -3087,6 +3203,16 @@ Réponds TOUJOURS en français.
                 if (body.contextHints?.devmaxProjectId && (toolName === "devops_github" || toolName === "devops_server" || toolName === "devmax_db" || toolName === "dgm_manage")) {
                   if (!toolArgs.projectId) toolArgs.projectId = body.contextHints.devmaxProjectId;
                 }
+                const followAction = toolArgs?.action || "";
+                if (devopsCtx && (followAction === "apply_patch" || followAction === "update_file")) {
+                  if (toolArgs?.path && frontendFilePatterns.test(toolArgs.path)) frontendFilesWritten++;
+                  if (toolArgs?.files && Array.isArray(toolArgs.files)) {
+                    for (const f of toolArgs.files) {
+                      if (f.path && frontendFilePatterns.test(f.path)) frontendFilesWritten++;
+                    }
+                  }
+                  if (writeActions.has(followAction)) totalWriteRoundsInSession = toolRound;
+                }
                 const toolLabel = getToolLabel(toolName, toolArgs);
                 safeWrite(`data: ${JSON.stringify({ type: "tool_status", status: "executing", tool: toolName, label: toolLabel, round: toolRound })}\n\n`);
                 
@@ -3107,7 +3233,13 @@ Réponds TOUJOURS en français.
                   ? JSON.stringify(actionResult.result || { success: true })
                   : JSON.stringify({ error: actionResult.error || "Exécution échouée" });
                 
-                if (!actionResult.success) toolCallsSucceeded = false;
+                if (!actionResult.success) {
+                  toolCallsSucceeded = false;
+                  const failSigIdx = toolCallSignatures.length - 1;
+                  if (failSigIdx >= 0 && !toolCallSignatures[failSigIdx].includes("|error")) {
+                    toolCallSignatures[failSigIdx] += "|error";
+                  }
+                }
                 console.log(`[V2-SENSORY] Round ${toolRound}: ${toolName} → ${actionResult.success ? 'success' : 'failed'} in ${actionResult.executionMs}ms`);
                 safeWrite(`data: ${JSON.stringify({ type: "tool_status", status: actionResult.success ? "done" : "error", tool: toolName, label: toolLabel, durationMs: actionResult.executionMs, round: toolRound })}\n\n`);
 
@@ -3401,6 +3533,15 @@ Réponds TOUJOURS en français.
             threadId,
           },
         });
+
+        if (isMaxAI && body.contextHints?.devmaxProjectId) {
+          try {
+            const [devmaxProj] = await db.execute(sql`SELECT tenant_id FROM devmax_projects WHERE id = ${body.contextHints.devmaxProjectId}`).then((r: any) => r.rows || r);
+            if (devmaxProj?.tenant_id) {
+              await db.execute(sql`INSERT INTO devmax_usage_logs (tenant_id, action, details) VALUES (${devmaxProj.tenant_id}, 'ai_chat', ${JSON.stringify({ projectId: body.contextHints.devmaxProjectId, toolCalls: hadToolCalls, durationMs: elapsedMs, model: selectedModel })})`).catch(() => {});
+            }
+          } catch {}
+        }
 
         aiSystemIntegration.trackBehaviorEvent({
           userId,

@@ -92,7 +92,7 @@ async function ensureDevmaxTables() {
         username TEXT NOT NULL,
         display_name TEXT,
         email TEXT,
-        pin TEXT NOT NULL DEFAULT '102040',
+        pin TEXT,
         role TEXT NOT NULL DEFAULT 'user',
         active BOOLEAN NOT NULL DEFAULT true,
         permissions JSONB DEFAULT '{}',
@@ -498,8 +498,18 @@ async function ensureDevmaxTables() {
 ensureDevmaxTables();
 
 async function hashPin(pin: string): Promise<string> {
+  const bcrypt = await import("bcrypt");
+  return bcrypt.hash(pin, 10);
+}
+
+async function verifyPin(pin: string, hash: string): Promise<boolean> {
+  const bcrypt = await import("bcrypt");
+  if (hash.startsWith("$2")) {
+    return bcrypt.compare(pin, hash);
+  }
   const crypto = await import("crypto");
-  return crypto.createHash("sha256").update(pin).digest("hex");
+  const sha256 = crypto.createHash("sha256").update(pin).digest("hex");
+  return sha256 === hash;
 }
 
 async function hashPassword(password: string): Promise<string> {
@@ -588,9 +598,18 @@ router.post("/auth", async (req: Request, res: Response) => {
         }
       }
     } else if (pin) {
-      const pinH = await hashPin(pin);
-      const rows = await db.execute(sql`SELECT * FROM devmax_users WHERE (pin_hash = ${pinH} OR pin = ${pin}) AND active = true`).then((r: any) => r.rows || r);
-      if (rows.length > 0) user = rows[0];
+      const rows = await db.execute(sql`SELECT * FROM devmax_users WHERE (pin_hash IS NOT NULL OR pin IS NOT NULL) AND active = true`).then((r: any) => r.rows || r);
+      for (const candidate of rows) {
+        const storedHash = candidate.pin_hash || candidate.pin;
+        if (storedHash && await verifyPin(pin, storedHash)) {
+          user = candidate;
+          if (!candidate.pin_hash || !candidate.pin_hash.startsWith("$2")) {
+            const newHash = await hashPin(pin);
+            await db.execute(sql`UPDATE devmax_users SET pin_hash = ${newHash}, pin = NULL, updated_at = NOW() WHERE id = ${candidate.id}`).catch(() => {});
+          }
+          break;
+        }
+      }
     }
 
     if (!user) {
@@ -619,8 +638,14 @@ router.post("/auth", async (req: Request, res: Response) => {
         authValid = await verifyPassword(password, user.password_hash);
       }
     } else if (!authValid && pin) {
-      const pinH = await hashPin(pin);
-      authValid = user.pin_hash === pinH || user.pin === pin;
+      const storedHash = user.pin_hash || user.pin;
+      if (storedHash) {
+        authValid = await verifyPin(pin, storedHash);
+        if (authValid && (!user.pin_hash || !user.pin_hash.startsWith("$2"))) {
+          const newHash = await hashPin(pin);
+          await db.execute(sql`UPDATE devmax_users SET pin_hash = ${newHash}, pin = NULL, updated_at = NOW() WHERE id = ${user.id}`).catch(() => {});
+        }
+      }
     }
 
     if (!authValid) {
@@ -868,23 +893,23 @@ router.put("/me", async (req: Request, res: Response) => {
 
     const { firstName, lastName, displayName, email, phone, bio, timezone, preferredLanguage, avatarUrl, githubUsername, sshPublicKey, notificationPreferences } = req.body;
 
-    const fields: string[] = [];
-    const safeStr = (v: string) => v.replace(/'/g, "''");
-    if (firstName !== undefined) fields.push(`first_name = '${safeStr(firstName)}'`);
-    if (lastName !== undefined) fields.push(`last_name = '${safeStr(lastName)}'`);
-    if (displayName !== undefined) fields.push(`display_name = '${safeStr(displayName)}'`);
-    if (email !== undefined) fields.push(`email = '${safeStr(email)}'`);
-    if (phone !== undefined) fields.push(`phone = '${safeStr(phone)}'`);
-    if (bio !== undefined) fields.push(`bio = '${safeStr(bio)}'`);
-    if (timezone !== undefined) fields.push(`timezone = '${safeStr(timezone)}'`);
-    if (preferredLanguage !== undefined) fields.push(`preferred_language = '${safeStr(preferredLanguage)}'`);
-    if (avatarUrl !== undefined) fields.push(`avatar_url = '${safeStr(avatarUrl)}'`);
-    if (githubUsername !== undefined) fields.push(`github_username = '${safeStr(githubUsername)}'`);
-    if (sshPublicKey !== undefined) fields.push(`ssh_public_key = '${safeStr(sshPublicKey)}'`);
-    if (notificationPreferences !== undefined) fields.push(`notification_preferences = '${JSON.stringify(notificationPreferences).replace(/'/g, "''")}'`);
-    fields.push(`updated_at = NOW()`);
+    const setClauses: ReturnType<typeof sql>[] = [];
+    if (firstName !== undefined) setClauses.push(sql`first_name = ${firstName}`);
+    if (lastName !== undefined) setClauses.push(sql`last_name = ${lastName}`);
+    if (displayName !== undefined) setClauses.push(sql`display_name = ${displayName}`);
+    if (email !== undefined) setClauses.push(sql`email = ${email}`);
+    if (phone !== undefined) setClauses.push(sql`phone = ${phone}`);
+    if (bio !== undefined) setClauses.push(sql`bio = ${bio}`);
+    if (timezone !== undefined) setClauses.push(sql`timezone = ${timezone}`);
+    if (preferredLanguage !== undefined) setClauses.push(sql`preferred_language = ${preferredLanguage}`);
+    if (avatarUrl !== undefined) setClauses.push(sql`avatar_url = ${avatarUrl}`);
+    if (githubUsername !== undefined) setClauses.push(sql`github_username = ${githubUsername}`);
+    if (sshPublicKey !== undefined) setClauses.push(sql`ssh_public_key = ${sshPublicKey}`);
+    if (notificationPreferences !== undefined) setClauses.push(sql`notification_preferences = ${JSON.stringify(notificationPreferences)}::jsonb`);
+    setClauses.push(sql`updated_at = NOW()`);
 
-    await db.execute(sql.raw(`UPDATE devmax_users SET ${fields.join(", ")} WHERE id = '${safeStr(ctx.user.id)}'`));
+    const setQuery = sql.join(setClauses, sql`, `);
+    await db.execute(sql`UPDATE devmax_users SET ${setQuery} WHERE id = ${ctx.user.id}`);
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -907,8 +932,9 @@ router.put("/me/pin", async (req: Request, res: Response) => {
     const u = ctx.user;
     if (u.pin_hash || u.pin) {
       if (!currentPin) return res.status(400).json({ error: "PIN actuel requis" });
-      const currentH = await hashPin(currentPin);
-      if (u.pin_hash !== currentH && u.pin !== currentPin) {
+      const storedHash = u.pin_hash || u.pin;
+      const pinValid = storedHash ? await verifyPin(currentPin, storedHash) : false;
+      if (!pinValid) {
         return res.status(401).json({ error: "PIN actuel incorrect" });
       }
     }
@@ -1012,8 +1038,8 @@ router.get("/projects", async (req: Request, res: Response) => {
       `);
     } else {
       projects = await db.execute(sql`
-        SELECT * FROM devmax_projects 
-        ${showArchived ? sql`` : sql`WHERE (status IS NULL OR status != 'archived')`}
+        SELECT * FROM devmax_projects WHERE fingerprint = ${session.fingerprint}
+        ${showArchived ? sql`` : sql`AND (status IS NULL OR status != 'archived')`}
         ORDER BY updated_at DESC
       `);
     }
@@ -1035,6 +1061,23 @@ router.post("/projects", async (req: Request, res: Response) => {
 
     const { name, description, repoOwner, repoName, deploySlug, template } = req.body;
     if (!name) return res.status(400).json({ error: "Nom du projet requis" });
+
+    if (session.tenantId) {
+      try {
+        const [tenant] = await db.execute(sql`SELECT plan_limits FROM devmax_tenants WHERE id = ${session.tenantId}`).then((r: any) => r.rows || r);
+        if (tenant?.plan_limits) {
+          const limits = typeof tenant.plan_limits === "string" ? JSON.parse(tenant.plan_limits) : tenant.plan_limits;
+          const maxProjects = limits.max_projects ?? 3;
+          if (maxProjects !== -1) {
+            const [countResult] = await db.execute(sql`SELECT COUNT(*) as count FROM devmax_projects WHERE tenant_id = ${session.tenantId} AND (status IS NULL OR status != 'archived')`).then((r: any) => r.rows || r);
+            const currentCount = parseInt(countResult?.count || "0");
+            if (currentCount >= maxProjects) {
+              return res.status(403).json({ error: `Limite de projets atteinte (${currentCount}/${maxProjects}). Passez à un plan supérieur pour créer plus de projets.` });
+            }
+          }
+        }
+      } catch {}
+    }
 
     const id = randomUUID();
     const repoUrl = repoOwner && repoName ? `https://github.com/${repoOwner}/${repoName}` : null;
@@ -1060,6 +1103,10 @@ router.post("/projects", async (req: Request, res: Response) => {
     }
 
     await logDevmaxActivity(req, "create_project", name, { id, repoOwner, repoName, deploySlug: slug, template: template || null, ports: reservedPorts });
+
+    if (session.tenantId) {
+      db.execute(sql`INSERT INTO devmax_usage_logs (tenant_id, action, details) VALUES (${session.tenantId}, 'create_project', ${JSON.stringify({ projectId: id, name, template: template || null })})`).catch(() => {});
+    }
 
     res.json({ id, name, description, repoOwner, repoName, repoUrl, deploySlug: slug, template: template || null, stagingUrl, productionUrl, ports: reservedPorts });
 
@@ -1359,6 +1406,14 @@ router.put("/projects/:projectId", async (req: Request, res: Response) => {
     `);
     if (!project.rows?.length) return res.status(404).json({ error: "Projet non trouve" });
 
+    const proj = project.rows[0];
+    if (session.tenantId && proj.tenant_id && proj.tenant_id !== session.tenantId) {
+      return res.status(403).json({ error: "Accès refusé: ce projet appartient à un autre tenant" });
+    }
+    if (!session.tenantId && proj.fingerprint !== session.fingerprint) {
+      return res.status(403).json({ error: "Accès refusé à ce projet" });
+    }
+
     const { name, description, repoOwner, repoName, deploySlug } = req.body;
     const repoUrl = repoOwner && repoName ? `https://github.com/${repoOwner}/${repoName}` : null;
     const slug = deploySlug ? deploySlug.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") : null;
@@ -1393,7 +1448,16 @@ router.delete("/projects/:projectId", async (req: Request, res: Response) => {
 
     const { projectId } = req.params;
 
-    const [project] = await db.execute(sql`SELECT deploy_slug FROM devmax_projects WHERE id = ${projectId}`).then((r: any) => r.rows || r);
+    const [project] = await db.execute(sql`SELECT deploy_slug, tenant_id, fingerprint FROM devmax_projects WHERE id = ${projectId}`).then((r: any) => r.rows || r);
+    if (!project) return res.status(404).json({ error: "Projet non trouvé" });
+
+    if (session.tenantId && project.tenant_id && project.tenant_id !== session.tenantId) {
+      return res.status(403).json({ error: "Accès refusé: ce projet appartient à un autre tenant" });
+    }
+    if (!session.tenantId && project.fingerprint !== session.fingerprint) {
+      return res.status(403).json({ error: "Accès refusé à ce projet" });
+    }
+
     const slug = project?.deploy_slug;
 
     const cleanupLogs: string[] = [];
@@ -1452,12 +1516,17 @@ router.get("/projects/:projectId", async (req: Request, res: Response) => {
       .limit(1);
     if (!session) return res.status(401).json({ error: "Session expired" });
 
-    const project = await db.execute(sql`
-      SELECT * FROM devmax_projects WHERE id = ${req.params.projectId} AND fingerprint = ${session.fingerprint}
-    `);
-    if (!project.rows?.length) return res.status(404).json({ error: "Projet non trouve" });
+    const project = await db.execute(sql`SELECT * FROM devmax_projects WHERE id = ${req.params.projectId}`);
+    if (!project.rows?.length) return res.status(404).json({ error: "Projet non trouvé" });
+    const proj = project.rows[0] as any;
+    if (session.tenantId && proj.tenant_id && proj.tenant_id !== session.tenantId) {
+      return res.status(403).json({ error: "Accès refusé: ce projet appartient à un autre tenant" });
+    }
+    if (!session.tenantId && proj.fingerprint !== session.fingerprint) {
+      return res.status(403).json({ error: "Accès refusé à ce projet" });
+    }
 
-    res.json(project.rows[0]);
+    res.json(proj);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -1793,12 +1862,12 @@ router.post("/journal/add", async (req: Request, res: Response) => {
     if (!projectId || !entryType || !title) return res.status(400).json({ error: "projectId, entryType et title requis" });
     if (!(await verifyProjectAccess(session, projectId))) return res.status(403).json({ error: "Accès refusé à ce projet" });
 
-    const filesArr = Array.isArray(filesChanged) ? `{${filesChanged.map((f: string) => `"${f}"`).join(",")}}` : null;
+    const filesArr = Array.isArray(filesChanged) ? filesChanged : null;
 
     await db.execute(sql`
       INSERT INTO devmax_project_journal (project_id, session_id, entry_type, title, description, files_changed, metadata)
       VALUES (${projectId}, ${token}, ${entryType}, ${title}, ${description || null}, 
-        ${filesArr ? sql.raw(`'${filesArr}'`) : null}::text[],
+        ${filesArr}::text[],
         ${metadata ? JSON.stringify(metadata) : null}::jsonb)
     `);
 
@@ -1823,11 +1892,10 @@ router.get("/journal/:projectId", async (req: Request, res: Response) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const entryType = req.query.type as string;
 
-    let query = `SELECT * FROM devmax_project_journal WHERE project_id = '${projectId.replace(/'/g, "''")}'`;
-    if (entryType) query += ` AND entry_type = '${entryType.replace(/'/g, "''")}'`;
-    query += ` ORDER BY created_at DESC LIMIT ${limit}`;
-
-    const rows = await db.execute(sql.raw(query)).then((r: any) => r.rows || r);
+    const conditions: ReturnType<typeof sql>[] = [sql`project_id = ${projectId}`];
+    if (entryType) conditions.push(sql`entry_type = ${entryType}`);
+    const whereClause = sql.join(conditions, sql` AND `);
+    const rows = await db.execute(sql`SELECT * FROM devmax_project_journal WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${limit}`).then((r: any) => r.rows || r);
 
     res.json({ entries: rows, total: rows.length });
   } catch (e: any) {
@@ -2071,33 +2139,33 @@ router.put("/admin/users/:userId", requireAdminAuth, async (req: Request, res: R
   try {
     const { userId } = req.params;
     const { username, displayName, firstName, lastName, email, pin, loginId, password, role, active, unlock } = req.body;
-    const safeStr = (v: string) => v.replace(/'/g, "''");
 
-    const updates: string[] = [];
-    if (username !== undefined) updates.push(`username = '${safeStr(username)}'`);
-    if (displayName !== undefined) updates.push(`display_name = '${safeStr(displayName)}'`);
-    if (firstName !== undefined) updates.push(`first_name = '${safeStr(firstName)}'`);
-    if (lastName !== undefined) updates.push(`last_name = '${safeStr(lastName)}'`);
-    if (email !== undefined) updates.push(`email = '${safeStr(email)}'`);
-    if (loginId !== undefined) updates.push(`login_id = '${safeStr(loginId)}'`);
+    const setClauses: ReturnType<typeof sql>[] = [];
+    if (username !== undefined) setClauses.push(sql`username = ${username}`);
+    if (displayName !== undefined) setClauses.push(sql`display_name = ${displayName}`);
+    if (firstName !== undefined) setClauses.push(sql`first_name = ${firstName}`);
+    if (lastName !== undefined) setClauses.push(sql`last_name = ${lastName}`);
+    if (email !== undefined) setClauses.push(sql`email = ${email}`);
+    if (loginId !== undefined) setClauses.push(sql`login_id = ${loginId}`);
     if (pin !== undefined) {
       const pinHash = await hashPin(pin);
-      updates.push(`pin_hash = '${pinHash}'`);
-      updates.push(`pin = NULL`);
+      setClauses.push(sql`pin_hash = ${pinHash}`);
+      setClauses.push(sql`pin = NULL`);
     }
     if (password !== undefined) {
       const passHash = await hashPassword(password);
-      updates.push(`password_hash = '${safeStr(passHash)}'`);
+      setClauses.push(sql`password_hash = ${passHash}`);
     }
-    if (role !== undefined) updates.push(`role = '${safeStr(role)}'`);
-    if (active !== undefined) updates.push(`active = ${active}`);
+    if (role !== undefined) setClauses.push(sql`role = ${role}`);
+    if (active !== undefined) setClauses.push(sql`active = ${active}`);
     if (unlock) {
-      updates.push(`failed_attempts = 0`);
-      updates.push(`locked_until = NULL`);
+      setClauses.push(sql`failed_attempts = 0`);
+      setClauses.push(sql`locked_until = NULL`);
     }
-    updates.push(`updated_at = NOW()`);
+    setClauses.push(sql`updated_at = NOW()`);
 
-    await db.execute(sql.raw(`UPDATE devmax_users SET ${updates.join(", ")} WHERE id = '${safeStr(userId)}'`));
+    const setQuery = sql.join(setClauses, sql`, `);
+    await db.execute(sql`UPDATE devmax_users SET ${setQuery} WHERE id = ${userId}`);
     await logAdminAudit(req, "user_updated", "user", userId, null, { fields: Object.keys(req.body) });
     res.json({ success: true });
   } catch (e: any) {
@@ -2340,33 +2408,36 @@ router.put("/admin/tenants/:tenantId", requireAdminAuth, async (req: Request, re
       contactName, contactEmail, contactPhone, address,
       stripeCustomerId, paymentMethod } = req.body;
 
-    const sets: string[] = [];
-    if (name) sets.push(`name = '${name.replace(/'/g, "''")}'`);
+    const setClauses: ReturnType<typeof sql>[] = [];
+    if (name) setClauses.push(sql`name = ${name}`);
     if (plan) {
-      sets.push(`plan = '${plan}'`);
-      sets.push(`plan_limits = '${JSON.stringify(getPlanLimits(plan))}'::jsonb`);
+      setClauses.push(sql`plan = ${plan}`);
+      setClauses.push(sql`plan_limits = ${JSON.stringify(getPlanLimits(plan))}::jsonb`);
     }
-    if (billingEmail !== undefined) sets.push(`billing_email = ${billingEmail ? `'${billingEmail.replace(/'/g, "''")}'` : 'NULL'}`);
-    if (billingStatus) sets.push(`billing_status = '${billingStatus}'`);
-    if (settings) sets.push(`settings = '${JSON.stringify(settings)}'::jsonb`);
-    if (ownerId) sets.push(`owner_id = '${ownerId}'`);
+    if (billingEmail !== undefined) setClauses.push(sql`billing_email = ${billingEmail || null}`);
+    if (billingStatus) setClauses.push(sql`billing_status = ${billingStatus}`);
+    if (settings) setClauses.push(sql`settings = ${JSON.stringify(settings)}::jsonb`);
+    if (ownerId) setClauses.push(sql`owner_id = ${ownerId}`);
     if (req.body.credentialPassword) {
       const hashedCred = await hashPassword(req.body.credentialPassword);
-      sets.push(`credential_password = '${hashedCred.replace(/'/g, "''")}'`);
+      setClauses.push(sql`credential_password = ${hashedCred}`);
     }
-    const textFields: Array<[string, string | undefined]> = [
-      ["production_url", productionUrl], ["staging_url", stagingUrl],
-      ["github_org", githubOrg], ["github_repo", githubRepo], ["github_token", githubToken],
-      ["contact_name", contactName], ["contact_email", contactEmail], ["contact_phone", contactPhone],
-      ["address", address], ["stripe_customer_id", stripeCustomerId], ["payment_method", paymentMethod],
-      ["credential_login", req.body.credentialLogin],
-    ];
-    for (const [col, val] of textFields) {
-      if (val !== undefined) sets.push(`${col} = ${val ? `'${val.replace(/'/g, "''")}'` : 'NULL'}`);
-    }
-    sets.push(`updated_at = NOW()`);
+    if (productionUrl !== undefined) setClauses.push(sql`production_url = ${productionUrl || null}`);
+    if (stagingUrl !== undefined) setClauses.push(sql`staging_url = ${stagingUrl || null}`);
+    if (githubOrg !== undefined) setClauses.push(sql`github_org = ${githubOrg || null}`);
+    if (githubRepo !== undefined) setClauses.push(sql`github_repo = ${githubRepo || null}`);
+    if (githubToken !== undefined) setClauses.push(sql`github_token = ${githubToken || null}`);
+    if (contactName !== undefined) setClauses.push(sql`contact_name = ${contactName || null}`);
+    if (contactEmail !== undefined) setClauses.push(sql`contact_email = ${contactEmail || null}`);
+    if (contactPhone !== undefined) setClauses.push(sql`contact_phone = ${contactPhone || null}`);
+    if (address !== undefined) setClauses.push(sql`address = ${address || null}`);
+    if (stripeCustomerId !== undefined) setClauses.push(sql`stripe_customer_id = ${stripeCustomerId || null}`);
+    if (paymentMethod !== undefined) setClauses.push(sql`payment_method = ${paymentMethod || null}`);
+    if (req.body.credentialLogin !== undefined) setClauses.push(sql`credential_login = ${req.body.credentialLogin || null}`);
+    setClauses.push(sql`updated_at = NOW()`);
 
-    await db.execute(sql.raw(`UPDATE devmax_tenants SET ${sets.join(", ")} WHERE id = '${tenantId.replace(/'/g, "''")}'`));
+    const setQuery = sql.join(setClauses, sql`, `);
+    await db.execute(sql`UPDATE devmax_tenants SET ${setQuery} WHERE id = ${tenantId}`);
     await logAdminAudit(req, "tenant_updated", "tenant", tenantId, null, req.body);
     res.json({ success: true });
   } catch (e: any) {
@@ -2612,17 +2683,18 @@ router.put("/admin/tenants/:tenantId/integrations/:integrationId", requireAdminA
   try {
     const { tenantId, integrationId } = req.params;
     const { credentials, config, enabled, status } = req.body;
-    const sets: string[] = [];
+    const setClauses: ReturnType<typeof sql>[] = [];
     if (credentials !== undefined) {
-      sets.push(`credentials = '${JSON.stringify(credentials).replace(/'/g, "''")}'::jsonb`);
+      setClauses.push(sql`credentials = ${JSON.stringify(credentials)}::jsonb`);
       const hasCredentials = Object.values(credentials).some((v: any) => v && String(v).trim());
-      sets.push(`status = '${hasCredentials ? 'connected' : 'disconnected'}'`);
+      setClauses.push(sql`status = ${hasCredentials ? 'connected' : 'disconnected'}`);
     }
-    if (config !== undefined) sets.push(`config = '${JSON.stringify(config).replace(/'/g, "''")}'::jsonb`);
-    if (enabled !== undefined) sets.push(`enabled = ${enabled}`);
-    if (status) sets.push(`status = '${status}'`);
-    sets.push(`updated_at = NOW()`);
-    await db.execute(sql.raw(`UPDATE devmax_integrations SET ${sets.join(", ")} WHERE id = '${integrationId}' AND tenant_id = '${tenantId}'`));
+    if (config !== undefined) setClauses.push(sql`config = ${JSON.stringify(config)}::jsonb`);
+    if (enabled !== undefined) setClauses.push(sql`enabled = ${enabled}`);
+    if (status) setClauses.push(sql`status = ${status}`);
+    setClauses.push(sql`updated_at = NOW()`);
+    const setQuery = sql.join(setClauses, sql`, `);
+    await db.execute(sql`UPDATE devmax_integrations SET ${setQuery} WHERE id = ${integrationId} AND tenant_id = ${tenantId}`);
     await logAdminAudit(req, "integration_updated", "integration", integrationId, null, req.body);
     res.json({ success: true });
   } catch (e: any) {

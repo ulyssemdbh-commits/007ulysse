@@ -1213,12 +1213,13 @@ router.post("/toggle-cicd", async (req: Request, res: Response) => {
     if (!projectId) return res.status(400).json({ error: "Project ID requis" });
     const { enabled, branch } = req.body;
 
-    const updates: string[] = [];
-    if (typeof enabled === "boolean") updates.push(`cicd_enabled = ${enabled}`);
-    if (branch) updates.push(`cicd_branch = '${branch.replace(/'/g, "")}'`);
-    updates.push(`updated_at = NOW()`);
+    const setClauses: ReturnType<typeof sql>[] = [];
+    if (typeof enabled === "boolean") setClauses.push(sql`cicd_enabled = ${enabled}`);
+    if (branch) setClauses.push(sql`cicd_branch = ${branch}`);
+    setClauses.push(sql`updated_at = NOW()`);
 
-    await db.execute(sql.raw(`UPDATE devmax_projects SET ${updates.join(", ")} WHERE id = '${projectId}'`));
+    const setQuery = sql.join(setClauses, sql`, `);
+    await db.execute(sql`UPDATE devmax_projects SET ${setQuery} WHERE id = ${projectId}`);
     res.json({ success: true, enabled, branch });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1431,11 +1432,11 @@ router.get("/notifications", async (req: Request, res: Response) => {
     const tenantId = session?.tenant_id;
     const projectId = req.headers["x-devmax-project"] as string;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    let q = "SELECT id, type, title, message, channel, status, read_at, created_at, project_id, metadata FROM devmax_notifications WHERE 1=1";
-    if (tenantId) q += ` AND tenant_id = '${tenantId.replace(/'/g, "")}'`;
-    if (projectId) q += ` AND project_id = '${projectId.replace(/'/g, "")}'`;
-    q += ` ORDER BY created_at DESC LIMIT ${limit}`;
-    const notifications = await db.execute(sql.raw(q)).then((r: any) => r.rows || r);
+    const conditions: ReturnType<typeof sql>[] = [sql`1=1`];
+    if (tenantId) conditions.push(sql`tenant_id = ${tenantId}`);
+    if (projectId) conditions.push(sql`project_id = ${projectId}`);
+    const whereClause = sql.join(conditions, sql` AND `);
+    const notifications = await db.execute(sql`SELECT id, type, title, message, channel, status, read_at, created_at, project_id, metadata FROM devmax_notifications WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${limit}`).then((r: any) => r.rows || r);
     const unread = notifications.filter((n: any) => !n.read_at).length;
     res.json({ notifications, unread });
   } catch (error: any) {
