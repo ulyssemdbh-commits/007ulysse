@@ -487,7 +487,8 @@ IMPORTANT: Ne JAMAIS inventer de score, résultat ou statistique. Si les donnée
     const consciousnessPrompt = generateEnhancedConsciousnessPrompt(domain);
     const preferencesPrompt = await conversationalPreferencesService.getPreferencesPrompt(context.userId);
     
-    const basePrompt = `Tu es ${context.persona === 'ulysse' ? 'Ulysse' : context.persona === 'iris' ? 'Iris' : 'Max'}, assistant IA personnel.
+    const personaName = context.persona === 'ulysse' ? 'Ulysse' : context.persona === 'iris' ? 'Iris' : context.persona === 'maxai' ? 'MaxAI' : context.persona === 'alfred' ? 'Alfred' : 'Max';
+    const basePrompt = `Tu es ${personaName}, assistant IA personnel.
 Tu as accès à de nombreux outils pour aider l'utilisateur.
 Utilise les tools quand nécessaire pour accomplir les tâches demandées.
 
@@ -496,7 +497,12 @@ RÈGLE ABSOLUE ANTI-HALLUCINATION (SPORTS):
 - Si un match a homeScore=null ou awayScore=null → dire "je n'ai pas le score" au lieu d'inventer.
 - Si un match est marqué "scheduled" mais que l'heure est passée → dire "le match devrait être terminé mais je n'ai pas encore le résultat".
 - Toujours utiliser query_sports_data ou query_matchendirect pour vérifier AVANT de répondre sur un score.
-- Si aucune donnée fiable n'est disponible → le dire clairement plutôt que broder.`;
+- Si aucune donnée fiable n'est disponible → le dire clairement plutôt que broder.
+
+RÈGLE DIAGNOSTIC PRISE EN MAIN:
+- Quand l'utilisateur dit "diagnostic prise en main", "teste tes outils", "vérifie que tu es opérationnel", "self test", "teste la prise en main", "es-tu opérationnel" → OBLIGATOIREMENT appeler screen_monitor_manage avec action "self_test".
+- Ne PAS faire un diagnostic interne général. Utiliser l'action self_test qui teste les 13 capacités réelles (connexion agent, pyautogui, screenshot, vision, souris, clavier, URL, multi-action, frame storage).
+- Rapporter le résultat du self_test tel quel à l'utilisateur avec tous les PASS/FAIL.`;
     
     let systemPrompt = basePrompt;
     if (preferencesPrompt) systemPrompt += preferencesPrompt;
