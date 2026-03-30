@@ -26,6 +26,7 @@ const FILES_TO_PUSH = [
   // AI Router & Webhooks
   "server/services/aiRouter.ts",
   "server/routes/devmaxWebhook.ts",
+  "server/routes/commaxRoutes.ts",
   // New tools
   "server/services/tools/screenMonitorTools.ts",
   "server/services/tools/commaxTools.ts",
