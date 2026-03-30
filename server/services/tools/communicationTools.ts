@@ -81,7 +81,7 @@ export const communicationToolDefs: ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "email_send",
-            description: "Envoie un email via AgentMail avec support des pièces jointes. EXÉCUTE IMMÉDIATEMENT sans demander confirmation - Ulysse agit d'abord.",
+            description: "Envoie un email. Ulysse envoie via Gmail (ulyssemdbh@gmail.com). Alfred et Iris envoient via AgentMail. EXÉCUTE IMMÉDIATEMENT sans demander confirmation.",
             parameters: {
                 type: "object",
                 properties: {
@@ -662,17 +662,41 @@ export async function executeEmailSend(args: {
             }
         }
 
-        const result = await agentMailService.sendEmail({
-            to,
-            subject,
-            body,
-            attachments: emailAttachments.length > 0 ? emailAttachments : undefined
-        });
+        let result: any;
+        if (from_inbox === 'ulysse' || !from_inbox) {
+            const { googleMailService } = await import("../googleMailService");
+            const connected = await googleMailService.isConnected();
+            if (!connected) {
+                return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
+            }
+            const gmailAtts = emailAttachments.map(a => ({
+                filename: a.filename,
+                content: a.content as Buffer,
+                contentType: a.contentType
+            }));
+            result = await googleMailService.sendWithAttachment({
+                to, subject, body,
+                attachments: gmailAtts.length > 0 ? gmailAtts : undefined
+            });
+            console.log(`[EmailSend] Ulysse → Gmail → ${to}`);
+        } else {
+            if (!agentMailService) {
+                return JSON.stringify({ error: "AgentMail non disponible" });
+            }
+            result = await agentMailService.sendEmail({
+                to,
+                subject,
+                body,
+                attachments: emailAttachments.length > 0 ? emailAttachments : undefined
+            });
+            console.log(`[EmailSend] ${from_inbox} → AgentMail → ${to}`);
+        }
 
         return JSON.stringify({
             type: 'email_sent',
             success: true,
             messageId: result.id || result.messageId,
+            via: (from_inbox === 'ulysse' || !from_inbox) ? 'gmail' : 'agentmail',
             attachmentsSent: emailAttachments.length
         });
     } catch (err: unknown) {

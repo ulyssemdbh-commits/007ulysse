@@ -614,6 +614,19 @@ export class FileService {
     }
   }
 
+  private read3DFile(filePath: string): FileAnalysis {
+    const { stl3mfService } = require("./stl3mfService");
+    const analysis = stl3mfService.analyzeFile(filePath);
+    const content = stl3mfService.formatAnalysisForAI(analysis);
+    const ext = path.extname(filePath).toLowerCase().slice(1);
+    return {
+      fileName: path.basename(filePath),
+      fileType: ext,
+      content,
+      metadata: analysis as unknown as Record<string, unknown>,
+    };
+  }
+
   async readFile(filePath: string): Promise<FileAnalysis> {
     const ext = path.extname(filePath).toLowerCase();
     
@@ -642,6 +655,9 @@ export class FileService {
       case ".avi":
       case ".mkv":
         return this.readVideo(filePath);
+      case ".stl":
+      case ".3mf":
+        return this.read3DFile(filePath);
       default:
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, "utf-8");
@@ -911,6 +927,8 @@ export class FileService {
     } else if (analysis.fileType === "pdf") {
       const meta = analysis.metadata as { pages: number };
       formatted += `Pages: ${meta.pages}\n`;
+    } else if (analysis.fileType === "stl" || analysis.fileType === "3mf") {
+      formatted += `Type: Fichier 3D (${analysis.fileType.toUpperCase()})\n`;
     }
     
     const maxContent = 5000;

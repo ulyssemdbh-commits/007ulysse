@@ -309,11 +309,19 @@ export async function generateAndEmailReport(
     const report = await generateReport(restaurant, periodType, customStart, customEnd);
     const name = restaurant === "suguval" ? "Valentine" : restaurant === "sugumaillane" ? "Maillane" : "Combiné";
 
-    await agentMailService.sendEmail({
-      to: recipientEmail,
-      subject: `📊 Rapport ${name} — ${report.data.period.label}`,
-      body: report.html
-    }, "ulysse");
+    try {
+      const { googleMailService } = await import('./googleMailService');
+      const gmailConnected = await googleMailService.isConnected();
+      if (gmailConnected) {
+        await googleMailService.sendWithAttachment({ to: recipientEmail, subject: `📊 Rapport ${name} — ${report.data.period.label}`, body: report.html });
+        console.log(`[ReportGenerator] Report sent via Gmail to ${recipientEmail}`);
+      } else {
+        await agentMailService.sendEmail({ to: recipientEmail, subject: `📊 Rapport ${name} — ${report.data.period.label}`, body: report.html }, "ulysse");
+      }
+    } catch (gmailErr: any) {
+      console.warn(`[ReportGenerator] Gmail failed, fallback AgentMail: ${gmailErr.message}`);
+      await agentMailService.sendEmail({ to: recipientEmail, subject: `📊 Rapport ${name} — ${report.data.period.label}`, body: report.html }, "ulysse");
+    }
 
     console.log(`[ReportGenerator] Report sent to ${recipientEmail}`);
     return { success: true };

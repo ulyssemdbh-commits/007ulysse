@@ -301,11 +301,19 @@ export async function sendBriefingEmail(recipientEmail?: string): Promise<{ succ
       return { success: false, error: "Aucun email destinataire configuré" };
     }
 
-    await agentMailService.sendEmail({
-      to,
-      subject: `☀️ Briefing du ${briefing.date}`,
-      body: briefingToHtml(briefing)
-    }, "ulysse");
+    try {
+      const { googleMailService } = await import('./googleMailService');
+      const gmailConnected = await googleMailService.isConnected();
+      if (gmailConnected) {
+        await googleMailService.sendWithAttachment({ to, subject: `☀️ Briefing du ${briefing.date}`, body: briefingToHtml(briefing) });
+        console.log(`[MorningBriefing] Sent via Gmail to ${to}`);
+      } else {
+        await agentMailService.sendEmail({ to, subject: `☀️ Briefing du ${briefing.date}`, body: briefingToHtml(briefing) }, "ulysse");
+      }
+    } catch (gmailErr: any) {
+      console.warn(`[MorningBriefing] Gmail failed, fallback AgentMail: ${gmailErr.message}`);
+      await agentMailService.sendEmail({ to, subject: `☀️ Briefing du ${briefing.date}`, body: briefingToHtml(briefing) }, "ulysse");
+    }
 
     try {
       const { pushNotificationService } = await import("./pushNotificationService");

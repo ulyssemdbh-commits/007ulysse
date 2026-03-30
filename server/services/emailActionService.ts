@@ -365,11 +365,29 @@ export class EmailActionService {
         switch (action.type) {
           case 'send':
             if (action.to && action.subject) {
-              const sendResult = await agentMailService.sendEmail({
-                to: action.to,
-                subject: action.subject,
-                body: action.body || ''
-              }, persona, userId);
+              let sendResult: any;
+              if (persona === 'ulysse' || !persona) {
+                try {
+                  const { googleMailService } = await import('./googleMailService');
+                  const connected = await googleMailService.isConnected();
+                  if (connected) {
+                    const gmailResult = await googleMailService.sendWithAttachment({
+                      to: action.to,
+                      subject: action.subject,
+                      body: action.body || ''
+                    });
+                    sendResult = { success: gmailResult.success, messageId: gmailResult.messageId, deliveryStatus: 'sent', trackingId: gmailResult.messageId, details: undefined };
+                    console.log(`[EmailAction] Ulysse → Gmail → ${action.to}`);
+                  } else {
+                    sendResult = await agentMailService.sendEmail({ to: action.to, subject: action.subject, body: action.body || '' }, persona, userId);
+                  }
+                } catch (gmailErr: any) {
+                  console.warn(`[EmailAction] Gmail failed, falling back to AgentMail: ${gmailErr.message}`);
+                  sendResult = await agentMailService.sendEmail({ to: action.to, subject: action.subject, body: action.body || '' }, persona, userId);
+                }
+              } else {
+                sendResult = await agentMailService.sendEmail({ to: action.to, subject: action.subject, body: action.body || '' }, persona, userId);
+              }
               results.push({
                 success: sendResult.success,
                 action,

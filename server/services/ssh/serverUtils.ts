@@ -71,20 +71,28 @@ export function createServerMethods(service: SSHService) {
     async reserveProjectPorts(projectId: string, caller: "max" | "ulysse" | "iris" = "max"): Promise<{ stagingPort: number; productionPort: number }> {
       const { db } = await import("../../db");
       const { sql } = await import("drizzle-orm");
-      const [existing] = await db.execute(sql`SELECT staging_port, production_port FROM devmax_projects WHERE id = ${projectId}`).then((r: any) => r.rows || r);
-      if (existing?.staging_port && existing?.production_port) {
-        console.log(`[SSH] reserveProjectPorts(${projectId}): already reserved staging=${existing.staging_port} prod=${existing.production_port}`);
-        return { stagingPort: Number(existing.staging_port), productionPort: Number(existing.production_port) };
+
+      const LOCK_ID = 900001;
+      try {
+        await db.execute(sql`SELECT pg_advisory_lock(${LOCK_ID})`);
+
+        const [existing] = await db.execute(sql`SELECT staging_port, production_port FROM devmax_projects WHERE id = ${projectId}`).then((r: any) => r.rows || r);
+        if (existing?.staging_port && existing?.production_port) {
+          console.log(`[SSH] reserveProjectPorts(${projectId}): already reserved staging=${existing.staging_port} prod=${existing.production_port}`);
+          return { stagingPort: Number(existing.staging_port), productionPort: Number(existing.production_port) };
+        }
+        const stagingPort = existing?.staging_port ? Number(existing.staging_port) : await service.findFreePort(undefined, caller);
+        const productionPort = existing?.production_port ? Number(existing.production_port) : await service.findFreePort(undefined, caller, [stagingPort]);
+        await db.execute(sql`
+          UPDATE devmax_projects 
+          SET staging_port = ${stagingPort}, production_port = ${productionPort}, updated_at = NOW()
+          WHERE id = ${projectId}
+        `);
+        console.log(`[SSH] reserveProjectPorts(${projectId}): reserved staging=${stagingPort} prod=${productionPort} (${caller} range)`);
+        return { stagingPort, productionPort };
+      } finally {
+        await db.execute(sql`SELECT pg_advisory_unlock(${LOCK_ID})`).catch(() => {});
       }
-      const stagingPort = existing?.staging_port ? Number(existing.staging_port) : await service.findFreePort(undefined, caller);
-      const productionPort = existing?.production_port ? Number(existing.production_port) : await service.findFreePort(undefined, caller, [stagingPort]);
-      await db.execute(sql`
-        UPDATE devmax_projects 
-        SET staging_port = ${stagingPort}, production_port = ${productionPort}, updated_at = NOW()
-        WHERE id = ${projectId}
-      `);
-      console.log(`[SSH] reserveProjectPorts(${projectId}): reserved staging=${stagingPort} prod=${productionPort} (${caller} range)`);
-      return { stagingPort, productionPort };
     },
 
     async createDatabase(dbName: string, dbUser: string, dbPassword: string): Promise<{ success: boolean; connectionUrl: string; message: string }> {
@@ -334,10 +342,11 @@ export function createServerMethods(service: SSHService) {
       appDir: string;
       depth?: number;
       retries?: number;
+      tokenOverride?: string | null;
     }): Promise<{ success: boolean; method: string; error?: string }> {
-      const { repoUrl, branch, appDir, depth = 1, retries = 2 } = params;
+      const { repoUrl, branch, appDir, depth = 1, retries = 2, tokenOverride } = params;
       const isGitHub = repoUrl.includes("github.com");
-      const token = isGitHub ? await service.resolveGitHubToken() : null;
+      const token = tokenOverride || (isGitHub ? await service.resolveGitHubToken() : null);
       const depthFlag = depth > 0 ? `--depth ${depth}` : "";
 
       const strategies: { name: string; getUrl: () => string }[] = [];

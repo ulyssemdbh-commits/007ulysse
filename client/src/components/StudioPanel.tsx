@@ -1,12 +1,17 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Image as ImageIcon, FileText, Video, Send, Download,
   ChevronLeft, ChevronRight, Loader2, Pencil, Clock,
   ZoomIn, ZoomOut, RotateCcw, Tag, Sparkles, FileImage,
-  Film, Music, Wand2, History, Layers, Eye, MessageCircle, Bot, User
+  Film, Music, Wand2, History, Layers, Eye, MessageCircle, Bot, User,
+  Box, ArrowRightLeft, Ruler, Maximize2
 } from "lucide-react";
+import { Canvas, useLoader } from "@react-three/fiber";
+import { OrbitControls, Grid, Environment } from "@react-three/drei";
+import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,16 +30,23 @@ interface StudioPanelProps {
   initialFileId?: number;
 }
 
-type MediaType = "all" | "image" | "video" | "document" | "audio";
+type MediaType = "all" | "image" | "video" | "document" | "audio" | "3d";
 
-function getFileIcon(mimeType: string) {
+function is3DFile(name: string, mime: string): boolean {
+  const ext = name.toLowerCase().split(".").pop();
+  return ext === "stl" || ext === "3mf" || mime === "model/stl" || mime === "application/vnd.ms-package.3dmanufacturing-3dmodel+xml";
+}
+
+function getFileIcon(mimeType: string, fileName?: string) {
+  if (fileName && is3DFile(fileName, mimeType)) return Box;
   if (mimeType.startsWith("image/")) return ImageIcon;
   if (mimeType.startsWith("video/")) return Film;
   if (mimeType.startsWith("audio/")) return Music;
   return FileText;
 }
 
-function getMediaType(mimeType: string): MediaType {
+function getMediaType(mimeType: string, fileName?: string): MediaType {
+  if (fileName && is3DFile(fileName, mimeType)) return "3d";
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
@@ -48,8 +60,69 @@ function getTypeBadge(type: MediaType) {
     video: "bg-purple-500",
     audio: "bg-green-500",
     document: "bg-orange-500",
+    "3d": "bg-cyan-500",
   };
   return colors[type] || colors.document;
+}
+
+interface Analysis3D {
+  fileName: string;
+  triangleCount: number;
+  vertexCount: number;
+  dimensions: { width: number; height: number; depth: number };
+  volume?: number;
+  surfaceArea?: number;
+  isClosed?: boolean;
+  format?: string;
+  unit?: string;
+}
+
+function STLViewer({ url }: { url: string }) {
+  const geometry = useLoader(STLLoader, url);
+
+  const { center, scale: modelScale } = useMemo(() => {
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox!;
+    const c = new THREE.Vector3();
+    box.getCenter(c);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    return { center: c, scale: maxDim > 0 ? 5 / maxDim : 1 };
+  }, [geometry]);
+
+  return (
+    <mesh geometry={geometry} scale={modelScale} position={[-center.x * modelScale, -center.y * modelScale, -center.z * modelScale]}>
+      <meshStandardMaterial color="#6d9eeb" metalness={0.3} roughness={0.5} />
+    </mesh>
+  );
+}
+
+function ThreeDViewer({ fileId, fileName }: { fileId: number; fileName: string }) {
+  const isSTL = fileName.toLowerCase().endsWith(".stl");
+  const url = `/api/files/${fileId}/preview`;
+
+  return (
+    <div className="w-full h-full" data-testid="viewer-3d">
+      <Canvas camera={{ position: [8, 6, 8], fov: 45 }} style={{ background: "transparent" }}>
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 10, 5]} intensity={1} />
+        <directionalLight position={[-5, -5, -5]} intensity={0.3} />
+        <Suspense fallback={null}>
+          {isSTL ? (
+            <STLViewer url={url} />
+          ) : (
+            <mesh>
+              <boxGeometry args={[2, 2, 2]} />
+              <meshStandardMaterial color="#6d9eeb" />
+            </mesh>
+          )}
+        </Suspense>
+        <OrbitControls enableDamping dampingFactor={0.1} />
+        <Grid args={[20, 20]} cellColor="#ffffff20" sectionColor="#ffffff10" fadeDistance={25} />
+      </Canvas>
+    </div>
+  );
 }
 
 interface StudioChatMessage {
@@ -206,7 +279,7 @@ export function StudioPanel({ isOpen, onClose, initialFileId }: StudioPanelProps
     if (!files) return [];
     let result = files.filter(f => !f.parentFileId);
     if (filterType !== "all") {
-      result = result.filter(f => getMediaType(f.mimeType) === filterType);
+      result = result.filter(f => getMediaType(f.mimeType, f.originalName) === filterType);
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -323,7 +396,35 @@ export function StudioPanel({ isOpen, onClose, initialFileId }: StudioPanelProps
   const isVideo = selectedFile?.mimeType.startsWith("video/");
   const isAudio = selectedFile?.mimeType.startsWith("audio/");
   const isPdf = selectedFile?.mimeType === "application/pdf";
+  const is3D = selectedFile ? is3DFile(selectedFile.originalName, selectedFile.mimeType) : false;
   const canEdit = isImage;
+
+  const [analysis3D, setAnalysis3D] = useState<Analysis3D | null>(null);
+  const [loading3DAnalysis, setLoading3DAnalysis] = useState(false);
+
+  const analyze3DFile = useCallback(async () => {
+    if (!selectedFileId) return;
+    setLoading3DAnalysis(true);
+    try {
+      const res = await fetch(`/api/files/3d/${selectedFileId}/analyze`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setAnalysis3D(data);
+      }
+    } catch (e) {
+      console.error("3D analysis error:", e);
+    } finally {
+      setLoading3DAnalysis(false);
+    }
+  }, [selectedFileId]);
+
+  useEffect(() => {
+    if (is3D && selectedFileId) {
+      analyze3DFile();
+    } else {
+      setAnalysis3D(null);
+    }
+  }, [is3D, selectedFileId]);
 
   return (
     <motion.div
@@ -393,7 +494,7 @@ export function StudioPanel({ isOpen, onClose, initialFileId }: StudioPanelProps
                 data-testid="input-studio-search"
               />
               <div className="flex gap-1 flex-wrap">
-                {(["all", "image", "video", "document", "audio"] as MediaType[]).map(type => (
+                {(["all", "image", "video", "document", "audio", "3d"] as MediaType[]).map(type => (
                   <button
                     key={type}
                     onClick={() => setFilterType(type)}
@@ -407,7 +508,8 @@ export function StudioPanel({ isOpen, onClose, initialFileId }: StudioPanelProps
                     {type === "all" ? "Tous" :
                      type === "image" ? "Images" :
                      type === "video" ? "Vidéos" :
-                     type === "audio" ? "Audio" : "Docs"}
+                     type === "audio" ? "Audio" :
+                     type === "3d" ? "3D" : "Docs"}
                   </button>
                 ))}
               </div>
@@ -425,9 +527,9 @@ export function StudioPanel({ isOpen, onClose, initialFileId }: StudioPanelProps
                   </p>
                 ) : (
                   filteredFiles.map(file => {
-                    const Icon = getFileIcon(file.mimeType);
+                    const Icon = getFileIcon(file.mimeType, file.originalName);
                     const isSelected = selectedFileId === file.id;
-                    const mediaType = getMediaType(file.mimeType);
+                    const mediaType = getMediaType(file.mimeType, file.originalName);
                     return (
                       <button
                         key={file.id}
@@ -541,7 +643,81 @@ export function StudioPanel({ isOpen, onClose, initialFileId }: StudioPanelProps
                         data-testid="pdf-studio-preview"
                       />
                     )}
-                    {!isImage && !isVideo && !isAudio && !isPdf && (
+                    {is3D && (
+                      <div className="w-full h-full flex">
+                        <div className="flex-1 relative">
+                          <ThreeDViewer fileId={selectedFile.id} fileName={selectedFile.originalName} />
+                          <div className="absolute top-3 left-3 flex items-center gap-2">
+                            <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/40 text-xs">
+                              <Box className="h-3 w-3 mr-1" />
+                              {selectedFile.originalName.split(".").pop()?.toUpperCase()}
+                            </Badge>
+                          </div>
+                          <div className="absolute bottom-3 left-3 text-[10px] text-white/30">
+                            Cliquer + glisser pour tourner · Molette pour zoomer
+                          </div>
+                        </div>
+                        {analysis3D && (
+                          <div className="w-56 border-l border-white/10 bg-black/50 p-3 space-y-3 overflow-y-auto" data-testid="panel-3d-info">
+                            <h4 className="text-xs font-medium text-white/70 flex items-center gap-1.5">
+                              <Ruler className="h-3.5 w-3.5 text-cyan-400" />
+                              Analyse 3D
+                            </h4>
+                            <div className="space-y-2">
+                              <div className="bg-white/5 rounded-lg p-2">
+                                <p className="text-[10px] text-white/40 mb-1">Dimensions</p>
+                                <p className="text-xs text-white/80">
+                                  {analysis3D.dimensions.width.toFixed(1)} × {analysis3D.dimensions.height.toFixed(1)} × {analysis3D.dimensions.depth.toFixed(1)} mm
+                                </p>
+                              </div>
+                              <div className="bg-white/5 rounded-lg p-2">
+                                <p className="text-[10px] text-white/40 mb-1">Géométrie</p>
+                                <p className="text-xs text-white/80">{analysis3D.triangleCount.toLocaleString()} triangles</p>
+                                <p className="text-xs text-white/60">{analysis3D.vertexCount.toLocaleString()} sommets</p>
+                              </div>
+                              {analysis3D.volume != null && (
+                                <div className="bg-white/5 rounded-lg p-2">
+                                  <p className="text-[10px] text-white/40 mb-1">Volume</p>
+                                  <p className="text-xs text-white/80">{analysis3D.volume.toFixed(2)} mm³</p>
+                                </div>
+                              )}
+                              {analysis3D.surfaceArea != null && (
+                                <div className="bg-white/5 rounded-lg p-2">
+                                  <p className="text-[10px] text-white/40 mb-1">Surface</p>
+                                  <p className="text-xs text-white/80">{analysis3D.surfaceArea.toFixed(2)} mm²</p>
+                                </div>
+                              )}
+                              {analysis3D.isClosed != null && (
+                                <div className="bg-white/5 rounded-lg p-2">
+                                  <p className="text-[10px] text-white/40 mb-1">Maillage</p>
+                                  <p className={`text-xs ${analysis3D.isClosed ? "text-green-400" : "text-yellow-400"}`}>
+                                    {analysis3D.isClosed ? "✓ Fermé (imprimable)" : "⚠ Ouvert"}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            <div className="space-y-1.5 pt-2 border-t border-white/10">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full text-xs border-white/10 text-white/70 h-7"
+                                onClick={handleDownload}
+                                data-testid="button-3d-download"
+                              >
+                                <Download className="h-3 w-3 mr-1.5" />
+                                Télécharger
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        {loading3DAnalysis && !analysis3D && (
+                          <div className="w-56 border-l border-white/10 bg-black/50 flex items-center justify-center">
+                            <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {!isImage && !isVideo && !isAudio && !isPdf && !is3D && (
                       <div className="text-center space-y-4">
                         <FileText className="h-20 w-20 text-orange-400/40 mx-auto" />
                         <p className="text-white/60">{selectedFile.originalName}</p>

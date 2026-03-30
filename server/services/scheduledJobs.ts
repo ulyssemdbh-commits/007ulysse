@@ -154,23 +154,22 @@ class JobScheduler {
       }
     });
 
-    // AgentMail - Relève automatique des emails toutes les 30 minutes
+    const agentMailConfigured = !!process.env.AGENTMAIL_API_KEY;
     this.registerJob({
       id: "agentmail-fetch",
       name: "AgentMail Email Fetch",
-      interval: 30 * 60 * 1000, // Every 30 minutes
-      enabled: true,
+      interval: 30 * 60 * 1000,
+      enabled: agentMailConfigured,
       execute: async () => {
         await this.fetchAndProcessEmails();
       }
     });
     
-    // AgentMail - Vérification périodique de la connectivité (toutes les 15 minutes)
     this.registerJob({
       id: "agentmail-connectivity",
       name: "AgentMail Connectivity Check",
-      interval: 15 * 60 * 1000, // Every 15 minutes
-      enabled: true,
+      interval: 60 * 60 * 1000,
+      enabled: agentMailConfigured,
       execute: async () => {
         await this.checkAgentMailConnectivity();
       }
@@ -292,11 +291,10 @@ class JobScheduler {
       }
     });
 
-    // Self-healing - auto-repair detected issues
     this.registerJob({
       id: "self-healing",
       name: "Self-Healing Check",
-      interval: 5 * 60 * 1000, // Every 5 minutes
+      interval: 15 * 60 * 1000,
       enabled: true,
       execute: async () => {
         await this.runSelfHealing();
@@ -844,11 +842,10 @@ class JobScheduler {
     // SELF-AWARENESS JOBS - PALIER 3
     // ═══════════════════════════════════════════════════════════════
 
-    // Self-Diagnostic Job - runs every 30 minutes
     this.registerJob({
       id: "self-diagnostic",
       name: "Self Diagnostic",
-      interval: 30 * 60 * 1000, // Every 30 minutes
+      interval: 60 * 60 * 1000,
       enabled: true,
       execute: async () => {
         console.log("[JobScheduler] Running self-diagnostic...");
@@ -893,11 +890,10 @@ class JobScheduler {
       }
     });
 
-    // Auto-Heal Job - runs every 30 minutes after diagnostic
     this.registerJob({
       id: "self-auto-heal",
       name: "Self Auto-Heal",
-      interval: 30 * 60 * 1000, // Every 30 minutes
+      interval: 60 * 60 * 1000,
       enabled: true,
       execute: async () => {
         console.log("[JobScheduler] Running auto-heal check...");
@@ -947,11 +943,10 @@ class JobScheduler {
       }
     });
 
-    // Morning Briefing - check every minute if it's time to send
     this.registerJob({
       id: "morning-briefing",
       name: "Morning Briefing Check",
-      interval: 60 * 1000,
+      interval: 5 * 60 * 1000,
       enabled: true,
       execute: async () => {
         try {
@@ -1237,7 +1232,7 @@ class JobScheduler {
     this.registerJob({
       id: "monitoring-check",
       name: "Website Monitoring Active Check",
-      interval: 5 * 60 * 1000,
+      interval: 10 * 60 * 1000,
       enabled: true,
       execute: async () => {
         try {
@@ -2148,12 +2143,30 @@ class JobScheduler {
   }
 
   private runningJobs = new Set<string>();
-  private readonly MAX_CONCURRENT_JOBS = 4;
+  private readonly MAX_CONCURRENT_JOBS = 6;
+
+  private lastGcRun = 0;
 
   private async checkAndRunJobs(): Promise<void> {
     if (!this.running) return;
     
     const now = Date.now();
+    
+    if (typeof global.gc === "function" && now - this.lastGcRun > 5 * 60 * 1000) {
+      try {
+        const mem = process.memoryUsage();
+        const heapPct = (mem.heapUsed / mem.heapTotal) * 100;
+        if (heapPct > 85) {
+          global.gc();
+          this.lastGcRun = now;
+          const after = process.memoryUsage();
+          const freedMB = Math.round((mem.heapUsed - after.heapUsed) / 1024 / 1024);
+          if (freedMB > 5) {
+            console.log(`[JobScheduler] GC freed ${freedMB}MB (${Math.round((after.heapUsed / after.heapTotal) * 100)}% heap)`);
+          }
+        }
+      } catch {}
+    }
     
     let ownerId: number | null = null;
     try {
@@ -2205,6 +2218,14 @@ class JobScheduler {
       console.log(`[JobScheduler] Running job: ${job.name}${priorityLabel} (${this.runningJobs.size}/${this.MAX_CONCURRENT_JOBS} slots)`);
       const jobStartTime = Date.now();
 
+      const JOB_TIMEOUT = 120_000;
+      const timeoutHandle = setTimeout(() => {
+        if (this.runningJobs.has(id)) {
+          console.warn(`[JobScheduler] Job TIMEOUT (${JOB_TIMEOUT / 1000}s): ${job.name} — freeing slot`);
+          this.runningJobs.delete(id);
+        }
+      }, JOB_TIMEOUT);
+
       job.execute()
         .then(async () => {
           const duration = Date.now() - jobStartTime;
@@ -2224,6 +2245,7 @@ class JobScheduler {
           } catch {}
         })
         .finally(() => {
+          clearTimeout(timeoutHandle);
           this.runningJobs.delete(id);
         });
     }

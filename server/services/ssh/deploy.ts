@@ -143,7 +143,18 @@ export function createDeployMethods(service: SSHService) {
         10000
       ).catch(() => {});
 
-      const cloneResult = await service.authenticatedGitClone({ repoUrl, branch, appDir });
+      let projectGitToken: string | null = null;
+      if (devmaxProjectId) {
+        try {
+          const { getProjectGitHubToken } = await import("../../routes/devmaxAuth");
+          projectGitToken = await getProjectGitHubToken(devmaxProjectId);
+          if (projectGitToken) {
+            console.log(`[Deploy] Using project-specific GitHub token for ${appName}`);
+          }
+        } catch {}
+      }
+
+      const cloneResult = await service.authenticatedGitClone({ repoUrl, branch, appDir, tokenOverride: projectGitToken });
       if (!cloneResult.success) {
         return { success: false, message: `Clone failed: ${cloneResult.error}`, logs: [`Clone: FAILED — ${cloneResult.method || "no auth"}`] };
       }

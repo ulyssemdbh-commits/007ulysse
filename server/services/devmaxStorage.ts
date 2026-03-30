@@ -69,20 +69,19 @@ export const devmaxStorage = {
   },
 
   async updateTenant(tenantId: string, data: { name?: string; plan?: string; billingEmail?: string; billingStatus?: string; ownerId?: string }) {
-    const updates: string[] = [];
-    if (data.name) updates.push(`name = '${data.name.replace(/'/g, "''")}'`);
+    const setClauses: ReturnType<typeof sql>[] = [];
+    if (data.name) setClauses.push(sql`name = ${data.name}`);
     if (data.plan) {
-      updates.push(`plan = '${data.plan}'`);
-      updates.push(`plan_limits = '${JSON.stringify(getPlanLimits(data.plan))}'`);
+      setClauses.push(sql`plan = ${data.plan}`);
+      setClauses.push(sql`plan_limits = ${JSON.stringify(getPlanLimits(data.plan))}::jsonb`);
     }
-    if (data.billingEmail !== undefined) updates.push(`billing_email = '${(data.billingEmail || "").replace(/'/g, "''")}'`);
-    if (data.billingStatus) updates.push(`billing_status = '${data.billingStatus}'`);
-    if (data.ownerId) updates.push(`owner_id = '${data.ownerId}'`);
-    updates.push("updated_at = NOW()");
+    if (data.billingEmail !== undefined) setClauses.push(sql`billing_email = ${data.billingEmail || null}`);
+    if (data.billingStatus) setClauses.push(sql`billing_status = ${data.billingStatus}`);
+    if (data.ownerId) setClauses.push(sql`owner_id = ${data.ownerId}`);
+    setClauses.push(sql`updated_at = NOW()`);
 
-    if (updates.length > 0) {
-      await db.execute(sql.raw(`UPDATE devmax_tenants SET ${updates.join(", ")} WHERE id = '${tenantId}'`));
-    }
+    const setQuery = sql.join(setClauses, sql`, `);
+    await db.execute(sql`UPDATE devmax_tenants SET ${setQuery} WHERE id = ${tenantId}`);
   },
 
   async deleteTenant(tenantId: string) {
@@ -175,32 +174,47 @@ export const devmaxStorage = {
 
   async getAuditLog(options: { limit?: number; tenantId?: string } = {}) {
     const limit = Math.min(Math.max(1, parseInt(String(options.limit || 100), 10) || 100), 500);
-    let query = `
+    if (options.tenantId) {
+      return await db.execute(sql`
+        SELECT a.*, u.username, u.display_name
+        FROM devmax_audit_log a LEFT JOIN devmax_users u ON a.user_id = u.id
+        WHERE a.tenant_id = ${options.tenantId}
+        ORDER BY a.created_at DESC LIMIT ${limit}
+      `).then((r: any) => r.rows || r);
+    }
+    return await db.execute(sql`
       SELECT a.*, u.username, u.display_name
       FROM devmax_audit_log a LEFT JOIN devmax_users u ON a.user_id = u.id
-    `;
-    if (options.tenantId) query += ` WHERE a.tenant_id = '${options.tenantId.replace(/'/g, "''")}'`;
-    query += ` ORDER BY a.created_at DESC LIMIT ${limit}`;
-    return await db.execute(sql.raw(query)).then((r: any) => r.rows || r);
+      ORDER BY a.created_at DESC LIMIT ${limit}
+    `).then((r: any) => r.rows || r);
   },
 
   async getUsageStats(options: { tenantId?: string; days?: number } = {}) {
     const days = Math.min(Math.max(1, parseInt(String(options.days || 30), 10) || 30), 365);
-    let cond = `created_at > NOW() - INTERVAL '${days} days'`;
-    if (options.tenantId) cond += ` AND tenant_id = '${options.tenantId.replace(/'/g, "''")}'`;
+    const interval = sql`NOW() - ${`${days} days`}::interval`;
 
-    const byAction = await db.execute(sql.raw(`
-      SELECT action, COUNT(*) as count FROM devmax_usage_logs WHERE ${cond} GROUP BY action ORDER BY count DESC
-    `)).then((r: any) => r.rows || r);
+    if (options.tenantId) {
+      const byAction = await db.execute(sql`
+        SELECT action, COUNT(*) as count FROM devmax_usage_logs WHERE created_at > ${interval} AND tenant_id = ${options.tenantId} GROUP BY action ORDER BY count DESC
+      `).then((r: any) => r.rows || r);
+      const byDay = await db.execute(sql`
+        SELECT DATE(created_at) as day, COUNT(*) as count FROM devmax_usage_logs WHERE created_at > ${interval} AND tenant_id = ${options.tenantId} GROUP BY DATE(created_at) ORDER BY day DESC LIMIT ${days}
+      `).then((r: any) => r.rows || r);
+      const byTenant = await db.execute(sql`
+        SELECT tenant_id, COUNT(*) as count FROM devmax_usage_logs WHERE created_at > ${interval} AND tenant_id = ${options.tenantId} GROUP BY tenant_id ORDER BY count DESC LIMIT 20
+      `).then((r: any) => r.rows || r);
+      return { byAction, byDay: byDay.reverse(), byTenant };
+    }
 
-    const byDay = await db.execute(sql.raw(`
-      SELECT DATE(created_at) as day, COUNT(*) as count FROM devmax_usage_logs WHERE ${cond} GROUP BY DATE(created_at) ORDER BY day DESC LIMIT ${days}
-    `)).then((r: any) => r.rows || r);
-
-    const byTenant = await db.execute(sql.raw(`
-      SELECT tenant_id, COUNT(*) as count FROM devmax_usage_logs WHERE ${cond} GROUP BY tenant_id ORDER BY count DESC LIMIT 20
-    `)).then((r: any) => r.rows || r);
-
+    const byAction = await db.execute(sql`
+      SELECT action, COUNT(*) as count FROM devmax_usage_logs WHERE created_at > ${interval} GROUP BY action ORDER BY count DESC
+    `).then((r: any) => r.rows || r);
+    const byDay = await db.execute(sql`
+      SELECT DATE(created_at) as day, COUNT(*) as count FROM devmax_usage_logs WHERE created_at > ${interval} GROUP BY DATE(created_at) ORDER BY day DESC LIMIT ${days}
+    `).then((r: any) => r.rows || r);
+    const byTenant = await db.execute(sql`
+      SELECT tenant_id, COUNT(*) as count FROM devmax_usage_logs WHERE created_at > ${interval} GROUP BY tenant_id ORDER BY count DESC LIMIT 20
+    `).then((r: any) => r.rows || r);
     return { byAction, byDay: byDay.reverse(), byTenant };
   },
 };

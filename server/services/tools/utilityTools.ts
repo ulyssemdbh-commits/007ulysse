@@ -749,7 +749,7 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
                     workflowId: { type: "string", description: "ID ou nom du workflow (pour trigger_workflow)" },
                     runId: { type: "number", description: "ID du workflow run (pour rerun_workflow, cancel_workflow)" },
                     isPrivate: { type: "boolean", description: "Pour create_repo: repo privé ou public (défaut: false)" },
-                    templateId: { type: "string", description: "Pour create_repo: template à utiliser (react-vite, nextjs, express-api, fullstack, static-html, empty)" },
+                    templateId: { type: "string", description: "Pour create_repo: template à utiliser (react-vite, nextjs, express-api, fullstack, static-html, nestjs-prisma, fastapi, nestjs-fullstack, laravel, empty)" },
                     project_name: { type: "string", description: "Pour design_dashboard: nom du projet/app" },
                     dashboard_type: { type: "string", description: "Pour design_dashboard: type (analytics, admin, ecommerce, saas, monitoring, social, finance, restaurant)" },
                     color_scheme: { type: "string", description: "Pour design_dashboard: palette de couleurs (ex: 'dark with neon green accents', 'light minimal blue')" },
@@ -798,7 +798,7 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
 — ARCHITECTURE: architecture_analyze (circular deps, couplage, complexité cyclomatique, design patterns, métriques code), docs_generate (auto-doc complète + commit DOCS.md), git_intelligence (full_report, blame, bisect_errors, hotspots, branch_diff, cherry_pick)
 — API: api_test (auto-découverte endpoints + test HTTP)
 — OPÉRATIONS: env_clone, monitoring_setup (enable/disable/status/logs avec auto-restart), full_pipeline (SDLC 7 étapes)
-— SCAFFOLDING: scaffold_project (express-api, react-vite, fullstack, nextjs, static-html)
+— SCAFFOLDING: scaffold_project (express-api, react-vite, fullstack, nextjs, static-html, nestjs-prisma, fastapi, nestjs-fullstack, laravel)
 — PERFORMANCE: profile_app, perf_loadtest, bundle_analyze (dist sizes, gzip, unused deps, source maps)
 — AUTRES: exec (commande shell), ssl (certificat Let's Encrypt)
 Pour deploy: fournir repoUrl + appName. Le système détecte auto si c'est statique ou Node.js. Pour update: juste appName (et optionnel branch). 58 actions au total.
@@ -1725,38 +1725,49 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
             }
             case "create_repo": {
                 if (!repo) return JSON.stringify({ error: "repo (nom du repo) requis" });
-                const newRepo = await githubService.createRepo(repo, { description: body || "", isPrivate: isPrivate || false });
+                let newRepo: any;
+                let repoAlreadyExisted = false;
+                try {
+                    newRepo = await githubService.createRepo(repo, { description: body || "", isPrivate: isPrivate || false });
+                } catch (createErr: any) {
+                    const errMsg = createErr.message || "";
+                    if (errMsg.includes("already exists") || errMsg.includes("422")) {
+                        repoAlreadyExisted = true;
+                        try {
+                            newRepo = await githubService.getRepo(owner || "ulyssemdbh-commits", repo);
+                        } catch {
+                            return JSON.stringify({ error: `Le repo '${repo}' semble exister mais est inaccessible. Vérifier les permissions du token GitHub.`, suggestion: "Utiliser list_repos pour voir les repos accessibles, ou vérifier que le token a le scope 'repo'.", originalError: errMsg });
+                        }
+                    } else if (errMsg.includes("401") || errMsg.includes("403")) {
+                        return JSON.stringify({ error: `Accès refusé pour créer le repo '${repo}'. Token GitHub invalide ou permissions insuffisantes.`, suggestion: "Vérifier la connexion GitHub dans les paramètres du projet. Le token doit avoir le scope 'repo'.", originalError: errMsg });
+                    } else {
+                        return JSON.stringify({ error: `Erreur lors de la création du repo '${repo}': ${errMsg}`, suggestion: "Vérifier la connexion réseau et le token GitHub." });
+                    }
+                }
+                const repoOwnerLogin = (newRepo as any).owner?.login || owner || "ulyssemdbh-commits";
                 if (templateId && templateId !== "empty") {
                     const { getTemplateFiles } = await import("../projectTemplates");
                     const templateFiles = getTemplateFiles(templateId, repo);
                     if (templateFiles.length > 0) {
                         await new Promise(r => setTimeout(r, 1500));
                         try {
-                            await githubService.applyPatch(
-                                (newRepo as any).owner?.login || owner || "ulyssemdbh-commits",
-                                repo,
-                                (newRepo as any).default_branch || "main",
-                                templateFiles,
-                                `Initial setup with ${templateId} template`
-                            );
+                            await githubService.applyPatch(repoOwnerLogin, repo, (newRepo as any).default_branch || "main", templateFiles, `Initial setup with ${templateId} template`);
                         } catch (e: any) {
                             await new Promise(r => setTimeout(r, 2000));
-                            await githubService.applyPatch(
-                                (newRepo as any).owner?.login || owner || "ulyssemdbh-commits",
-                                repo,
-                                (newRepo as any).default_branch || "main",
-                                templateFiles,
-                                `Initial setup with ${templateId} template`
-                            );
+                            try {
+                                await githubService.applyPatch(repoOwnerLogin, repo, (newRepo as any).default_branch || "main", templateFiles, `Initial setup with ${templateId} template`);
+                            } catch (retryErr: any) {
+                                return JSON.stringify({ success: true, repo: (newRepo as any).full_name, html_url: (newRepo as any).html_url, warning: `Repo créé mais échec de l'application du template: ${retryErr.message}`, repoAlreadyExisted });
+                            }
                         }
                     }
                 }
-                devopsDiscordNotify("Repo créé", `**${repo}** créé avec succès`, "success", [
+                devopsDiscordNotify("Repo créé", `**${repo}** ${repoAlreadyExisted ? "(existant)" : "créé avec succès"}`, "success", [
                     { name: "URL", value: (newRepo as any).html_url || '', inline: true },
                     { name: "Privé", value: isPrivate ? "Oui" : "Non", inline: true },
                     ...(templateId && templateId !== "empty" ? [{ name: "Template", value: templateId, inline: true }] : [])
                 ]);
-                return JSON.stringify({ success: true, repo: (newRepo as any).full_name, html_url: (newRepo as any).html_url, message: `Repo ${repo} créé avec succès` });
+                return JSON.stringify({ success: true, repo: (newRepo as any).full_name, html_url: (newRepo as any).html_url, message: repoAlreadyExisted ? `Repo ${repo} existait déjà, réutilisé avec succès` : `Repo ${repo} créé avec succès`, repoAlreadyExisted });
             }
             case "get_deploy_urls": {
                 const { devopsDeployUrls: dduGet } = await import("@shared/schema");
@@ -5022,6 +5033,16 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                     } catch (e) {
                         console.error("[Deploy] Auto-save URL failed:", e);
                     }
+                    if (resolvedDevmaxProjectId) {
+                        try {
+                            const { db: usageDb } = await import("../../db");
+                            const { sql: usageSql } = await import("drizzle-orm");
+                            const [proj] = await usageDb.execute(usageSql`SELECT tenant_id FROM devmax_projects WHERE id = ${resolvedDevmaxProjectId}`).then((r: any) => r.rows || r);
+                            if (proj?.tenant_id) {
+                                await usageDb.execute(usageSql`INSERT INTO devmax_usage_logs (tenant_id, action, details) VALUES (${proj.tenant_id}, 'deploy', ${JSON.stringify({ projectId: resolvedDevmaxProjectId, environment: isStagingDeploy ? "staging" : "production", appName: baseAppName })})`).catch(() => {});
+                            }
+                        } catch {}
+                    }
                 }
                 return JSON.stringify({ action: "deploy", ...result });
             }
@@ -5571,15 +5592,93 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                             { path: ".gitignore", content: `node_modules/\n.env\n*.log` },
                         ]
                     },
+                    "nestjs-prisma": {
+                        description: "NestJS API with Prisma ORM and PostgreSQL",
+                        deps: "@nestjs/common @nestjs/core @nestjs/platform-express @prisma/client reflect-metadata rxjs class-validator class-transformer dotenv",
+                        devDeps: "typescript @types/express @types/node ts-node @nestjs/cli @nestjs/schematics prisma nodemon @nestjs/testing jest @types/jest ts-jest",
+                        buildCmd: "npx nest build",
+                        files: [
+                            { path: "src/main.ts", content: `import { NestFactory } from "@nestjs/core";\nimport { ValidationPipe } from "@nestjs/common";\nimport { AppModule } from "./app.module";\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.enableCors();\n  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));\n  app.setGlobalPrefix("api");\n  const port = process.env.PORT || 3000;\n  await app.listen(port);\n  console.log(\`Server running on port \${port}\`);\n}\nbootstrap();\n` },
+                            { path: "src/app.module.ts", content: `import { Module } from "@nestjs/common";\nimport { AppController } from "./app.controller";\nimport { AppService } from "./app.service";\nimport { PrismaModule } from "./prisma/prisma.module";\n\n@Module({\n  imports: [PrismaModule],\n  controllers: [AppController],\n  providers: [AppService],\n})\nexport class AppModule {}\n` },
+                            { path: "src/app.controller.ts", content: `import { Controller, Get } from "@nestjs/common";\nimport { AppService } from "./app.service";\n\n@Controller()\nexport class AppController {\n  constructor(private readonly appService: AppService) {}\n\n  @Get("health")\n  getHealth() {\n    return this.appService.getHealth();\n  }\n}\n` },
+                            { path: "src/app.service.ts", content: `import { Injectable } from "@nestjs/common";\n\n@Injectable()\nexport class AppService {\n  getHealth() {\n    return { status: "ok", timestamp: new Date().toISOString() };\n  }\n}\n` },
+                            { path: "src/prisma/prisma.module.ts", content: `import { Global, Module } from "@nestjs/common";\nimport { PrismaService } from "./prisma.service";\n\n@Global()\n@Module({\n  providers: [PrismaService],\n  exports: [PrismaService],\n})\nexport class PrismaModule {}\n` },
+                            { path: "src/prisma/prisma.service.ts", content: `import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";\nimport { PrismaClient } from "@prisma/client";\n\n@Injectable()\nexport class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {\n  async onModuleInit() {\n    await this.$connect();\n  }\n  async onModuleDestroy() {\n    await this.$disconnect();\n  }\n}\n` },
+                            { path: "prisma/schema.prisma", content: `generator client {\n  provider = "prisma-client-js"\n}\n\ndatasource db {\n  provider = "postgresql"\n  url      = env("DATABASE_URL")\n}\n\nmodel User {\n  id        String   @id @default(uuid())\n  email     String   @unique\n  name      String?\n  createdAt DateTime @default(now()) @map("created_at")\n  updatedAt DateTime @updatedAt @map("updated_at")\n\n  @@map("users")\n}\n` },
+                            { path: "nest-cli.json", content: `{\n  "$schema": "https://json.schemastore.org/nest-cli",\n  "collection": "@nestjs/schematics",\n  "sourceRoot": "src",\n  "compilerOptions": {\n    "deleteOutDir": true\n  }\n}` },
+                            { path: "tsconfig.json", content: `{"compilerOptions":{"module":"commonjs","declaration":true,"removeComments":true,"emitDecoratorMetadata":true,"experimentalDecorators":true,"allowSyntheticDefaultImports":true,"target":"ES2021","sourceMap":true,"outDir":"./dist","baseUrl":"./","incremental":true,"skipLibCheck":true,"strictNullChecks":true,"noImplicitAny":true,"strictBindCallApply":true,"forceConsistentCasingInFileNames":true,"noFallthroughCasesInSwitch":true},"include":["src/**/*"]}` },
+                            { path: ".env.example", content: `PORT=3000\nNODE_ENV=development\nDATABASE_URL=postgresql://user:password@localhost:5432/${projectName}?schema=public` },
+                            { path: ".gitignore", content: `node_modules/\ndist/\n.env\n*.log\nprisma/migrations/` },
+                        ]
+                    },
+                    "fastapi": {
+                        description: "Python FastAPI with SQLAlchemy and PostgreSQL",
+                        deps: "fastapi uvicorn sqlalchemy psycopg2-binary alembic python-dotenv pydantic",
+                        devDeps: "",
+                        files: [
+                            { path: "app/main.py", content: `from fastapi import FastAPI\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom dotenv import load_dotenv\nimport os\n\nload_dotenv()\n\napp = FastAPI(title="${projectName}", version="1.0.0")\n\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=["*"],\n    allow_credentials=True,\n    allow_methods=["*"],\n    allow_headers=["*"],\n)\n\n@app.get("/api/health")\ndef health():\n    return {"status": "ok"}\n\nif __name__ == "__main__":\n    import uvicorn\n    uvicorn.run("app.main:app", host="0.0.0.0", port=int(os.getenv("PORT", 3000)), reload=True)\n` },
+                            { path: "app/__init__.py", content: `` },
+                            { path: "app/database.py", content: `from sqlalchemy import create_engine\nfrom sqlalchemy.ext.declarative import declarative_base\nfrom sqlalchemy.orm import sessionmaker\nimport os\n\nDATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/${projectName}")\n\nengine = create_engine(DATABASE_URL)\nSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)\nBase = declarative_base()\n\ndef get_db():\n    db = SessionLocal()\n    try:\n        yield db\n    finally:\n        db.close()\n` },
+                            { path: "app/models.py", content: `from sqlalchemy import Column, String, DateTime\nfrom sqlalchemy.sql import func\nimport uuid\nfrom .database import Base\n\nclass User(Base):\n    __tablename__ = "users"\n    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))\n    email = Column(String, unique=True, nullable=False)\n    name = Column(String, nullable=True)\n    created_at = Column(DateTime, server_default=func.now())\n    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())\n` },
+                            { path: "requirements.txt", content: `fastapi>=0.104.0\nuvicorn>=0.24.0\nsqlalchemy>=2.0.0\npsycopg2-binary>=2.9.0\nalembic>=1.13.0\npython-dotenv>=1.0.0\npydantic>=2.5.0\n` },
+                            { path: ".env.example", content: `PORT=3000\nDATABASE_URL=postgresql://user:password@localhost:5432/${projectName}` },
+                            { path: ".gitignore", content: `__pycache__/\n*.pyc\n.env\nvenv/\n*.log\nalembic/versions/` },
+                        ]
+                    },
+                    "nestjs-fullstack": {
+                        description: "NestJS backend + React Vite frontend monorepo",
+                        deps: "",
+                        devDeps: "concurrently",
+                        files: [
+                            { path: "backend/src/main.ts", content: `import { NestFactory } from "@nestjs/core";\nimport { ValidationPipe } from "@nestjs/common";\nimport { AppModule } from "./app.module";\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.enableCors();\n  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));\n  app.setGlobalPrefix("api");\n  await app.listen(process.env.PORT || 3000);\n  console.log(\`Backend on port \${process.env.PORT || 3000}\`);\n}\nbootstrap();\n` },
+                            { path: "backend/src/app.module.ts", content: `import { Module } from "@nestjs/common";\nimport { AppController } from "./app.controller";\n\n@Module({\n  controllers: [AppController],\n})\nexport class AppModule {}\n` },
+                            { path: "backend/src/app.controller.ts", content: `import { Controller, Get } from "@nestjs/common";\n\n@Controller()\nexport class AppController {\n  @Get("health")\n  getHealth() {\n    return { status: "ok", timestamp: new Date().toISOString() };\n  }\n}\n` },
+                            { path: "backend/nest-cli.json", content: `{"$schema":"https://json.schemastore.org/nest-cli","collection":"@nestjs/schematics","sourceRoot":"src","compilerOptions":{"deleteOutDir":true}}` },
+                            { path: "backend/tsconfig.json", content: `{"compilerOptions":{"module":"commonjs","declaration":true,"removeComments":true,"emitDecoratorMetadata":true,"experimentalDecorators":true,"allowSyntheticDefaultImports":true,"target":"ES2021","sourceMap":true,"outDir":"./dist","baseUrl":"./","skipLibCheck":true,"strictNullChecks":true},"include":["src/**/*"]}` },
+                            { path: "backend/package.json", content: JSON.stringify({ name: `${projectName}-backend`, version: "1.0.0", scripts: { dev: "nest start --watch", build: "nest build", start: "node dist/main" }, dependencies: { "@nestjs/common": "^10.0.0", "@nestjs/core": "^10.0.0", "@nestjs/platform-express": "^10.0.0", "reflect-metadata": "^0.2.0", rxjs: "^7.8.0", "class-validator": "^0.14.0", "class-transformer": "^0.5.0", dotenv: "^16.3.0" }, devDependencies: { typescript: "^5.3.0", "@types/express": "^4.17.0", "@types/node": "^20.0.0", "@nestjs/cli": "^10.0.0", "@nestjs/schematics": "^10.0.0" } }, null, 2) },
+                            { path: "frontend/index.html", content: `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>${projectName}</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>` },
+                            { path: "frontend/src/main.tsx", content: `import { StrictMode } from "react";\nimport { createRoot } from "react-dom/client";\nimport App from "./App";\nimport "./index.css";\n\ncreateRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);\n` },
+                            { path: "frontend/src/App.tsx", content: `import { useState, useEffect } from "react";\n\nexport default function App() {\n  const [health, setHealth] = useState("");\n  useEffect(() => {\n    fetch("/api/health").then(r => r.json()).then(d => setHealth(d.status)).catch(() => setHealth("offline"));\n  }, []);\n  return <div style={{maxWidth:"1200px",margin:"0 auto",padding:"2rem"}}><h1>${projectName}</h1><p>API: {health}</p></div>;\n}\n` },
+                            { path: "frontend/src/index.css", content: `*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;min-height:100vh}` },
+                            { path: "frontend/vite.config.ts", content: `import { defineConfig } from "vite";\nimport react from "@vitejs/plugin-react";\n\nexport default defineConfig({\n  plugins: [react()],\n  server: { proxy: { "/api": "http://localhost:3000" } }\n});\n` },
+                            { path: "frontend/tsconfig.json", content: `{"compilerOptions":{"target":"ES2020","useDefineForClassFields":true,"lib":["ES2020","DOM","DOM.Iterable"],"module":"ESNext","skipLibCheck":true,"moduleResolution":"bundler","allowImportingTsExtensions":true,"resolveJsonModule":true,"isolatedModules":true,"noEmit":true,"jsx":"react-jsx","strict":true},"include":["src"]}` },
+                            { path: "frontend/package.json", content: JSON.stringify({ name: `${projectName}-frontend`, version: "1.0.0", scripts: { dev: "vite", build: "vite build", preview: "vite preview" }, dependencies: { react: "^18.2.0", "react-dom": "^18.2.0" }, devDependencies: { typescript: "^5.3.0", "@types/react": "^18.2.0", "@types/react-dom": "^18.2.0", vite: "^5.0.0", "@vitejs/plugin-react": "^4.2.0" } }, null, 2) },
+                            { path: ".env.example", content: `PORT=3000\nNODE_ENV=development\nDATABASE_URL=postgresql://user:password@localhost:5432/${projectName}` },
+                            { path: ".gitignore", content: `node_modules/\ndist/\n.env\n*.log\nbackend/dist/\nfrontend/dist/` },
+                        ]
+                    },
+                    "laravel": {
+                        description: "Laravel PHP API (structure de base)",
+                        deps: "",
+                        devDeps: "",
+                        files: [
+                            { path: "routes/api.php", content: `<?php\n\nuse Illuminate\\Support\\Facades\\Route;\n\nRoute::get('/health', function () {\n    return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);\n});\n` },
+                            { path: "app/Models/User.php", content: `<?php\n\nnamespace App\\Models;\n\nuse Illuminate\\Database\\Eloquent\\Factories\\HasFactory;\nuse Illuminate\\Foundation\\Auth\\User as Authenticatable;\n\nclass User extends Authenticatable\n{\n    use HasFactory;\n\n    protected $fillable = ['name', 'email', 'password'];\n    protected $hidden = ['password', 'remember_token'];\n}\n` },
+                            { path: ".env.example", content: `APP_NAME=${projectName}\nAPP_ENV=local\nAPP_KEY=\nAPP_DEBUG=true\nAPP_URL=http://localhost\n\nDB_CONNECTION=pgsql\nDB_HOST=127.0.0.1\nDB_PORT=5432\nDB_DATABASE=${projectName}\nDB_USERNAME=user\nDB_PASSWORD=password` },
+                            { path: "composer.json", content: JSON.stringify({ name: `app/${projectName}`, type: "project", require: { php: "^8.2", "laravel/framework": "^11.0" }, "require-dev": { phpunit: "^11.0" }, autoload: { "psr-4": { "App\\\\": "app/" } } }, null, 2) },
+                            { path: ".gitignore", content: `/vendor\n/node_modules\n/.env\n/storage/*.key\n*.log` },
+                        ]
+                    },
                 };
                 const tmpl = templates[template];
                 if (!tmpl) return JSON.stringify({ error: `Template inconnu: ${template}. Disponibles: ${Object.keys(templates).join(", ")}`, templates: Object.entries(templates).map(([k, v]) => ({ name: k, description: v.description })) });
-                const { createRepo: ghCreateRepo, applyPatch: ghApplyPatch } = await import("../githubService");
+                const { createRepo: ghCreateRepo, applyPatch: ghApplyPatch, getRepo: ghGetRepo } = await import("../githubService");
                 const owner = args.owner || "ulyssemdbh-commits";
+                const targetRepo = args.repoName || projectName;
+                let repoExists = false;
                 try {
-                    await ghCreateRepo(projectName, { description: tmpl.description, isPrivate: true, autoInit: true });
-                } catch (e: any) {
-                    if (!e.message?.includes("already exists")) throw e;
+                    await ghGetRepo(owner, targetRepo);
+                    repoExists = true;
+                } catch {
+                    try {
+                        await ghCreateRepo(targetRepo, { description: tmpl.description, isPrivate: true, autoInit: true });
+                    } catch (e: any) {
+                        if (e.message?.includes("already exists")) {
+                            repoExists = true;
+                        } else {
+                            return JSON.stringify({ error: `Impossible de créer le repo '${targetRepo}': ${e.message}`, suggestion: "Vérifier le token GitHub et les permissions, ou fournir un repo existant via repoName." });
+                        }
+                    }
                 }
                 const blobs: Array<{ path: string; content: string }> = tmpl.files.map(f => ({ path: f.path, content: f.content }));
                 const pkgJson: any = { name: projectName, version: "1.0.0", description: tmpl.description, scripts: {} };
@@ -5591,13 +5690,25 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                     pkgJson.scripts = { dev: "concurrently \"nodemon --exec ts-node server/index.ts\" \"cd client && vite\"", build: tmpl.buildCmd, start: "node dist/index.js" };
                 } else if (template === "nextjs") {
                     pkgJson.scripts = { dev: "next dev", build: "next build", start: "next start" };
+                } else if (template === "nestjs-prisma") {
+                    pkgJson.scripts = { dev: "nest start --watch", build: "nest build", start: "node dist/main", "prisma:generate": "prisma generate", "prisma:migrate": "prisma migrate dev", "prisma:studio": "prisma studio" };
+                } else if (template === "nestjs-fullstack") {
+                    pkgJson.scripts = { dev: "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"", "install:all": "cd backend && npm install && cd ../frontend && npm install" };
+                } else if (template === "fastapi") {
+                    pkgJson.scripts = { dev: "python -m uvicorn app.main:app --reload --port 3000", start: "python -m uvicorn app.main:app --host 0.0.0.0 --port 3000" };
+                } else if (template === "laravel") {
+                    pkgJson.scripts = { dev: "php artisan serve --port=3000", start: "php artisan serve --host=0.0.0.0 --port=3000" };
                 }
                 if (Object.keys(pkgJson.scripts).length > 0 || tmpl.deps || tmpl.devDeps) {
                     blobs.push({ path: "package.json", content: JSON.stringify(pkgJson, null, 2) });
                 }
                 blobs.push({ path: "README.md", content: `# ${projectName}\n\n${tmpl.description}\n\n## Setup\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n` });
-                await ghApplyPatch(owner, projectName, "main", blobs, `scaffold: ${template} project structure`);
-                return JSON.stringify({ action: "scaffold_project", projectName, template, description: tmpl.description, filesCreated: blobs.map(b => b.path), deps: tmpl.deps, devDeps: tmpl.devDeps, repoUrl: `https://github.com/${owner}/${projectName}`, nextSteps: [`npm install`, tmpl.deps ? `npm install ${tmpl.deps}` : null, tmpl.devDeps ? `npm install -D ${tmpl.devDeps}` : null, `npm run dev`].filter(Boolean) });
+                try {
+                    await ghApplyPatch(owner, targetRepo, "main", blobs, `scaffold: ${template} project structure`);
+                } catch (patchError: any) {
+                    return JSON.stringify({ error: `Scaffold réussi mais échec du push vers ${owner}/${targetRepo}: ${patchError.message}`, suggestion: "Vérifier que le repo existe et que le token a les permissions d'écriture.", repoExists, owner, targetRepo });
+                }
+                return JSON.stringify({ action: "scaffold_project", projectName, repo: `${owner}/${targetRepo}`, repoExists, template, description: tmpl.description, filesCreated: blobs.map(b => b.path), deps: tmpl.deps, devDeps: tmpl.devDeps, repoUrl: `https://github.com/${owner}/${targetRepo}`, nextSteps: [`npm install`, tmpl.deps ? `npm install ${tmpl.deps}` : null, tmpl.devDeps ? `npm install -D ${tmpl.devDeps}` : null, `npm run dev`].filter(Boolean) });
             }
             case "perf_loadtest": {
                 if (!appName) return JSON.stringify({ error: "appName requis" });
