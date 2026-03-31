@@ -725,13 +725,13 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
         type: "function",
         function: {
             name: "devops_github",
-            description: "Gère les repos GitHub de Maurice via le DevOps Bridge. Actions: list_repos, repo_info, create_repo, list_branches, delete_branch, list_commits, list_prs, create_branch, create_pr, merge_pr, get_file, update_file, delete_file, apply_patch, browse_files, search_code, list_workflows, list_workflow_runs, trigger_workflow, rerun_workflow, cancel_workflow, get_deploy_urls, set_deploy_urls, pages_status, enable_pages, update_pages, disable_pages, pages_build, dry_run_patch, devops_pipeline, crawl_preview, analyze_preview. crawl_preview: crawle/monitore en temps réel le site déployé d'un repo — vérifie statut HTTP, analyse HTML, SEO, erreurs, performance. analyze_preview: prend un screenshot du site déployé et utilise VisionHub + GPT-4 Vision pour analyser le DESIGN visuel (esthétique, UI/UX, couleurs, layout, typographie, accessibilité). Peut utiliser url directe ou chercher automatiquement les deploy URLs du repo. IMPORTANT — apply_patch OBLIGATOIRE: owner='ulyssemdbh-commits', repo='NomDuRepo', branch='la-branche', message='description du commit', files=[{path:'chemin/fichier.js', content:'CONTENU COMPLET DU FICHIER'}]. TOUJOURS fournir owner+repo+files. Si branch omis, utilise la branche par défaut du repo.",
+            description: "Gère les repos GitHub de Maurice via le DevOps Bridge. Actions: list_repos, repo_info, create_repo, list_branches, delete_branch, list_commits, list_prs, create_branch, create_pr, merge_pr, get_file, update_file, delete_file, apply_patch, smart_sync, browse_files, search_code, list_workflows, list_workflow_runs, trigger_workflow, rerun_workflow, cancel_workflow, get_deploy_urls, set_deploy_urls, pages_status, enable_pages, update_pages, disable_pages, pages_build, dry_run_patch, devops_pipeline, crawl_preview, analyze_preview. smart_sync: Push optimisé — compare les SHA git blob local vs remote, ne pousse QUE les fichiers modifiés. UTILISER PRÉFÉRENTIELLEMENT à apply_patch pour les syncs multi-fichiers (économise bande passante et API calls). Format: owner, repo, branch, files=[{path, content}], message. crawl_preview: crawle/monitore en temps réel le site déployé d'un repo. analyze_preview: analyse VisionHub du design. IMPORTANT — apply_patch/smart_sync OBLIGATOIRE: owner='ulyssemdbh-commits', repo='NomDuRepo', branch='la-branche', message='description du commit', files=[{path:'chemin/fichier.js', content:'CONTENU COMPLET DU FICHIER'}]. TOUJOURS fournir owner+repo+files. Si branch omis, utilise la branche par défaut du repo.",
             parameters: {
                 type: "object",
                 properties: {
                     action: {
                         type: "string",
-                        enum: ["list_repos", "repo_info", "create_repo", "delete_repo", "list_branches", "delete_branch", "list_commits", "list_prs", "create_branch", "create_pr", "merge_pr", "get_file", "update_file", "delete_file", "apply_patch", "browse_files", "search_code", "list_workflows", "list_workflow_runs", "trigger_workflow", "rerun_workflow", "cancel_workflow", "get_deploy_urls", "set_deploy_urls", "pages_status", "enable_pages", "update_pages", "disable_pages", "pages_build", "dry_run_patch", "devops_pipeline", "crawl_preview", "analyze_preview", "design_dashboard", "list_issues", "get_issue", "create_issue", "update_issue", "add_issue_comment", "list_releases", "create_release", "list_tags", "create_tag", "compare_branches", "blame", "get_commit_diff", "review_pr", "submit_review", "list_org_repos"],
+                        enum: ["list_repos", "repo_info", "create_repo", "delete_repo", "list_branches", "delete_branch", "list_commits", "list_prs", "create_branch", "create_pr", "merge_pr", "get_file", "update_file", "delete_file", "apply_patch", "smart_sync", "browse_files", "search_code", "list_workflows", "list_workflow_runs", "trigger_workflow", "rerun_workflow", "cancel_workflow", "get_deploy_urls", "set_deploy_urls", "pages_status", "enable_pages", "update_pages", "disable_pages", "pages_build", "dry_run_patch", "devops_pipeline", "crawl_preview", "analyze_preview", "design_dashboard", "list_issues", "get_issue", "create_issue", "update_issue", "add_issue_comment", "list_releases", "create_release", "list_tags", "create_tag", "compare_branches", "blame", "get_commit_diff", "review_pr", "submit_review", "list_org_repos"],
                         description: "Action à exécuter"
                     },
                     owner: { type: "string", description: "Propriétaire du repo (ex: Ulysseproject, ulyssemdbh-commits)" },
@@ -789,7 +789,7 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
 — ENVIRONNEMENT: env_get (lire le .env d'une app), env_set (ajouter/modifier des variables), env_delete (supprimer des variables)
 — BASE DE DONNÉES: list_databases (toutes les DBs PostgreSQL), backup_db (dump compressé), restore_db (restaurer un backup), list_backups (fichiers de backup)
 — NGINX: nginx_configs (voir toutes les configs Nginx actives), nginx_create (créer/réécrire une config Nginx pro — type=static|proxy, avec gzip, HTTP2, SSL, logs, sécurité), nginx_delete (supprimer une config Nginx et recharger), nginx_show (afficher le contenu d'une config spécifique), nginx_test (tester la syntaxe Nginx), nginx_reload (tester + recharger Nginx), nginx_logs (voir access/error logs d'une app — logType=access|error|both), nginx_audit (vérifie que chaque app PM2 a sa config Nginx et auto-crée celles qui manquent), nginx_catchall (installe un serveur par défaut 404 pour les domaines non configurés), verify_url (vérifie qu'un domaine est correctement configuré: Nginx + SSL + réponse HTTP), ssl_status (état SSL de tous les domaines ou d'un domaine spécifique), ssl_renew (forcer le renouvellement SSL via certbot)
-— URL DIAGNOSTIC: url_diagnose (diagnostic COMPLET + auto-réparation d'une URL: teste dossier, Nginx, SSL, PM2, port, root path et CORRIGE automatiquement 502/404/503/000), url_diagnose_all (teste ET corrige automatiquement staging + production pour un appName: {appName}.dev.ulyssepro.org ET {appName}.ulyssepro.org en une seule action)
+— URL DIAGNOSTIC: url_diagnose (diagnostic COMPLET + auto-réparation d'une URL: teste dossier, Nginx, SSL, PM2, port, root path et CORRIGE automatiquement 502/404/503/000), url_diagnose_all (teste ET corrige automatiquement staging + production pour un appName: {appName}-dev.ulyssepro.org ET {appName}.ulyssepro.org en une seule action)
 — CRON: cron_list (voir les tâches planifiées), cron_add (ajouter une tâche cron), cron_delete (supprimer une tâche)
 — INGÉNIERIE: install_packages (npm/yarn install dans une app), run_tests (npm test/vitest/jest dans une app), analyze_deps (audit dépendances: vulnérabilités, outdated, taille), debug_app (diagnostic complet: logs + PM2 status + port check + nginx + error patterns), refactor_check (linter, dead code, complexity analysis)
 — SÉCURITÉ & FIABILITÉ: security_scan (audit complet: secrets dans le code, vulnérabilités, headers HTTP, SSL, patterns dangereux, permissions), backup_app (backup complet: code + DB + nginx + env), rollback_app (rollback Git + rebuild + PM2 restart + health check, avec backup branch auto)
@@ -830,7 +830,7 @@ Pour deploy: fournir repoUrl + appName. Le système détecte auto si c'est stati
                     nginxType: { type: "string", enum: ["static", "proxy"], description: "Type de config Nginx (pour nginx_create)" },
                     rootDir: { type: "string", description: "Répertoire racine (pour nginx_create static, défaut: /var/www/apps/{appName}/dist)" },
                     logType: { type: "string", enum: ["access", "error", "both"], description: "Type de log Nginx (pour nginx_logs, défaut: both)" },
-                    isStaging: { type: "boolean", description: "Deploy/config en staging: pour deploy → utilise deployStagingApp (domaine .dev.ulyssepro.org, cert Let's Encrypt); pour nginx_create → ajoute -dev au nom" },
+                    isStaging: { type: "boolean", description: "Deploy/config en staging: pour deploy → utilise deployStagingApp (domaine {slug}-dev.ulyssepro.org, cert Let's Encrypt); pour nginx_create → ajoute -dev au nom" },
                     command: { type: "string", description: "Commande shell (pour exec)" },
                     lines: { type: "number", description: "Nombre de lignes de logs (défaut: 50)" },
                     instances: { type: "number", description: "Nombre d'instances PM2 (pour scale)" },
@@ -1463,6 +1463,25 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                         structuralIssues: analysis.structuralIssues.slice(0, 3),
                     }
                 });
+            }
+            case "smart_sync": {
+                if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
+                if (!files || !Array.isArray(files) || files.length === 0) return JSON.stringify({ error: "files requis. Format: files=[{path:'chemin/fichier', content:'CONTENU COMPLET'}]" });
+                let syncBranch = branch;
+                try {
+                    const repoInfo = await githubService.getRepo(owner, repo);
+                    if (!syncBranch) syncBranch = (repoInfo as any).default_branch || "main";
+                } catch { if (!syncBranch) syncBranch = "main"; }
+                if (!message) message = `[MaxAI] Smart sync — ${files.length} file(s)`;
+                const syncResult = await githubService.smartSync(owner, repo, syncBranch, files, message);
+                if (syncResult.success) {
+                    devopsDiscordNotify("Smart Sync", `**${message}**\n${owner}/${repo}@\`${syncBranch}\`\n${syncResult.filesChanged} changed, ${syncResult.skipped} skipped`, syncResult.filesChanged > 0 ? "success" : "info", [
+                        { name: "Changed", value: `${syncResult.filesChanged}`, inline: true },
+                        { name: "Skipped", value: `${syncResult.skipped}`, inline: true },
+                        { name: "Total", value: `${syncResult.filesTotal}`, inline: true },
+                    ]);
+                }
+                return JSON.stringify(syncResult);
             }
             case "browse_files": {
                 if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
@@ -5033,7 +5052,7 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                 }
                 if (result.success) {
                     try {
-                        const deployedDomain = isStagingDeploy ? `${baseAppName}.dev.ulyssepro.org` : (domain || `${appName}.ulyssepro.org`);
+                        const deployedDomain = isStagingDeploy ? `${baseAppName}-dev.ulyssepro.org` : (domain || `${appName}.ulyssepro.org`);
                         const ulysseUrl = `https://${deployedDomain}`;
                         const repoMatch = repoUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
                         if (repoMatch) {
@@ -5235,7 +5254,7 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                   if (urlMatch) resolvedAppName = urlMatch[1].replace(/-dev$/, '');
                 }
                 if (!resolvedAppName) return JSON.stringify({ error: "appName requis (slug du projet). Exemple: appName='tetrisgame'" });
-                const stagingDomain = `${resolvedAppName}.dev.ulyssepro.org`;
+                const stagingDomain = `${resolvedAppName}-dev.ulyssepro.org`;
                 const prodDomain = `${resolvedAppName}.ulyssepro.org`;
                 const stagingResult = await sshService.diagnoseAndFixUrl({
                     domain: stagingDomain,
