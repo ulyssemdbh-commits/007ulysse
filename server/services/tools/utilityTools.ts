@@ -5311,6 +5311,23 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                 if (!appName) return JSON.stringify({ error: "appName requis" });
                 const sanitizedApp = appName.replace(/[^a-zA-Z0-9_-]/g, "");
                 if (sanitizedApp !== appName) return JSON.stringify({ error: "appName contient des caractères non autorisés" });
+
+                if (command === "protocol" || command === "test-protocol" || command === "full") {
+                    const { runPreDeployTests, runPostDeployTests } = await import("../../routes/devopsMaxRoutes.testUtils");
+                    const env = (query as string)?.includes("prod") ? "production" : "staging";
+                    const preTests = await runPreDeployTests(sanitizedApp, sshService);
+                    const postTests = await runPostDeployTests(sanitizedApp, env as "staging" | "production", sshService);
+                    const allTests = [...preTests.tests, ...postTests.tests];
+                    const totalPassed = allTests.filter((t: any) => t.pass).length;
+                    const totalFailed = allTests.filter((t: any) => !t.pass).length;
+                    const lines: string[] = [];
+                    lines.push(`PRE-DEPLOY (${preTests.passed}/${preTests.total}):`);
+                    preTests.tests.forEach((t: any) => lines.push(`  ${t.pass ? "✅" : "❌"} ${t.name}: ${t.detail}`));
+                    lines.push(`POST-DEPLOY ${env.toUpperCase()} (${postTests.passed}/${postTests.total}):`);
+                    postTests.tests.forEach((t: any) => lines.push(`  ${t.pass ? "✅" : "❌"} ${t.name}: ${t.detail}`));
+                    return JSON.stringify({ action: "run_tests", mode: "protocol", appName: sanitizedApp, environment: env, totalPassed, totalFailed, totalTests: allTests.length, summary: lines.join("\n"), preDeployTests: preTests, postDeployTests: postTests });
+                }
+
                 const appDir = `/var/www/apps/${sanitizedApp}`;
                 const testScriptCheck = await sshService.executeCommand(`cd ${appDir} && node -e "const p=require('./package.json'); const s=p.scripts||{}; console.log(JSON.stringify({test:!!s.test,vitest:!!s.vitest,'test:unit':!!s['test:unit'],'test:e2e':!!s['test:e2e'],lint:!!s.lint,typecheck:!!s.typecheck||!!s['type-check']}))" 2>/dev/null`, 5000);
                 let availableScripts = {};

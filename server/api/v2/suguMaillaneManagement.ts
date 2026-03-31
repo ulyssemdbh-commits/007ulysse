@@ -2685,8 +2685,8 @@ router.post("/files/send-email-bulk", async (req: Request, res: Response) => {
             `SUGU Maillane`,
         ].join("\n");
 
-        const { gmailImapService } = await import("../../services/gmailImapService");
-        await gmailImapService.sendSmtp({ to, subject, body, attachments });
+        const { googleMailService } = await import("../../services/googleMailService");
+        await googleMailService.sendWithAttachment({ to, subject, body, attachments });
 
         for (const file of files) {
             await db.update(suguMaillaneFiles)
@@ -2737,8 +2737,8 @@ router.post("/files/:id/send-email", async (req: Request, res: Response) => {
 
         const attachment = { filename: file.originalName, content: buffer, contentType: file.mimeType };
 
-        const { gmailImapService } = await import("../../services/gmailImapService");
-        await gmailImapService.sendSmtp({ to, subject, body, attachments: [attachment] });
+        const { googleMailService } = await import("../../services/googleMailService");
+        await googleMailService.sendWithAttachment({ to, subject, body, attachments: [attachment] });
 
         await db.update(suguMaillaneFiles)
             .set({ emailedTo: sql`array_append(coalesce(emailed_to, '{}'::text[]), ${to}::text)` })

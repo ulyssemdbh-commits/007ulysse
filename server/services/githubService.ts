@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import * as crypto from "crypto";
 import { connectorBridge } from './connectorBridge';
 
 const githubTokenScope = new AsyncLocalStorage<string>();
@@ -334,6 +335,138 @@ export async function applyPatch(
   return { commit: commit.sha, message: commitMessage, filesChanged: files.length };
 }
 
+function computeGitBlobSha(content: Buffer): string {
+  const header = `blob ${content.length}\0`;
+  const store = Buffer.concat([Buffer.from(header), content]);
+  return crypto.createHash("sha1").update(store).digest("hex");
+}
+
+export interface SmartSyncResult {
+  success: boolean;
+  commitSha?: string;
+  filesChanged: number;
+  filesTotal: number;
+  skipped: number;
+  error?: string;
+}
+
+export async function smartSync(
+  owner: string,
+  repo: string,
+  branch: string,
+  files: Array<{ path: string; content: string | Buffer }>,
+  commitMessage?: string
+): Promise<SmartSyncResult> {
+  const total = files.length;
+  console.log(`[GitHubService] smartSync: ${owner}/${repo}@${branch} — ${total} file(s) to compare`);
+
+  try {
+    const branchData = await getBranch(owner, repo, branch);
+    const commitSha = branchData.commit.sha;
+    const commitData = await githubApi(`/repos/${owner}/${repo}/git/commits/${commitSha}`);
+    const baseTreeSha = commitData.tree.sha;
+
+    const treeData = await githubApi(`/repos/${owner}/${repo}/git/trees/${baseTreeSha}?recursive=1`);
+    const remoteTree = new Map<string, string>();
+    for (const item of (treeData.tree || [])) {
+      if (item.type === "blob") remoteTree.set(item.path, item.sha);
+    }
+    console.log(`[GitHubService] smartSync: remote tree has ${remoteTree.size} files`);
+
+    const modified: Array<{ path: string; content: string | Buffer }> = [];
+    const unchanged: Array<{ path: string; sha: string }> = [];
+
+    for (const file of files) {
+      const buf = typeof file.content === "string" ? Buffer.from(file.content, "utf-8") : file.content;
+      const localSha = computeGitBlobSha(buf);
+      const remoteSha = remoteTree.get(file.path);
+      if (localSha === remoteSha) {
+        unchanged.push({ path: file.path, sha: remoteSha });
+      } else {
+        modified.push(file);
+      }
+    }
+
+    if (modified.length === 0) {
+      console.log(`[GitHubService] smartSync: no changes detected — skipping`);
+      return { success: true, filesChanged: 0, filesTotal: total, skipped: total };
+    }
+
+    console.log(`[GitHubService] smartSync: ${modified.length} changed, ${unchanged.length} unchanged — uploading blobs...`);
+
+    const treeEntries: Array<{ path: string; mode: string; type: string; sha: string }> = [];
+
+    for (const u of unchanged) {
+      treeEntries.push({ path: u.path, mode: "100644", type: "blob", sha: u.sha });
+    }
+
+    for (const file of modified) {
+      const isBuffer = Buffer.isBuffer(file.content);
+      const blob = await githubApi(`/repos/${owner}/${repo}/git/blobs`, {
+        method: "POST",
+        body: isBuffer
+          ? { content: (file.content as Buffer).toString("base64"), encoding: "base64" }
+          : { content: file.content, encoding: "utf-8" },
+      });
+      treeEntries.push({ path: file.path, mode: "100644", type: "blob", sha: blob.sha });
+    }
+
+    const tree = await githubApi(`/repos/${owner}/${repo}/git/trees`, {
+      method: "POST",
+      body: { base_tree: baseTreeSha, tree: treeEntries },
+    });
+
+    const ts = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const msg = commitMessage || `[MaxAI] Smart sync — ${modified.length} files changed — ${ts}`;
+    const commit = await githubApi(`/repos/${owner}/${repo}/git/commits`, {
+      method: "POST",
+      body: { message: msg, tree: tree.sha, parents: [commitSha] },
+    });
+
+    await githubApi(`/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
+      method: "PATCH",
+      body: { sha: commit.sha },
+    });
+
+    console.log(`[GitHubService] smartSync SUCCESS: ${commit.sha?.slice(0, 7)} — ${modified.length} changed, ${unchanged.length} unchanged`);
+    return {
+      success: true,
+      commitSha: commit.sha,
+      filesChanged: modified.length,
+      filesTotal: total,
+      skipped: unchanged.length,
+    };
+  } catch (e: any) {
+    console.error(`[GitHubService] smartSync FAILED: ${e.message}`);
+    return { success: false, error: e.message, filesChanged: 0, filesTotal: total, skipped: 0 };
+  }
+}
+
+export async function smartSyncFromDisk(
+  owner: string,
+  repo: string,
+  branch: string,
+  rootDir: string,
+  filePaths: string[],
+  commitMessage?: string
+): Promise<SmartSyncResult> {
+  const fs = await import("fs");
+  const path = await import("path");
+
+  const files: Array<{ path: string; content: Buffer }> = [];
+  for (const relPath of filePaths) {
+    const absPath = path.join(rootDir, relPath);
+    try {
+      const content = fs.readFileSync(absPath);
+      files.push({ path: relPath, content });
+    } catch {
+      console.warn(`[GitHubService] smartSyncFromDisk: skipping ${relPath} (read error)`);
+    }
+  }
+
+  return smartSync(owner, repo, branch, files, commitMessage);
+}
+
 export async function getPagesStatus(owner: string, repo: string) {
   return githubApi(`/repos/${owner}/${repo}/pages`);
 }
@@ -595,4 +728,6 @@ export const githubService = {
   createWebhook,
   deleteRepo,
   listOrgRepos,
+  smartSync,
+  smartSyncFromDisk,
 };

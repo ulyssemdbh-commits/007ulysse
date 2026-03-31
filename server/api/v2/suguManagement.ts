@@ -4729,8 +4729,8 @@ router.post("/files/send-email-bulk", async (req: Request, res: Response) => {
             `SUGU Valentine`,
         ].join("\n");
 
-        const { gmailImapService } = await import("../../services/gmailImapService");
-        await gmailImapService.sendSmtp({ to, subject, body, attachments });
+        const { googleMailService } = await import("../../services/googleMailService");
+        await googleMailService.sendWithAttachment({ to, subject, body, attachments });
 
         for (const file of files) {
             await db.update(suguFiles)
@@ -4781,8 +4781,8 @@ router.post("/files/:id/send-email", async (req: Request, res: Response) => {
 
         const attachment = { filename: file.originalName, content: buffer, contentType: file.mimeType };
 
-        const { gmailImapService } = await import("../../services/gmailImapService");
-        await gmailImapService.sendSmtp({ to, subject, body, attachments: [attachment] });
+        const { googleMailService } = await import("../../services/googleMailService");
+        await googleMailService.sendWithAttachment({ to, subject, body, attachments: [attachment] });
 
         await db.update(suguFiles)
             .set({ emailedTo: sql`array_append(coalesce(emailed_to, '{}'::text[]), ${to}::text)` })
@@ -5691,8 +5691,8 @@ ${markdownToHtmlBasic(analysis)}
 <p style="font-size:11px;color:#94a3b8;text-align:center">Document généré par Ulysse — Système de gestion SUGU Valentine</p>
 </body></html>`;
 
-        const { gmailImapService } = await import("../../services/gmailImapService");
-        await gmailImapService.sendSmtp({
+        const { googleMailService } = await import("../../services/googleMailService");
+        await googleMailService.sendWithAttachment({
             to: email,
             subject: `${title} — SUGU Valentine`,
             body: `Veuillez trouver ci-joint le rapport : ${title}.\n\nCordialement,\nUlysse — Gestion SUGU Valentine`,
