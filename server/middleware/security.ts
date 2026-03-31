@@ -143,7 +143,14 @@ export function setupSecurityMiddleware(app: Express) {
         workerSrc: ["'self'", "blob:"],
         objectSrc: ["'none'"],
         frameSrc: ["'self'"],
-        frameAncestors: ["'self'", ...(process.env.ALLOWED_FRAME_ORIGINS?.split(",") || [])],
+        frameAncestors: [
+          "'self'",
+          "https://ulyssepro.org",
+          "https://*.ulyssepro.org",
+          "https://ulysseproject.org",
+          "https://*.ulysseproject.org",
+          ...(process.env.ALLOWED_FRAME_ORIGINS?.split(",") || []),
+        ],
         baseUri: ["'self'"],
         formAction: ["'self'"],
         upgradeInsecureRequests: process.env.NODE_ENV === "production" ? [] : null,
@@ -151,6 +158,7 @@ export function setupSecurityMiddleware(app: Express) {
     },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    xFrameOptions: false,
   }));
   
   app.use("/api/auth/login", authLimiter);
