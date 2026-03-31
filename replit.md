@@ -3,6 +3,16 @@
 ## Overview
 Ulysse is a full-stack AI personal assistant system designed to provide a unified, intelligent assistant experience across various domains including project management (DevMax), restaurant automation (COBA Pro, SUGU), football/betting intelligence, and DevOps. It operates autonomously with scheduled jobs, proactive intelligence, and self-healing capabilities, aiming to deliver a comprehensive and intelligent assistant for both personal and professional use.
 
+## CRITICAL: Domain & Hosting Architecture
+- **UlyssePro.org** → Hosted on **Hetzner** (65.21.209.102), fully autonomous and independent. PM2 process `ulysse` (id 164), served from `/var/www/ulysse/dist/index.cjs`. NEVER confuse with Replit.
+- **UlysseProject.org** → Hosted on **Replit** (this project). Development environment and tools.
+- **DevMax** (in this Replit project) manages deployments TO Hetzner via SSH. It deploys apps like 007ulysse-dev, staging apps, etc. onto the Hetzner server.
+- **Cloudflare** proxies both domains. SSL mode: Full. Domain naming convention for all DevMax projects (current and future):
+  - **Staging**: `{slug}-dev.ulyssepro.org` (e.g. `007ulysse-dev.ulyssepro.org`)
+  - **Production**: `{slug}.ulyssepro.org` (e.g. `007ulysse.ulyssepro.org`)
+  - RULE: Only hyphens in the subdomain, single dot before `ulyssepro.org`. NEVER use `slug.dev.ulyssepro.org` (2nd-level subdomain breaks Cloudflare Universal SSL).
+  - Cloudflare wildcards: `*-dev.ulyssepro.org` (staging) and `*.ulyssepro.org` (production) both proxied.
+
 ## User Preferences
 - Communication style: Simple, everyday French with Maurice.
 - Owner: Maurice (userId=1), with family access for Iris (daughters).
@@ -18,7 +28,7 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 
 ### AI Engine & Personas
 - **Ulysse Core Engine**: Orchestrates AI providers with circuit breakers, response learning, and decision caching.
-- **Action-First Orchestrator V4**: Unifies OpenAI function calling with 84 tool handlers via ActionHub.
+- **Action-First Orchestrator V4**: Unifies OpenAI function calling with 90 tool handlers via ActionHub.
 - **Smart Model Router**: Routes tasks to providers based on complexity, token budget, and health.
 - **AI Personas**: Ulysse (primary, French), Iris (daughters' assistant), Max (DevMax professional persona), Alfred (tech/dev advisor). All personas possess Senior Dev Engineering capabilities.
 
@@ -86,7 +96,8 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 
 ### DevOps Intelligence Engine & 5-Axes System
 - Seven custom algorithms for autonomous DevOps analysis (dependency mapping, risk scoring, patch advisories, code review) and a 5-Axes system integrating vision, execution orchestration, auto-amelioration, correlated observability, and culture.
-- **Deep Code Analysis Protection System**: Multi-layer protection preventing MaxAI from making destructive code changes. Covers all write paths: `update_file`, `apply_patch`, `delete_file`.
+- **Smart Sync**: Optimized GitHub push comparing SHA blob hashes — only uploads changed files. Saves ~80% API calls vs full push. Available as `smart_sync` action in devops_github tool and standalone via `scripts/smart_push.ts`.
+- **Deep Code Analysis Protection System**: Multi-layer protection preventing MaxAI from making destructive code changes. Covers all write paths: `update_file`, `apply_patch`, `smart_sync`, `delete_file`.
   - **Structural comparison**: Extracts exports, imports, functions, classes from old and new code; detects lost exports/functions.
   - **Destructive change detection**: Blocks modifications that remove >85% of file content; warns at >50%; detects stub/placeholder code.
   - **Branch protection**: Forces modifications to a `maxai/*` branch + auto-creates PR when targeting default branch with risky changes.
