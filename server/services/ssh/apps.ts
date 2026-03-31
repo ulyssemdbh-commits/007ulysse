@@ -72,7 +72,7 @@ export function createAppMethods(service: SSHService) {
 
       for (const app of pm2Apps) {
         const nginx = nginxMap.get(app.name);
-        const domain = nginx?.domain || (appDirs.has(app.name) ? ((app.name.endsWith("-dev") || app.name.endsWith("-staging")) ? `${app.name.replace(/-(dev|staging)$/, "")}.dev.ulyssepro.org` : `${app.name}.ulyssepro.org`) : null);
+        const domain = nginx?.domain || (appDirs.has(app.name) ? `${app.name}.ulyssepro.org` : null);
         results.push({
           name: app.name,
           domain,
@@ -94,7 +94,7 @@ export function createAppMethods(service: SSHService) {
         if (nginx.domain?.includes("ulyssepro.org") || appDirs.has(name)) {
           results.push({
             name,
-            domain: nginx.domain || ((name.endsWith("-dev") || name.endsWith("-staging")) ? `${name.replace(/-(dev|staging)$/, "")}.dev.ulyssepro.org` : `${name}.ulyssepro.org`),
+            domain: nginx.domain || `${name}.ulyssepro.org`,
             port: nginx.port || null,
             ssl: nginx.ssl,
             status: nginx.isStatic ? "static" : "stopped",
@@ -114,7 +114,7 @@ export function createAppMethods(service: SSHService) {
         const nginx = nginxMap.get(dirName);
         results.push({
           name: dirName,
-          domain: nginx?.domain || ((dirName.endsWith("-dev") || dirName.endsWith("-staging")) ? `${dirName.replace(/-(dev|staging)$/, "")}.dev.ulyssepro.org` : `${dirName}.ulyssepro.org`),
+          domain: nginx?.domain || `${dirName}.ulyssepro.org`,
           port: nginx?.port || null,
           ssl: nginx?.ssl || false,
           status: nginx ? (nginx.isStatic ? "static" : "stopped") : "deployed",
