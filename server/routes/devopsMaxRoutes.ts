@@ -1040,7 +1040,7 @@ router.get("/connected-repos", async (req: Request, res: Response) => {
 
     res.json({
       production: { ...prod, role: "production", deployUrl: proj?.production_url || `https://${slug}.ulyssepro.org` },
-      staging: { ...test, role: "staging", deployUrl: proj?.staging_url || `https://${slug}.dev.ulyssepro.org`, port: proj?.staging_port },
+      staging: { ...test, role: "staging", deployUrl: proj?.staging_url || `https://${slug}-dev.ulyssepro.org`, port: proj?.staging_port },
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1249,7 +1249,7 @@ router.get("/ssl-status", async (req: Request, res: Response) => {
 
     const { sshService } = await import("../services/sshService");
     const domain = `${repo.deploySlug}.ulyssepro.org`;
-    const stagingDomain = `${repo.deploySlug}.dev.ulyssepro.org`;
+    const stagingDomain = `${repo.deploySlug}-dev.ulyssepro.org`;
 
     const [prodSsl, stagingSsl, autoRenew] = await Promise.all([
       sshService.checkSslStatus(domain),
