@@ -100,7 +100,7 @@ export const cloudflareService = {
   },
 
   async ensureDevWildcard(): Promise<{ success: boolean; action: string; error?: string }> {
-    return createOrUpdateRecord("*.dev.ulyssepro.org", true);
+    return createOrUpdateRecord("*-dev.ulyssepro.org", true);
   },
 
   async ensureDnsRecords(slug: string): Promise<{
@@ -108,7 +108,7 @@ export const cloudflareService = {
     results: { domain: string; action: string; error?: string }[];
   }> {
     const prodName = `${slug}.ulyssepro.org`;
-    const stagingName = `${slug}.dev.ulyssepro.org`;
+    const stagingName = `${slug}-dev.ulyssepro.org`;
 
     const [prodResult, stagingResult] = await Promise.all([
       createOrUpdateRecord(prodName, true),
@@ -136,7 +136,6 @@ export const cloudflareService = {
     const removed: string[] = [];
     const names = [
       `${slug}.ulyssepro.org`,
-      `${slug}.dev.ulyssepro.org`,
       `${slug}-dev.ulyssepro.org`,
     ];
 
@@ -153,7 +152,6 @@ export const cloudflareService = {
     const records: DnsRecord[] = [];
     const names = [
       `${slug}.ulyssepro.org`,
-      `${slug}.dev.ulyssepro.org`,
       `${slug}-dev.ulyssepro.org`,
     ];
 
@@ -171,7 +169,7 @@ export const cloudflareService = {
     production: { domain: string; exists: boolean; proxied: boolean; ip: string | null; recordId: string | null };
   }> {
     const prodDomain = `${slug}.ulyssepro.org`;
-    const stagingDomain = `${slug}.dev.ulyssepro.org`;
+    const stagingDomain = `${slug}-dev.ulyssepro.org`;
 
     const [prodRecord, stagingRecord] = await Promise.all([
       findExistingRecord(prodDomain),
@@ -206,7 +204,7 @@ export const cloudflareService = {
     production: { domain: string; action: string; error?: string };
   }> {
     const prodDomain = `${slug}.ulyssepro.org`;
-    const stagingDomain = `${slug}.dev.ulyssepro.org`;
+    const stagingDomain = `${slug}-dev.ulyssepro.org`;
 
     const [prodResult, stagingResult] = await Promise.all([
       createOrUpdateRecord(prodDomain, options?.productionProxied !== false),
@@ -223,7 +221,7 @@ export const cloudflareService = {
   },
 
   async toggleProxy(slug: string, environment: "staging" | "production", proxied: boolean): Promise<{ success: boolean; error?: string }> {
-    const domain = environment === "staging" ? `${slug}.dev.ulyssepro.org` : `${slug}.ulyssepro.org`;
+    const domain = environment === "staging" ? `${slug}-dev.ulyssepro.org` : `${slug}.ulyssepro.org`;
     const record = await findExistingRecord(domain);
     if (!record) return { success: false, error: `DNS record not found for ${domain}` };
 
