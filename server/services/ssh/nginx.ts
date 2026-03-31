@@ -14,7 +14,7 @@ export function createNginxMethods(service: SSHService) {
       const { appName, type, isStaging = false } = params;
       const normalized = normalizeNginxName(appName);
       const configName = isStaging ? `${normalized}-dev` : normalized;
-      const domain = params.domain || (isStaging ? `${normalized}.dev.ulyssepro.org` : `${normalized}.ulyssepro.org`);
+      const domain = params.domain || (isStaging ? `${normalized}-dev.ulyssepro.org` : `${normalized}.ulyssepro.org`);
 
       let nginxConf: string;
       if (type === "static") {
@@ -195,10 +195,7 @@ server {
           }
 
           const isStaging = name.endsWith("-dev") || name.endsWith("-staging");
-          const baseName = isStaging ? name.replace(/-(dev|staging)$/, "") : name;
-          const domain = isStaging
-            ? `${baseName}.dev.ulyssepro.org`
-            : `${baseName}.ulyssepro.org`;
+          const domain = `${name}.ulyssepro.org`;
 
           const nginxConf = proxyNginxBlock(domain, name, parseInt(port));
 
