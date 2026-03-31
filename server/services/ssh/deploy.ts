@@ -94,7 +94,7 @@ export function createDeployMethods(service: SSHService) {
       }
 
       let resolvedEnvSource = copyEnvFrom;
-      if (!resolvedEnvSource && !devmaxProjectId && Object.keys(envVars).length === 0) {
+      if (!resolvedEnvSource && Object.keys(envVars).filter(k => k !== "NODE_ENV" && k !== "PORT").length === 0) {
         const pm2ListResult = await service.executeCommand(`pm2 jlist 2>/dev/null || echo "[]"`, 10000);
         try {
           const pm2Apps: any[] = JSON.parse(pm2ListResult.output || "[]");
@@ -139,6 +139,7 @@ export function createDeployMethods(service: SSHService) {
       await service.executeCommand(
         `rm -f /etc/nginx/sites-enabled/${baseSlug}-placeholder /etc/nginx/sites-enabled/${baseSlug}-staging-placeholder /etc/nginx/sites-enabled/${baseSlug}-dev-placeholder && ` +
         `rm -f /etc/nginx/sites-available/${baseSlug}-placeholder /etc/nginx/sites-available/${baseSlug}-staging-placeholder /etc/nginx/sites-available/${baseSlug}-dev-placeholder && ` +
+        `grep -q 'connection_upgrade' /etc/nginx/nginx.conf || sed -i '/http {/a\\    map \\$http_upgrade \\$connection_upgrade {\\n        default upgrade;\\n        "" close;\\n    }' /etc/nginx/nginx.conf && ` +
         `nginx -t 2>&1 && systemctl reload nginx`,
         10000
       ).catch(() => {});
@@ -430,7 +431,7 @@ export function createDeployMethods(service: SSHService) {
       await service.writeRemoteFile(`${appDir}/ecosystem.config.cjs`, ecosystemContent);
 
       const hasLockFile = await service.executeCommand(`[ -f "${appDir}/package-lock.json" ] && echo "HAS_LOCK" || echo "NO_LOCK"`, 5000);
-      const npmInstallCmd = hasLockFile.output?.includes("HAS_LOCK") ? "npm ci" : "npm install --no-audit --no-fund";
+      const npmInstallCmd = hasLockFile.output?.includes("HAS_LOCK") ? "npm ci --include=dev" : "npm install --include=dev --no-audit --no-fund";
 
       logs.push(`[6/10] Installing dependencies...`);
       const installResult = await service.executeCommand(
