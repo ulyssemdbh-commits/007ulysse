@@ -3035,19 +3035,35 @@ async function parseDocumentPDF(buffer: Buffer, filename?: string, restaurant: "
     // Strategy: text-based AI if text available, direct PDF vision if not
     // =================================================================
     let aiSuccess = false;
-    try {
+    {
         let aiResult: Partial<ParsedDocumentData> | null = null;
+
         if (pdfTextExtracted) {
-            aiResult = await parseDocumentWithAI(text, filename, knowledgeHints);
+            try {
+                aiResult = await parseDocumentWithAI(text, filename, knowledgeHints);
+            } catch (e: any) {
+                console.warn(`[SUGU] Gemini text extraction failed: ${e?.message}`);
+            }
         }
+
         if (!aiResult || !(aiResult.supplier && typeof aiResult.amount === "number" && aiResult.amount !== 0)) {
-            console.log(`[SUGU] Text-based AI ${pdfTextExtracted ? "incomplete" : "skipped (no text)"}, trying GPT-4o vision...`);
-            aiResult = await parseDocumentWithGPT4oVision(buffer, filename, knowledgeHints);
+            try {
+                console.log(`[SUGU] Text-based AI ${pdfTextExtracted ? "incomplete" : "skipped (no text)"}, trying GPT-4o vision...`);
+                aiResult = await parseDocumentWithGPT4oVision(buffer, filename, knowledgeHints);
+            } catch (e: any) {
+                console.warn(`[SUGU] GPT-4o vision failed: ${e?.message}`);
+            }
         }
+
         if (!aiResult || !(aiResult.supplier && typeof aiResult.amount === "number" && aiResult.amount !== 0)) {
-            console.log(`[SUGU] GPT-4o vision incomplete, falling back to Gemini vision...`);
-            aiResult = await parseDocumentWithAIVision(buffer, filename, knowledgeHints);
+            try {
+                console.log(`[SUGU] GPT-4o vision incomplete, falling back to Gemini vision...`);
+                aiResult = await parseDocumentWithAIVision(buffer, filename, knowledgeHints);
+            } catch (e: any) {
+                console.warn(`[SUGU] Gemini vision failed: ${e?.message}`);
+            }
         }
+
         if (aiResult) {
             if (aiResult.supplier) result.supplier = aiResult.supplier;
             if (typeof aiResult.amount === "number" && aiResult.amount !== 0) result.amount = aiResult.amount;
@@ -3068,8 +3084,10 @@ async function parseDocumentPDF(buffer: Buffer, filename?: string, restaurant: "
             aiSuccess = !!(result.supplier && result.amount && result.amount !== 0);
             console.log(`[SUGU] AI extraction: supplier=${result.supplier}, amount=${result.amount}, date=${result.date}, invoice=${result.invoiceNumber}`);
         }
-    } catch (aiErr: any) {
-        console.error(`[SUGU] AI extraction failed, using regex fallback:`, aiErr?.message);
+
+        if (!aiSuccess) {
+            console.warn(`[SUGU] All AI extraction methods failed, using regex fallback`);
+        }
     }
 
     if (result.supplier) {
