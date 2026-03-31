@@ -109,6 +109,43 @@ export const twoFactorService = {
     }
   },
 
+  async sendViaEmail(sessionId: string, userId: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      cleanExpired();
+
+      let pending = pendingOtps.get(sessionId);
+      if (!pending) {
+        const code = generateOtpCode();
+        pending = {
+          code,
+          sessionId,
+          userId,
+          expiresAt: Date.now() + OTP_EXPIRY_MS,
+          attempts: 0,
+        };
+        pendingOtps.set(sessionId, pending);
+      }
+
+      try {
+        const { agentMailService } = await import("./agentMailService");
+        await agentMailService.sendEmail({
+          to: OWNER_EMAIL,
+          subject: "🔐 Code de vérification Ulysse 2FA",
+          body: `Bonjour Maurice,\n\nVotre code de vérification Ulysse est : ${pending.code}\n\nCe code expire dans 10 minutes.\n\n— Ulysse`,
+        }, "ulysse", userId);
+        console.log(`[2FA] Code sent via email to ${OWNER_EMAIL} for session ${sessionId.slice(0, 8)}...`);
+      } catch (emailErr: any) {
+        console.error(`[2FA] Email send failed:`, emailErr.message);
+        return { success: false, error: "Impossible d'envoyer le code par e-mail" };
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      console.error("[2FA] Email generation error:", e.message);
+      return { success: false, error: "Erreur lors de l'envoi par e-mail" };
+    }
+  },
+
   async resend(sessionId: string, userId: number): Promise<{ success: boolean; error?: string }> {
     pendingOtps.delete(sessionId);
     return this.generateAndSend(sessionId, userId);

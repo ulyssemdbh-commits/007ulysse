@@ -55,7 +55,7 @@ const PAGE_CONTEXTS: Record<string, PageContext> = {
   "/courses/sugumaillane/history": { pageId: "sugumaillane-history", pageName: "Historique SUGU Maillane", pageDescription: "Historique des formations SUGU Maillane" },
 };
 
-const PAGES_WITH_OWN_CHAT = ["/", "/talking", "/talking-v2", "/devops", "/suguval", "/sugumaillane", "/assistant", "/iris", "/iris-talking", "/max", "/devops-max", "/devmax"];
+const PAGES_WITH_OWN_CHAT = ["/", "/talking", "/talking-v2", "/devops", "/suguval", "/sugumaillane", "/assistant", "/iris", "/iris-talking", "/max", "/devops-max", "/devmax", "/login"];
 
 export function emitChatSync(conversationId: number, source: string) {
   window.dispatchEvent(new CustomEvent("ulysse:chat-sync", {

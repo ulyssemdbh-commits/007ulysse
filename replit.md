@@ -141,7 +141,7 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 ### Infrastructure
 - **Hetzner VPS**: Primary production server (Ubuntu 24.04). App runs at `/var/www/ulysse` via PM2 (id 164, port 5000).
 - **CI/CD Pipeline — DevOpsMax 100% Autonome**:
-  1. `scripts/github_push_api.ts` — Full project push (775 files) via Git Trees API with chunked progress tracking (200 files/run, resume from checkpoint). Targets both `007ulysse` and `ulysseproject` repos.
+  1. `scripts/github_push_api.ts` — Full project push (787 files) via Git Trees API with chunked progress tracking (200 files/run, resume from checkpoint). Targets both `007ulysse` and `ulysseproject` repos.
   2. GitHub webhooks on both repos → `https://ulyssepro.org/webhook/deploy` → nginx → port 9000 → `webhook-server.cjs` (PM2 id 30) → `/opt/ulysse/deploy.sh`
   3. `deploy.sh` (fully autonomous, no Replit needed): `git fetch 007ulysse main` → `git reset --hard` → `npm ci --include=dev` → `npm i pdfkit fontkit restructure` → `NODE_OPTIONS=--max-old-space-size=3072 npx tsx script/build.ts` → `pm2 restart ulysse` → health check HTTP 200
   4. Deploy script also at `scripts/hetzner_deploy.sh` (synced to GitHub)

@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { Fingerprint, Lock, User, Eye, EyeOff, Loader2, CheckCircle2, Zap, Activity, ShieldCheck, Mail, RefreshCw } from "lucide-react";
+import { Fingerprint, Lock, User, Eye, EyeOff, Loader2, CheckCircle2, Zap, Activity, ShieldCheck, RefreshCw, Mail } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 
@@ -25,6 +26,8 @@ export default function Login() {
   const [otpCode, setOtpCode] = useState("");
   const [isVerifying2FA, setIsVerifying2FA] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -108,7 +111,7 @@ export default function Login() {
           setShow2FA(true);
           toast({
             title: "Vérification requise",
-            description: "Un code a été envoyé à votre email.",
+            description: "Un code a été envoyé sur Discord.",
           });
         } else {
           toast({
@@ -156,7 +159,7 @@ export default function Login() {
       await resend2FA();
       toast({
         title: "Code renvoyé",
-        description: "Vérifiez votre email.",
+        description: "Vérifiez Discord.",
       });
       setOtpCode("");
     } catch (error: any) {
@@ -167,6 +170,26 @@ export default function Login() {
       });
     } finally {
       setIsResending(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    setIsSendingEmail(true);
+    try {
+      await apiRequest("POST", "/api/auth/2fa/send-email");
+      setEmailSent(true);
+      toast({
+        title: "Code envoyé par e-mail",
+        description: "Vérifiez djedoumaurice@gmail.com.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: "Impossible d'envoyer le code par e-mail.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -324,18 +347,18 @@ export default function Login() {
             </motion.div>
             <h1 className="text-2xl font-bold text-foreground">Vérification 2FA</h1>
             <p className="text-muted-foreground mt-2">
-              Un code à 6 chiffres a été envoyé à votre email
+              Un code à 6 chiffres a été envoyé sur Discord
             </p>
           </div>
 
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Mail className="w-5 h-5" />
+                <ShieldCheck className="w-5 h-5" />
                 Code de vérification
               </CardTitle>
               <CardDescription>
-                Saisissez le code reçu par email pour confirmer votre identité
+                Saisissez le code reçu sur Discord pour confirmer votre identité
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -396,6 +419,21 @@ export default function Login() {
                 </button>
                 <span className="text-muted-foreground">Expire dans 10 min</span>
               </div>
+
+              <button
+                type="button"
+                onClick={handleSendEmail}
+                disabled={isSendingEmail || emailSent}
+                className="w-full flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-2 border border-border/50 rounded-lg hover:border-border"
+                data-testid="button-send-email-2fa"
+              >
+                {isSendingEmail ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Mail className="w-3.5 h-3.5" />
+                )}
+                {emailSent ? "Code envoyé à djedoumaurice@gmail.com" : "Envoyer par e-mail"}
+              </button>
             </CardContent>
           </Card>
 

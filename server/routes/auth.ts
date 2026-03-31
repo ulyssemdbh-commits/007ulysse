@@ -238,6 +238,31 @@ router.post("/2fa/resend", requireAuth, async (req, res) => {
   }
 });
 
+router.post("/2fa/send-email", requireAuth, async (req, res) => {
+  try {
+    if (!req.user?.isOwner) {
+      return res.status(403).json({ error: "2FA réservé au propriétaire" });
+    }
+
+    const sessionToken = getSessionToken(req);
+    if (!sessionToken) {
+      return res.status(401).json({ error: "Session requise" });
+    }
+
+    const { twoFactorService } = await import("../services/twoFactorService");
+    const result = await twoFactorService.sendViaEmail(sessionToken, req.user.id);
+
+    if (!result.success) {
+      return res.status(500).json({ error: result.error });
+    }
+
+    res.json({ success: true, message: "Code envoyé par e-mail" });
+  } catch (error) {
+    console.error("2FA send-email error:", error);
+    res.status(500).json({ error: "Erreur lors de l'envoi par e-mail" });
+  }
+});
+
 router.post("/max-auto-login", authLimiter, async (req, res) => {
   try {
     if (!process.env.ALFRED_PASSWORD) {
