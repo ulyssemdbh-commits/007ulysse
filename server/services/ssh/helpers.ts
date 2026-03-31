@@ -21,8 +21,8 @@ export function resolveAppDomain(appName: string, customDomain?: string): string
   return `${appName}.ulyssepro.org`;
 }
 
-export const ORIGIN_CERT = "/etc/ssl/certs/ulysse.crt";
-export const ORIGIN_KEY = "/etc/ssl/private/ulysse.key";
+export const ORIGIN_CERT = "/etc/ssl/cloudflare/ulyssepro.org.pem";
+export const ORIGIN_KEY = "/etc/ssl/cloudflare/ulyssepro.org.key";
 
 export function sslCertForDomain(_domain: string): { cert: string; key: string } {
   return { cert: ORIGIN_CERT, key: ORIGIN_KEY };
@@ -141,7 +141,7 @@ export function proxyNginxBlock(domain: string, appName: string, port: number): 
         proxy_pass http://${upstream}_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \\$http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection \\$connection_upgrade;
         proxy_set_header Host \\$host;
         proxy_set_header X-Real-IP \\$remote_addr;
         proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;
@@ -230,7 +230,7 @@ export function pm2EcosystemConfig(appName: string, appDir: string, envVars: Rec
     script: 'npm',
     args: 'start',
     cwd: '${appDir}',
-    max_memory_restart: '512M',
+    max_memory_restart: '1024M',
     restart_delay: 3000,
     max_restarts: 10,
     min_uptime: '10s',
