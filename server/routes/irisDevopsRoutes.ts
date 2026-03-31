@@ -176,7 +176,7 @@ async function autoProvisionProject(projectId: number, subdomain: string, projec
   prodResult.logs.forEach(l => logs.push(`  ${l}`));
 
   const testPort = port + 1000;
-  const testDomain = `${subdomain}.dev.ulyssepro.org`;
+  const testDomain = `${subdomain}-dev.ulyssepro.org`;
   const testUpstream = `${subdomain}_test`;
   const testSsl = sslCertForDomain(testDomain);
   const testResult = await setupNginxForDomain(testUpstream, testDomain, testPort, testSsl.cert, testSsl.key);
@@ -323,7 +323,7 @@ router.post("/projects", async (req: Request, res: Response) => {
       provisionLogs: provisionResult.logs,
       urls: {
         production: `https://${subdomain}.ulyssepro.org`,
-        test: `https://${subdomain}.dev.ulyssepro.org`,
+        test: `https://${subdomain}-dev.ulyssepro.org`,
         github: provisionResult.githubRepo ? `https://github.com/${provisionResult.githubRepo}` : null,
       }
     });
