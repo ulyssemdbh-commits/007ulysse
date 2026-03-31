@@ -457,7 +457,7 @@ function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProject) => v
       toast({ 
         title: "Projet créé ✓", 
         description: hasRepo 
-          ? `Déploiement automatique en cours...\n${computedSlug}.dev.ulyssepro.org + ${computedSlug}.ulyssepro.org` 
+          ? `Déploiement automatique en cours...\n${computedSlug}-dev.ulyssepro.org + ${computedSlug}.ulyssepro.org` 
           : "Configurez un repo GitHub pour activer le déploiement automatique"
       });
       const createdProject: DevmaxProject = {
@@ -4481,7 +4481,7 @@ function CustomDomainsPanel() {
         ) : null}
 
         <p className="text-[10px] text-muted-foreground">
-          Format: <code className="text-cyan-400">slug.dev.ulyssepro.org</code> (staging) / <code className="text-emerald-400">slug.ulyssepro.org</code> (production)
+          Format: <code className="text-cyan-400">slug-dev.ulyssepro.org</code> (staging) / <code className="text-emerald-400">slug.ulyssepro.org</code> (production)
         </p>
       </div>
 
