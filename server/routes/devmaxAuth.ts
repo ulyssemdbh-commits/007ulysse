@@ -290,8 +290,8 @@ async function ensureDevmaxTables() {
 
     const migrated = await db.execute(sql`
       UPDATE devmax_projects 
-      SET staging_url = REPLACE(REPLACE(staging_url, '.test.ulyssepro.org', '.dev.ulyssepro.org'), '-dev.ulyssepro.org', '.dev.ulyssepro.org')
-      WHERE staging_url LIKE '%.test.ulyssepro.org%' OR staging_url LIKE '%-dev.ulyssepro.org%'
+      SET staging_url = REPLACE(REPLACE(staging_url, '.test.ulyssepro.org', '-dev.ulyssepro.org'), '.dev.ulyssepro.org', '-dev.ulyssepro.org')
+      WHERE staging_url LIKE '%.test.ulyssepro.org%' OR staging_url LIKE '%.dev.ulyssepro.org%'
     `).catch(() => null);
     if (migrated && (migrated as any).rowCount > 0) {
       console.log(`[DevMax] Migrated ${(migrated as any).rowCount} staging URLs from .test.ulyssepro.org to -dev.ulyssepro.org`);
@@ -316,7 +316,7 @@ async function ensureDevmaxTables() {
 
     await db.execute(sql`
       UPDATE devmax_projects 
-      SET staging_url = 'https://' || deploy_slug || '.dev.ulyssepro.org',
+      SET staging_url = 'https://' || deploy_slug || '-dev.ulyssepro.org',
           production_url = 'https://' || deploy_slug || '.ulyssepro.org'
       WHERE deploy_slug IS NOT NULL 
         AND (staging_url IS NULL OR production_url IS NULL)
@@ -1083,7 +1083,7 @@ router.post("/projects", async (req: Request, res: Response) => {
     const repoUrl = repoOwner && repoName ? `https://github.com/${repoOwner}/${repoName}` : null;
     const slug = (deploySlug || repoName || name).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 
-    const stagingUrl = slug ? `https://${slug}.dev.ulyssepro.org` : null;
+    const stagingUrl = slug ? `https://${slug}-dev.ulyssepro.org` : null;
     const productionUrl = slug ? `https://${slug}.ulyssepro.org` : null;
 
     await db.execute(sql`
@@ -1307,7 +1307,7 @@ async function autoDeployProject(projectId: string, repoOwner: string, repoName:
     }
 
     const reserved = await sshService.reserveProjectPorts(projectId, "max");
-    console.log(`[DevMax] Deploying staging: ${slug}.dev.ulyssepro.org (port ${reserved.stagingPort})`);
+    console.log(`[DevMax] Deploying staging: ${slug}-dev.ulyssepro.org (port ${reserved.stagingPort})`);
     const stagingResult = await sshService.deployStagingApp({
       repoUrl: `https://github.com/${repoOwner}/${stagingRepoName}.git`,
       appName: slug,
@@ -1353,7 +1353,7 @@ async function autoDeployProject(projectId: string, repoOwner: string, repoName:
 
     console.log(`[DevMax] Auto-deploy complete for ${projectName}. Running URL diagnostics...`);
 
-    const stagingDomain = `${slug}.dev.ulyssepro.org`;
+    const stagingDomain = `${slug}-dev.ulyssepro.org`;
     const prodDomain = `${slug}.ulyssepro.org`;
     const repoUrl = `https://github.com/${repoOwner}/${repoName}.git`;
 
