@@ -12,7 +12,7 @@ const ROOT = process.cwd();
 const PROGRESS_FILE = "/tmp/github_push_progress.json";
 const CHUNK_SIZE = 200;
 
-const TARGET_REPO = process.env.TARGET_REPO || "007ulysse";
+const TARGET_REPO = process.env.TARGET_REPO || "both";
 const ALL_REPOS = [
   { owner: "ulyssemdbh-commits", repo: "007ulysse", branch: "main" },
   { owner: "ulyssemdbh-commits", repo: "ulysseproject", branch: "main" },
@@ -76,16 +76,35 @@ interface Progress {
   done: boolean;
 }
 
-function loadProgress(repo: string): Progress {
+interface MultiProgress {
+  repos: Record<string, Progress>;
+}
+
+function loadAllProgress(): MultiProgress {
   try {
-    const data = JSON.parse(fs.readFileSync(PROGRESS_FILE, "utf-8"));
-    if (data.repo === repo && !data.done) return data;
+    const raw = JSON.parse(fs.readFileSync(PROGRESS_FILE, "utf-8"));
+    if (raw.repos) return raw;
+    if (raw.repo) return { repos: { [raw.repo]: raw } };
   } catch {}
+  return { repos: {} };
+}
+
+function loadProgress(repo: string): Progress {
+  const all = loadAllProgress();
+  const p = all.repos[repo];
+  if (p && !p.done) return p;
   return { repo, blobs: {}, done: false };
 }
 
 function saveProgress(p: Progress) {
-  fs.writeFileSync(PROGRESS_FILE, JSON.stringify(p));
+  const all = loadAllProgress();
+  all.repos[p.repo] = p;
+  fs.writeFileSync(PROGRESS_FILE, JSON.stringify(all));
+}
+
+function isRepoDone(repo: string): boolean {
+  const all = loadAllProgress();
+  return all.repos[repo]?.done === true;
 }
 
 async function pushRepo(owner: string, repo: string, branch: string, allFiles: string[]) {
@@ -174,6 +193,10 @@ async function main() {
 
   const repos = TARGET_REPO === "both" ? ALL_REPOS : ALL_REPOS.filter(r => r.repo === TARGET_REPO);
   for (const { owner, repo, branch } of repos) {
+    if (isRepoDone(repo)) {
+      console.log(`\nSKIP -> ${owner}/${repo} (already pushed)`);
+      continue;
+    }
     await pushRepo(owner, repo, branch, files);
   }
 }
