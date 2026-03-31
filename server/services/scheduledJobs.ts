@@ -1382,7 +1382,7 @@ class JobScheduler {
 
           const expiringSoon: string[] = [];
           for (const p of projects) {
-            for (const domain of [`${p.deploy_slug}.ulyssepro.org`, `${p.deploy_slug}.dev.ulyssepro.org`]) {
+            for (const domain of [`${p.deploy_slug}.ulyssepro.org`, `${p.deploy_slug}-dev.ulyssepro.org`]) {
               const ssl = await sshService.checkSslStatus(domain);
               if (ssl.valid && ssl.daysLeft !== undefined && ssl.daysLeft < 14) {
                 expiringSoon.push(`${domain} (${ssl.daysLeft}j restants)`);
