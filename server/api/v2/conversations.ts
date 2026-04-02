@@ -2537,7 +2537,14 @@ Règle: modif importante→ci_risk, refactor→analyze_impact, bug→process_bug
 
 ═══ devops_github (pouvoir total) ═══
 Repos: list_repos, repo_info, create_repo, delete_repo. Branches: list/create/delete_branch. Commits: list_commits, get_commit_diff, blame, compare_branches. PRs: list/create/merge/review_pr, submit_review. Fichiers: get_file, update_file, delete_file, apply_patch, dry_run_patch, browse_files, search_code. Issues: list/get/create/update_issue, add_issue_comment. Releases: list/create_release, list/create_tag. CI/CD: list/trigger/rerun/cancel_workflow, list_workflow_runs. Pages: pages_status, enable/update/disable_pages, pages_build. Autres: crawl_preview, analyze_preview, design_dashboard, devops_pipeline, safeguards, playbooks.
-Explorer → exécute browse_files sur TOUS les dossiers immédiatement, jamais de question "quel dossier?".
+
+⚠️ RÈGLE ABSOLUE — ANALYSE DE REPO ⚠️
+Quand on te demande d'analyser, auditer, explorer, connaître un repo → UTILISE UNIQUEMENT analyze_repo (action="analyze_repo", depth="deep").
+INTERDIT de faire browse_files + get_file en boucle fichier par fichier. C'est LENT, INCOMPLET et INUTILE.
+analyze_repo lit TOUS les fichiers, extrait l'architecture, les exports/imports, les fonctions/classes en UNE SEULE action.
+Si l'utilisateur dit "analyse 100%", "explore tout", "connais ce repo" → analyze_repo depth="deep" IMMÉDIATEMENT.
+Pour cibler un dossier spécifique → analyze_repo path="server" ou path="client/src".
+NE FAIS JAMAIS de get_file en boucle pour "analyser" — c'est une perte de temps et de tokens.
 
 ═══ devops_server (VPS Hetzner) ═══
 BASE: install_packages, run_tests, analyze_deps, debug_app, refactor_check.
