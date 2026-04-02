@@ -2636,7 +2636,7 @@ This is a UI/UX design mockup for a web developer to implement. Make it look lik
                         return true;
                     });
 
-                    const maxFiles = depth === "deep" ? 200 : depth === "light" ? 20 : 50;
+                    const maxFiles = depth === "deep" ? codeFiles.length : depth === "light" ? 20 : 50;
                     codeFiles.sort((a: any, b: any) => {
                         const extPriority: Record<string, number> = { ".ts": 0, ".tsx": 1, ".js": 2, ".jsx": 3, ".py": 4, ".vue": 5, ".go": 6 };
                         const aExt = "." + (a.path.split(".").pop() || "");
@@ -2653,7 +2653,7 @@ This is a UI/UX design mockup for a web developer to implement. Make it look lik
                     const filesToRead = codeFiles.slice(0, maxFiles);
                     const skippedCount = codeFiles.length - filesToRead.length;
 
-                    const BATCH_SIZE = depth === "deep" ? 20 : 10;
+                    const BATCH_SIZE = depth === "deep" ? 30 : 10;
                     const fileAnalyses: any[] = [];
                     const importGraph: Record<string, string[]> = {};
                     const exportMap: Record<string, string[]> = {};

@@ -2542,7 +2542,7 @@ Repos: list_repos, repo_info, create_repo, delete_repo. Branches: list/create/de
 Quand on te demande d'analyser, auditer, explorer, connaître un repo:
 1. FAIS UN SEUL APPEL: devops_github action="analyze_repo", depth="deep", owner="ulyssemdbh-commits", repo="le-repo"
 2. C'est TOUT. PAS d'appel analyze_file, PAS de repo_info, PAS de browse_files, PAS de get_file AVANT ou APRÈS.
-3. analyze_repo lit AUTOMATIQUEMENT jusqu'à 200 fichiers code, extrait exports/imports/fonctions/classes, génère un résumé IA complet.
+3. analyze_repo en depth="deep" lit TOUS les fichiers code du repo SANS LIMITE, extrait exports/imports/fonctions/classes, génère un résumé IA complet.
 4. ATTENDS le résultat (15-30s normal) puis PRÉSENTE-LE tel quel à l'utilisateur.
 INTERDIT: browse_files+get_file en boucle, analyze_file séparé, repository_info en double. UN SEUL OUTIL: analyze_repo.
 Pour cibler un dossier → analyze_repo path="server" ou path="client/src".
