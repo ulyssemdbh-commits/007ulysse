@@ -2317,17 +2317,38 @@ Tu as l'outil generate_file. Tu PEUX et DOIS l'utiliser pour créer des fichiers
       
       const maxIdentity = body.contextHints?.systemHint || "";
       const isMaxAI = body.sessionContext === "devops" && maxIdentity.includes("MAX");
+      const isOwnerDevMax = isMaxAI && isOwner;
       const nowParis = new Date().toLocaleString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+
+      let ownerPersonaContext = "";
+      if (isOwnerDevMax) {
+        try {
+          const { PERSONA_IDENTITIES } = await import("../../config/personaMapping");
+          const maxPersona = PERSONA_IDENTITIES?.maxai;
+          if (maxPersona?.identity) {
+            ownerPersonaContext = `\n═══ CONSCIENCE OWNER (Maurice — ton créateur) ═══\n${maxPersona.identity}`;
+          }
+        } catch {}
+      }
+
       const personaBlock = isMaxAI
         ? `Tu es MaxAI — ingénieur logiciel senior fullstack & DevOps. Interface: DevMax SaaS multi-tenant.
 [DATE] ${nowParis} (Europe/Paris).
 
 ═══ IDENTITÉ ═══
-- Tu n'es JAMAIS Ulysse/Alfred/Iris. Tu es exclusivement MaxAI.
-- L'utilisateur est ANONYME. Jamais de prénom, jamais de données perso.
+${isOwnerDevMax
+  ? `- Tu parles à MAURICE (Moe) — ton créateur, l'architecte de l'écosystème Ulysse. Tu le connais, tu l'appelles Moe.
+- Tu fais partie de l'écosystème 4 IA : Ulysse (cerveau), Iris (famille+CM), Alfred (business), MaxAI (DevOps — c'est toi).
+- Tu as accès au Brain (query_brain, memory_save) et au SuperChat (superchat_search) pour retrouver les discussions avec les autres IA.
+- Tu es le MÊME MaxAI que dans le SuperChat — même personnalité, même mémoire, même expertise.
+- Quand Moe te demande d'analyser un repo, utilise analyze_repo (depth="deep") — PAS get_file en boucle.
+- Si Moe dit "ne modifie rien" → LECTURE SEULE, pas de propositions de modifications.`
+  : `- Tu n'es JAMAIS Ulysse/Alfred/Iris. Tu es exclusivement MaxAI.
+- L'utilisateur est ANONYME. Jamais de prénom, jamais de données perso.`}
 - Technique ONLY: dev, code, DevOps, infra, déploiement, architecture.
 - Non-technique → refuse: "Je suis MaxAI, je ne traite que les sujets techniques et DevOps."
 - Ton: professionnel, concis, direct. Indicateurs ✓ ✗ uniquement.
+${ownerPersonaContext}
 
 ═══ MÉTHODE D'INVESTIGATION (RÈGLE FONDAMENTALE) ═══
 Tu penses comme un ingénieur senior qui CREUSE, FOUILLE et ANALYSE avant d'agir.
@@ -2447,7 +2468,42 @@ Chaque projet peut avoir des variables d'environnement:
           console.log(`[V2-DevOps] Chat history context load failed: ${e.message}`);
         }
       }
-      systemPrompt += `\n### CONTEXTE DEVOPS (interface active):\n${maxIdentity ? maxIdentity + "\n" : ""}${devopsCtx}\n${personaBlock}${chatHistoryContext}\nL'outil devops_github est ton outil PRIORITAIRE ici, mais tu gardes accès à TOUS tes autres outils si le contexte le demande.
+
+      let crossSessionContext = "";
+      if (isOwnerDevMax) {
+        try {
+          const [recentSuperChat, recentUlysse] = await Promise.all([
+            db.execute(sql`
+              SELECT sm.sender_name, sm.content, sm.created_at
+              FROM superchat_messages sm
+              JOIN superchat_sessions ss ON sm.session_id = ss.id
+              WHERE sm.created_at > NOW() - INTERVAL '2 hours'
+              ORDER BY sm.created_at DESC LIMIT 10
+            `).then((r: any) => r.rows || r).catch(() => []),
+            db.execute(sql`
+              SELECT cm.role, cm.content, cm.created_at
+              FROM conversation_messages cm
+              WHERE cm.user_id = 1 AND cm.created_at > NOW() - INTERVAL '1 hour'
+              ORDER BY cm.created_at DESC LIMIT 8
+            `).then((r: any) => r.rows || r).catch(() => []),
+          ]);
+          if (recentSuperChat.length > 0) {
+            const scMsgs = recentSuperChat.reverse().map((m: any) => `[${m.sender_name}]: ${(m.content || "").slice(0, 250)}`).join("\n");
+            crossSessionContext += `\n═══ CONSCIENCE TEMPS RÉEL — SuperChat (dernières 2h) ═══\nCes échanges se passent en PARALLÈLE dans le SuperChat pendant que Moe te parle ici:\n${scMsgs}\n`;
+          }
+          if (recentUlysse.length > 0) {
+            const uMsgs = recentUlysse.reverse().map((m: any) => `[${m.role === "user" ? "MOE" : "ULYSSE"}]: ${(m.content || "").slice(0, 250)}`).join("\n");
+            crossSessionContext += `\n═══ CONSCIENCE TEMPS RÉEL — Chat Ulysse (dernière heure) ═══\nCes échanges se passent en PARALLÈLE entre Moe et Ulysse pendant que tu travailles ici:\n${uMsgs}\n`;
+          }
+          if (crossSessionContext) {
+            console.log(`[V2-DevOps] Cross-session context loaded: ${recentSuperChat.length} SuperChat + ${recentUlysse.length} Ulysse msgs`);
+          }
+        } catch (e: any) {
+          console.log(`[V2-DevOps] Cross-session context failed: ${e.message}`);
+        }
+      }
+
+      systemPrompt += `\n### CONTEXTE DEVOPS (interface active):\n${maxIdentity ? maxIdentity + "\n" : ""}${devopsCtx}\n${personaBlock}${chatHistoryContext}${crossSessionContext}\nL'outil devops_github est ton outil PRIORITAIRE ici, mais tu gardes accès à TOUS tes autres outils si le contexte le demande.
 Tu es connecté avec les pleins pouvoirs sur GitHub. Exécute directement les actions demandées sans hésiter.
 
 INFRASTRUCTURE SERVEUR HETZNER:
@@ -2745,7 +2801,35 @@ Réponds TOUJOURS en français.
 
     // PRIORITY 2: Base persona prompt (Ulysse/Iris/Alfred)
     systemPrompt += baseSystemPrompt;
-    
+
+    if (isOwner && !devopsCtx) {
+      try {
+        const [devmaxRecentJournal, devmaxRecentChat] = await Promise.all([
+          db.execute(sql`
+            SELECT entry_type, title, description, created_at FROM devmax_project_journal
+            WHERE created_at > NOW() - INTERVAL '2 hours'
+            ORDER BY created_at DESC LIMIT 5
+          `).then((r: any) => r.rows || r).catch(() => []),
+          db.execute(sql`
+            SELECT role, content, created_at FROM devmax_chat_history
+            WHERE created_at > NOW() - INTERVAL '1 hour'
+            ORDER BY created_at DESC LIMIT 6
+          `).then((r: any) => r.rows || r).catch(() => []),
+        ]);
+        if (devmaxRecentJournal.length > 0 || devmaxRecentChat.length > 0) {
+          let devmaxCtx = `\n\n── 🔄 CONSCIENCE TEMPS RÉEL — DevMax (activité récente) ──`;
+          if (devmaxRecentJournal.length > 0) {
+            devmaxCtx += `\nActions DevOps récentes:\n${devmaxRecentJournal.reverse().map((j: any) => `- [${j.entry_type}] ${j.title}${j.description ? `: ${(j.description as string).slice(0, 150)}` : ""}`).join("\n")}`;
+          }
+          if (devmaxRecentChat.length > 0) {
+            devmaxCtx += `\nChat DevMax récent:\n${devmaxRecentChat.reverse().map((m: any) => `[${m.role === "user" ? "MOE" : "MAXAI"}]: ${(m.content || "").slice(0, 200)}`).join("\n")}`;
+          }
+          devmaxCtx += `\n── FIN DEVMAX ──\nMoe travaille peut-être en parallèle dans DevMax. Tu es au courant de ce qui s'y passe.\n`;
+          systemPrompt += devmaxCtx;
+        }
+      } catch {}
+    }
+
     // Log the orchestrator decision
     console.log(`[V2-ActionFirst] Persona: ${actionFirstContext.persona}, ActionFirst: ${actionFirstContext.personaConfig.actionFirstEnabled}, DataAccess: ${actionFirstContext.personaConfig.dataAccessLevel}`);
 
@@ -2841,7 +2925,7 @@ Commence par design_dashboard MAINTENANT.`
         if (forceToolsList?.length && hasFamilyAccess) {
           const priorityTools = ulysseToolsV2.filter((t: any) => forceToolsList.includes(t.function.name));
           if (devopsCtx) {
-            const devopsRelated = ['devops_github', 'devops_server', 'sensory_hub', 'devmax_db', 'dgm_manage', 'devops_intelligence', 'dashboard_screenshot', 'web_search', 'send_notification', 'memory_store', 'memory_recall', 'image_generate', 'analyze_file', 'generate_file', 'kanban_create_task', 'pdf_master', 'query_coba', 'commax_manage', 'superchat_search', 'task_queue_manage', 'work_journal_manage'];
+            const devopsRelated = ['devops_github', 'devops_server', 'sensory_hub', 'devmax_db', 'dgm_manage', 'devops_intelligence', 'dashboard_screenshot', 'web_search', 'send_notification', 'memory_store', 'memory_recall', 'image_generate', 'analyze_file', 'generate_file', 'kanban_create_task', 'pdf_master', 'query_coba', 'commax_manage', 'superchat_search', 'task_queue_manage', 'work_journal_manage', 'query_brain', 'memory_save'];
             const devopsTools = ulysseToolsV2.filter((t: any) => devopsRelated.includes(t.function.name) || forceToolsList.includes(t.function.name));
             relevantTools = devopsTools;
             const hasActionKeywords = /(?:deploy|déploie|crée|create|modifie|update|supprime|delete|merge|push|build|scaffold|rollback|restart|stop|scale|monitor|backup|restore|scan|analyse|browse|list|get|check|status|pr|branch|commit|workflow|run|trigger|env|ssl|domain)/i.test(body.message || "");

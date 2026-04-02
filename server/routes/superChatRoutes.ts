@@ -509,6 +509,35 @@ router.post("/message", async (req: Request, res: Response) => {
       }
     }
 
+    let devmaxCrossContext = "";
+    if (userId === 1) {
+      try {
+        const [recentDevMaxChat, recentDevMaxJournal] = await Promise.all([
+          db.execute(sql`
+            SELECT role, content, created_at FROM devmax_chat_history
+            WHERE created_at > NOW() - INTERVAL '2 hours'
+            ORDER BY created_at DESC LIMIT 8
+          `).then((r: any) => r.rows || r).catch(() => []),
+          db.execute(sql`
+            SELECT entry_type, title, description, created_at FROM devmax_project_journal
+            WHERE created_at > NOW() - INTERVAL '2 hours'
+            ORDER BY created_at DESC LIMIT 5
+          `).then((r: any) => r.rows || r).catch(() => []),
+        ]);
+        if (recentDevMaxChat.length > 0 || recentDevMaxJournal.length > 0) {
+          devmaxCrossContext = `\n\n── 🔄 CONSCIENCE TEMPS RÉEL — DevMax (dernières 2h) ──`;
+          if (recentDevMaxJournal.length > 0) {
+            devmaxCrossContext += `\nActions DevOps récentes:\n${recentDevMaxJournal.reverse().map((j: any) => `- [${j.entry_type}] ${j.title}${j.description ? `: ${(j.description as string).slice(0, 150)}` : ""}`).join("\n")}`;
+          }
+          if (recentDevMaxChat.length > 0) {
+            devmaxCrossContext += `\nChat DevMax récent:\n${recentDevMaxChat.reverse().map((m: any) => `[${m.role === "user" ? "MOE" : "MAXAI"}]: ${(m.content || "").slice(0, 200)}`).join("\n")}`;
+          }
+          devmaxCrossContext += `\n── FIN DEVMAX ──\nMoe travaille en parallèle dans DevMax. Tu es au courant de ce qui s'y passe.`;
+          console.log(`[SuperChat] Cross-context loaded: ${recentDevMaxChat.length} DevMax chat + ${recentDevMaxJournal.length} journal`);
+        }
+      } catch {}
+    }
+
     const mentionMap: Record<string, string> = { ulysse: "ulysse", iris: "iris", alfred: "alfred", maxai: "maxai" };
     const mentionRegex = /@(ulysse|iris|alfred|maxai)/gi;
     const mentionsFound = [...message.matchAll(mentionRegex)].map(m => mentionMap[m[1].toLowerCase()]).filter(Boolean);
@@ -583,7 +612,7 @@ router.post("/message", async (req: Request, res: Response) => {
 
       const smartDirectives = buildSmartDirectives(message, personaKey);
 
-      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + screenContextStr + smartDirectives + (extraSystemSuffix || "");
+      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + screenContextStr + devmaxCrossContext + smartDirectives + (extraSystemSuffix || "");
 
       const messages: ChatMessage[] = [
         { role: "system", content: systemContent },

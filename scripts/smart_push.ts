@@ -12,6 +12,7 @@ const ROOT = process.cwd();
 const ALL_REPOS = [
   { owner: "ulyssemdbh-commits", repo: "007ulysse", branch: "main" },
   { owner: "ulyssemdbh-commits", repo: "ulysseproject", branch: "main" },
+  { owner: "ulyssemdbh-commits", repo: "007ulysse-test", branch: "main" },
 ];
 
 const SOURCE_DIRS = ["server", "client/src", "client/public", "shared", "script", "scripts", "tools", "speaker_recognition"];

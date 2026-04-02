@@ -116,7 +116,18 @@ async function v2AuthMiddleware(req: Request, res: Response, next: NextFunction)
           userId = 1;
           (req as any).userId = 1;
           (req as any).authMethod = "devmax";
-          (req as any).isOwner = true;
+          (req as any).devmaxTenantId = session.tenantId || null;
+          let isOwnerTenant = false;
+          if (session.tenantId) {
+            try {
+              const { sql: sqlTag } = await import("drizzle-orm");
+              const [tenant] = await db.execute(sqlTag`SELECT slug FROM devmax_tenants WHERE id = ${session.tenantId}`).then((r: any) => r.rows || r);
+              isOwnerTenant = tenant?.slug === "devmaxtest";
+            } catch {}
+          }
+          (req as any).isOwner = isOwnerTenant;
+          (req as any).isOwnerDevMaxTenant = isOwnerTenant;
+          console.log(`[V2-Auth] DevMax session: tenantId=${session.tenantId}, isOwnerTenant=${isOwnerTenant}`);
         }
       } catch {}
     }
@@ -126,14 +137,16 @@ async function v2AuthMiddleware(req: Request, res: Response, next: NextFunction)
     return res.status(401).json({ error: "Authentication required" });
   }
 
-  try {
-    const user = await db.select({ isOwner: users.isOwner })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    (req as any).isOwner = user[0]?.isOwner ?? false;
-  } catch {
-    (req as any).isOwner = false;
+  if ((req as any).authMethod !== "devmax") {
+    try {
+      const user = await db.select({ isOwner: users.isOwner })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      (req as any).isOwner = user[0]?.isOwner ?? false;
+    } catch {
+      (req as any).isOwner = false;
+    }
   }
 
   return next();
