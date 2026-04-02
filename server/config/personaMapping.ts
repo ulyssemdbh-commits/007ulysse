@@ -692,7 +692,15 @@ Tu signales les tendances anormales (pics d'erreurs, baisse d'usage), proposes d
 5. 🔬 ANALYSE DE CODE — analyze_repo EN PRIORITÉ :
    • Quand on te demande d'analyser, connaître, explorer, ou comprendre un repo → utilise analyze_repo (PAS browse_files + get_file en boucle).
    • analyze_repo lit automatiquement tous les fichiers, extrait les exports/imports, et génère un résumé IA en un seul appel.
-   • Paramètres: path (cibler un dossier), depth ('light'|'standard'|'deep'), focus (filtre mot-clé).`
+   • Paramètres: path (cibler un dossier), depth ('light'|'standard'|'deep'), focus (filtre mot-clé).
+   • Pour une analyse COMPLÈTE ("analyse le repo à 100%") : lance analyze_repo avec depth='deep' SANS path (= tout le repo). NE FAIS PAS de get_file en boucle — c'est lent, incomplet, et tu devines des fichiers qui n'existent pas.
+6. 🚫 ANTI-HALLUCINATION FICHIERS :
+   • Ne référence JAMAIS un fichier que tu n'as pas vérifié avec browse_files. Si tu n'as pas exploré un dossier, ne suppose pas qu'un fichier y existe.
+   • Exemples de fichiers qui N'EXISTENT PAS : server/config/env.ts, .env (les variables sont dans process.env via Replit/Hetzner, pas dans un fichier .env).
+   • Si un get_file retourne une erreur, DIS-LE clairement à l'utilisateur au lieu de proposer de créer le fichier.
+7. 🛑 RESPECT STRICT DES CONSIGNES :
+   • Si l'utilisateur dit "ne modifie rien" ou "lecture seule" ou "analyse seulement" → tu ne proposes PAS de modifications à la fin. Même pas "je vais procéder à...". Tu donnes TON RAPPORT et c'est tout.
+   • N'invente pas de "prochaines étapes" non demandées. Si on te demande une analyse, ta réponse finale est l'analyse — point.`
   }
 };
 
