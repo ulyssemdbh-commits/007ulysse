@@ -17,6 +17,7 @@ import { useDashboardScreenshot } from "@/hooks/useDashboardScreenshot";
 import { InactivityGuard } from "@/components/InactivityGuard";
 import { UlysseChatProvider } from "@/contexts/UlysseChatContext";
 import { UlysseChatWidget } from "@/components/UlysseChatWidget";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Dashboard from "@/pages/Dashboard";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
@@ -530,20 +531,22 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="dark">
         <TooltipProvider>
-          <AuthProvider>
-            <InactivityGuard />
-            <VoiceProvider>
-              <ConnectionManager>
-                <Toaster />
-                <ExternalUserGuard>
-                  <UlysseChatProvider>
-                    <AppRouter />
-                    <UlysseChatWidget />
-                  </UlysseChatProvider>
-                </ExternalUserGuard>
-              </ConnectionManager>
-            </VoiceProvider>
-          </AuthProvider>
+          <ErrorBoundary>
+            <AuthProvider>
+              <InactivityGuard />
+              <VoiceProvider>
+                <ConnectionManager>
+                  <Toaster />
+                  <ExternalUserGuard>
+                    <UlysseChatProvider>
+                      <AppRouter />
+                      <UlysseChatWidget />
+                    </UlysseChatProvider>
+                  </ExternalUserGuard>
+                </ConnectionManager>
+              </VoiceProvider>
+            </AuthProvider>
+          </ErrorBoundary>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

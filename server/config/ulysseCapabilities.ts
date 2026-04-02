@@ -2773,5 +2773,5 @@ RÈGLE FONDAMENTALE - MAÎTRISE TOTALE:
 }
 
 // Get version/last update info
-export const CAPABILITIES_VERSION = "9.4.0";
-export const CAPABILITIES_LAST_UPDATE = "2026-01-30";
+export const CAPABILITIES_VERSION = "9.5.0";
+export const CAPABILITIES_LAST_UPDATE = "2026-04-01";

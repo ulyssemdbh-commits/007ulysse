@@ -20,7 +20,14 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 - **Ulysse Core Engine**: Orchestrates AI providers with circuit breakers, response learning, and decision caching.
 - **Action-First Orchestrator V4**: Unifies OpenAI function calling with 90 tool handlers via ActionHub.
 - **Smart Model Router**: Routes tasks to providers based on complexity, token budget, and health.
-- **AI Personas**: Ulysse (primary, French), Iris (daughters' assistant), Max (DevMax professional persona), Alfred (tech/dev advisor). All personas possess Senior Dev Engineering capabilities.
+- **AI Personas**: 4 AIs with unified identity system in `server/config/personaMapping.ts` (PERSONA_IDENTITIES):
+  - **Ulysse** 🧠 (primary, Maurice's brain): Full-stack assistant with 90+ tools, voice, vision, DevOps.
+  - **Iris** 🌸 (family + Senior CM Commax): Daughters' assistant + community management expert.
+  - **Alfred** 🎩 (business SUGU + COBA): Restaurant operations, finances, employees, suppliers.
+  - **MaxAI** ⚡ (DevOps + infrastructure): Pipeline deploy, server monitoring, GitHub automation.
+  - Each AI has "CONSCIENCE DE SOI" (self-awareness of the other 3 AIs and collaboration rules).
+  - `conversations.ts` uses `PERSONA_IDENTITIES.iris.identity` and `PERSONA_IDENTITIES.alfred.identity` — all identity changes go through `personaMapping.ts` ONLY.
+  - COBA = client-facing version of Alfred for restaurant tenants on macommande.shop.
 - **Anti-Hallucination System**: Employs strict rules (e.g., forcing `browse_files` before code changes), multi-source verification, and verified memory entries.
 - **Anti-Read-Loop System**: Detects and corrects AI agents performing consecutive read-only operations without progressing to code modification.
 
@@ -33,6 +40,12 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 ### SuperChat — Multi-AI Conversation Interface
 - **Concept**: Send a single message, get responses from multiple AI personas in sequence: Iris → Alfred → MaxAI → Ulysse (synthesis last).
 - **Features**: @Mention routing to specific AIs, reply-to context injection, session management with history persistence, Markdown rendering, Ulysse synthesis badging.
+
+### DevOps GitHub Tools
+- **analyze_repo**: Full-repo analysis command — reads all code files, extracts exports/imports/functions/classes, maps architecture, generates AI summary. Params: `path` (target folder), `depth` ('light'|'standard'|'deep'), `focus` (keyword filter). Priority command for "know this repo" requests.
+- **get_file**: Auto-fallback for extensions (.js↔.ts, .jsx↔.tsx). Returns correction note when resolved.
+- **browse_files**: Stack detection (TypeScript vs JavaScript), `keyFilesPerDir` showing actual file paths per directory.
+- **search_code**: Hints on 0 results or errors pointing to browse_files as fallback.
 
 ### DevMax — Independent DevOps Platform
 - A multi-tenant SaaS DevOps dashboard for project management with PIN-based authentication and project isolation.

@@ -202,12 +202,22 @@ export default function SuperChat() {
     } catch {}
   };
 
+  const lastAutoLoadRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (sessions.length > 0 && currentSessionId === null && !lastAutoLoadRef.current && messages.length === 0) {
+      lastAutoLoadRef.current = true;
+      const latest = sessions[0];
+      loadSession(latest.id);
+    }
+  }, [sessions, currentSessionId, messages.length]);
+
   const newSession = () => {
     setCurrentSessionId(null);
     setMessages([]);
     setStreamingState({});
     setReplyTarget(null);
     setSidebarOpen(false);
+    lastAutoLoadRef.current = true;
   };
 
   const sendMessage = async (text?: string) => {

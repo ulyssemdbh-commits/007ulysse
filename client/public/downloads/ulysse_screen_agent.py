@@ -310,9 +310,105 @@ class ScreenMonitorAgent:
         print("[INFO] Agent stopped")
 
 
+AUTOSTART_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".ulysse_agent_config.json")
+
+def get_startup_folder():
+    return os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+
+def get_autostart_config():
+    try:
+        if os.path.exists(AUTOSTART_CONFIG_FILE):
+            with open(AUTOSTART_CONFIG_FILE, "r") as f:
+                return json.load(f)
+    except:
+        pass
+    return None
+
+def save_autostart_config(server, token=None, user_id=None, device_id="windows-agent", device_name=None, fps=2, quality="medium", privacy=False):
+    config = {
+        "server": server,
+        "token": token,
+        "user_id": user_id,
+        "device_id": device_id,
+        "device_name": device_name,
+        "fps": fps,
+        "quality": quality,
+        "privacy": privacy,
+        "enabled": True,
+        "agent_path": os.path.abspath(__file__),
+    }
+    with open(AUTOSTART_CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+    return config
+
+def enable_autostart(server, token=None, user_id=None, device_id="windows-agent", device_name=None, fps=2, quality="medium", privacy=False):
+    config = save_autostart_config(server, token, user_id, device_id, device_name, fps, quality, privacy)
+    agent_path = config["agent_path"]
+    startup_folder = get_startup_folder()
+    bat_path = os.path.join(startup_folder, "ulysse_screen_agent.bat")
+
+    cmd_parts = [f'python "{agent_path}"', f'--server "{server}"']
+    if token:
+        cmd_parts.append(f'--token "{token}"')
+    if user_id:
+        cmd_parts.append(f'--user-id {user_id}')
+    if device_id != "windows-agent":
+        cmd_parts.append(f'--device-id "{device_id}"')
+    if device_name:
+        cmd_parts.append(f'--device-name "{device_name}"')
+    if fps != 2:
+        cmd_parts.append(f'--fps {fps}')
+    if quality != "medium":
+        cmd_parts.append(f'--quality {quality}')
+    if privacy:
+        cmd_parts.append('--privacy')
+
+    bat_content = f'@echo off\ntitle Ulysse Screen Agent\n{" ".join(cmd_parts)}\n'
+    with open(bat_path, "w") as f:
+        f.write(bat_content)
+
+    print(f"[AUTOSTART] Enabled - agent will start automatically with Windows")
+    print(f"[AUTOSTART] Startup script: {bat_path}")
+    print(f"[AUTOSTART] Config saved: {AUTOSTART_CONFIG_FILE}")
+    return True
+
+def disable_autostart():
+    startup_folder = get_startup_folder()
+    bat_path = os.path.join(startup_folder, "ulysse_screen_agent.bat")
+    removed = False
+    if os.path.exists(bat_path):
+        os.remove(bat_path)
+        removed = True
+    if os.path.exists(AUTOSTART_CONFIG_FILE):
+        try:
+            config = get_autostart_config()
+            if config:
+                config["enabled"] = False
+                with open(AUTOSTART_CONFIG_FILE, "w") as f:
+                    json.dump(config, f, indent=2)
+        except:
+            pass
+    if removed:
+        print("[AUTOSTART] Disabled - agent will no longer start with Windows")
+    else:
+        print("[AUTOSTART] Was not enabled")
+    return removed
+
+def autostart_status():
+    startup_folder = get_startup_folder()
+    bat_path = os.path.join(startup_folder, "ulysse_screen_agent.bat")
+    config = get_autostart_config()
+    bat_exists = os.path.exists(bat_path)
+    return {
+        "enabled": bat_exists,
+        "config": config,
+        "startup_script": bat_path if bat_exists else None,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Ulysse Screen Monitor Agent")
-    parser.add_argument("--server", "-s", required=True, 
+    parser.add_argument("--server", "-s",
                         help="WebSocket server URL (e.g., wss://your-app.replit.app/ws/screen)")
     parser.add_argument("--token", "-t", 
                         help="Authentication token (JWT)")
@@ -328,8 +424,34 @@ def main():
                         help="Image quality (default: medium)")
     parser.add_argument("--privacy", "-p", action="store_true",
                         help="Enable privacy mode (blur all window titles)")
+    parser.add_argument("--autostart", choices=["enable", "disable", "status"],
+                        help="Manage Windows autostart (enable/disable/status)")
     
     args = parser.parse_args()
+
+    if args.autostart:
+        if args.autostart == "enable":
+            if not args.server:
+                print("[ERROR] --server is required to enable autostart")
+                sys.exit(1)
+            if not args.token and not args.user_id:
+                print("[ERROR] --token or --user-id is required to enable autostart")
+                sys.exit(1)
+            enable_autostart(args.server, args.token, args.user_id, args.device_id, args.device_name, args.fps, args.quality, args.privacy)
+        elif args.autostart == "disable":
+            disable_autostart()
+        elif args.autostart == "status":
+            status = autostart_status()
+            print(f"[AUTOSTART] Enabled: {status['enabled']}")
+            if status['config']:
+                print(f"[AUTOSTART] Server: {status['config'].get('server', '?')}")
+            if status['startup_script']:
+                print(f"[AUTOSTART] Script: {status['startup_script']}")
+        return
+
+    if not args.server:
+        print("[ERROR] --server is required")
+        sys.exit(1)
     
     if not args.token and not args.user_id:
         print("[ERROR] Either --token or --user-id is required")
@@ -343,6 +465,8 @@ def main():
     print(f"  FPS: {args.fps}")
     print(f"  Quality: {args.quality}")
     print(f"  Privacy Mode: {'ON' if args.privacy else 'OFF'}")
+    status = autostart_status()
+    print(f"  Autostart: {'ON' if status['enabled'] else 'OFF'}")
     print("=" * 50)
     print()
     

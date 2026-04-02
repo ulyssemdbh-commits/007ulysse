@@ -20,7 +20,7 @@ const ALL_REPOS = [
 
 const SOURCE_DIRS = ["server", "client/src", "client/public", "shared", "script", "scripts", "tools", "speaker_recognition"];
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".cjs", ".mjs", ".css", ".html", ".py", ".sh", ".json", ".sql"]);
-const ROOT_CONFIG = ["package.json", "package-lock.json", "tsconfig.json", "vite.config.ts", "tailwind.config.ts", "postcss.config.js", "drizzle.config.ts", "components.json", "vitest.config.ts", "playwright.config.ts", "client/index.html", ".gitignore", "replit.md", "scripts/hetzner_deploy.sh"];
+const ROOT_CONFIG = ["package.json", "package-lock.json", "tsconfig.json", "vite.config.ts", "tailwind.config.ts", "postcss.config.js", "drizzle.config.ts", "components.json", "vitest.config.ts", "playwright.config.ts", "client/index.html", ".gitignore", "replit.md"];
 const EXCLUDE = [/node_modules/, /\/dist\//, /\/__tests__\//, /\.test\.(ts|tsx|js)$/, /\.spec\.(ts|tsx|js)$/, /\.map$/, /\.generated/, /\.cache/, /\.replit/];
 
 function shouldInclude(p: string): boolean {

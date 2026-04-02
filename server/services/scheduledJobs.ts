@@ -1306,10 +1306,34 @@ class JobScheduler {
                 const upList = recovered.map(h => `  • ${h.project}: ${h.url} (${h.responseTime}ms)`).join("\n");
                 parts.push(`🟢 **${recovered.length} URL(s) recovered:**\n${upList}`);
               }
-              await discordService.sendMessage(
-                `**DevMax Monitoring** — ${healthy.length}/${results.length} healthy\n${parts.join("\n")}`,
-                "devops"
-              );
+              const alertMessage = `**DevMax Monitoring** — ${healthy.length}/${results.length} healthy\n${parts.join("\n")}`;
+              await discordService.sendMessage(alertMessage, "devops");
+
+              broadcastToUser(1, {
+                type: "devops.monitoring_alert",
+                userId: 1,
+                data: {
+                  totalUrls: results.length,
+                  healthyCount: healthy.length,
+                  unhealthyCount: unhealthy.length,
+                  newlyDown: newlyDown.map(u => ({ project: u.project, url: u.url, status: u.status })),
+                  recovered: recovered.map(h => ({ project: h.project, url: h.url, responseTime: h.responseTime })),
+                  message: alertMessage,
+                },
+                timestamp: Date.now(),
+              });
+
+              if (newlyDown.length > 0) {
+                try {
+                  const { sendPushNotification } = await import("./pushNotificationService");
+                  await sendPushNotification(1, {
+                    title: `🔴 ${newlyDown.length} app(s) DOWN`,
+                    body: newlyDown.map(u => `${u.project}: ${u.url}`).join(", "),
+                    tag: "devmax-monitoring",
+                    data: { type: "monitoring_alert", url: "/devmax" },
+                  });
+                } catch {}
+              }
             } catch {}
           }
 

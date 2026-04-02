@@ -229,9 +229,13 @@ export async function mergePullRequest(owner: string, repo: string, pullNumber: 
   });
 }
 
-export async function listCommits(owner: string, repo: string, branch?: string, per_page = 20) {
+export async function listCommits(owner: string, repo: string, branch?: string, per_page = 20, options?: { author?: string; since?: string; until?: string; path?: string }) {
   const params = new URLSearchParams({ per_page: String(per_page) });
   if (branch) params.set("sha", branch);
+  if (options?.author) params.set("author", options.author);
+  if (options?.since) params.set("since", options.since);
+  if (options?.until) params.set("until", options.until);
+  if (options?.path) params.set("path", options.path);
   return githubApi(`/repos/${owner}/${repo}/commits?${params.toString()}`);
 }
 

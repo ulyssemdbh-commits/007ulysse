@@ -199,7 +199,8 @@ Actions:
 - open_url : ouvre une URL dans le navigateur (Ctrl+L → tape l'URL → Enter) — passer l'URL dans le champ "text"
 - multi_action : exécute une séquence d'actions d'un coup (passer un JSON array dans "sequence")
 - explore : navigation AUTONOME multi-étapes (jusqu'à 20 étapes). Passer l'objectif dans "goal". NE S'ARRÊTE PAS tant que l'objectif n'est pas atteint.
-- self_test : DIAGNOSTIC COMPLET — teste séquentiellement TOUTES les capacités (screenshot, vision, mouse_move, click, scroll, key_press, type_text, open_url). Renvoie un rapport détaillé avec le statut de chaque test (PASS/FAIL). Utiliser quand l'utilisateur demande "teste tes outils", "vérifie que tu es opérationnel", "diagnostic prise en main".`,
+- self_test : DIAGNOSTIC COMPLET — teste séquentiellement TOUTES les capacités (screenshot, vision, mouse_move, click, scroll, key_press, type_text, open_url). Renvoie un rapport détaillé avec le statut de chaque test (PASS/FAIL). Utiliser quand l'utilisateur demande "teste tes outils", "vérifie que tu es opérationnel", "diagnostic prise en main".
+- autostart_guide : Génère la commande pour activer/désactiver le lancement automatique de l'agent au démarrage Windows. Passer mode="enable" ou mode="disable" ou mode="status". Quand Maurice dit "lance le monitoring au démarrage", "active l'autostart", "que ça se lance tout seul" → utilise cette action.`,
       parameters: {
         type: "object",
         required: ["action"],
@@ -212,6 +213,7 @@ Actions:
               "mouse_move", "click", "double_click", "right_click",
               "scroll", "key_press", "type_text",
               "open_url", "multi_action", "explore", "self_test",
+              "autostart_guide",
             ],
             description: "Action à effectuer",
           },
@@ -715,6 +717,32 @@ export async function executeScreenMonitorManage(
         summary: `${passed}/${tests.length} tests passés en ${Math.round(totalMs / 1000)}s`,
         tests,
       });
+    }
+
+    case "autostart_guide": {
+      const mode = (args.text || args.goal || "enable").toLowerCase().trim();
+      const serverUrl = "wss://ulyssepro.org/ws/screen";
+      const agentPath = `C:\\Users\\meyer\\Desktop\\ulysse_screen_agent.py`;
+
+      if (mode === "disable") {
+        return JSON.stringify({
+          success: true,
+          command: `python "${agentPath}" --autostart disable`,
+          instructions: "Colle cette commande dans un terminal Windows pour désactiver le lancement automatique. L'agent ne démarrera plus avec Windows.",
+        });
+      } else if (mode === "status") {
+        return JSON.stringify({
+          success: true,
+          command: `python "${agentPath}" --autostart status`,
+          instructions: "Colle cette commande pour vérifier si l'autostart est actif.",
+        });
+      } else {
+        return JSON.stringify({
+          success: true,
+          command: `python "${agentPath}" --server "${serverUrl}" --user-id 1 --autostart enable`,
+          instructions: "Colle cette commande dans un terminal Windows pour activer le lancement automatique. L'agent Ulysse se lancera à chaque démarrage de Windows et se connectera automatiquement. Pour désactiver plus tard, utilise --autostart disable.",
+        });
+      }
     }
 
     default:

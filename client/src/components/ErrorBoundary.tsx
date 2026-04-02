@@ -65,7 +65,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-sm text-muted-foreground">
               {this.state.error?.message || "Erreur inattendue"}
             </p>
-            {process.env.NODE_ENV === "development" && this.state.errorInfo && (
+            {this.state.errorInfo && (
               <pre className="p-2 bg-muted rounded text-xs overflow-auto max-h-32">
                 {this.state.errorInfo.componentStack}
               </pre>

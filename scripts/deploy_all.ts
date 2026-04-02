@@ -99,6 +99,33 @@ async function main() {
       errors.push(`Tests PRE-deploy warning: ${e.message?.slice(0, 100)}`);
       steps.push("Tests PRE-deploy: erreur (non-bloquant)");
     }
+
+    // ─── E2E TESTS (Playwright) ───────────────────────────────────────────────
+    log(">>", "STEP 0b/6 — Tests E2E Playwright (validation UI)...");
+    try {
+      const e2eOutput = run("npx playwright test --reporter=line 2>&1 || true", { timeout: 180_000, silent: true });
+      const e2ePassMatch = e2eOutput.match(/(\d+)\s+passed/);
+      const e2eFailMatch = e2eOutput.match(/(\d+)\s+failed/);
+      const e2ePassed = e2ePassMatch ? parseInt(e2ePassMatch[1]) : 0;
+      const e2eFailed = e2eFailMatch ? parseInt(e2eFailMatch[1]) : 0;
+
+      if (e2eFailed > 0) {
+        log("!!", `Tests E2E: ${e2ePassed} passés, ${e2eFailed} ÉCHOUÉS`);
+        console.log("\n--- Détails des tests E2E échoués ---");
+        const e2eFailedLines = e2eOutput.split("\n").filter((l: string) => l.includes("FAIL") || l.includes("✘") || l.includes("Error") || l.includes("expected"));
+        e2eFailedLines.slice(0, 20).forEach((l: string) => console.log(`  ${l}`));
+        console.log("--- Fin des détails E2E ---\n");
+        throw new Error(`${e2eFailed} test(s) E2E échoué(s) — déploiement annulé. Corrigez les tests avant de redéployer.`);
+      }
+
+      log("OK", `Tests E2E: ${e2ePassed} passés, 0 échoué`);
+      steps.push(`Tests E2E: ${e2ePassed} passés ✅`);
+    } catch (e: any) {
+      if (e.message.includes("échoué(s)")) throw e;
+      log("!!", `Tests E2E: erreur inattendue — ${e.message?.slice(0, 100)}`);
+      errors.push(`Tests E2E warning: ${e.message?.slice(0, 100)}`);
+      steps.push("Tests E2E: erreur (non-bloquant)");
+    }
   }
 
   // ─── STEP 1: BUILD ──────────────────────────────────────────────────────────
@@ -269,6 +296,27 @@ async function main() {
       } catch {
         postTests.push({ name: "PM2 process online", pass: false, detail: "Impossible de parser PM2" });
       }
+
+      const jsBundle = run("curl -s --max-time 15 https://ulyssepro.org/ 2>/dev/null | grep -oP 'src=\"/assets/index-[^\"]+\\.js\"' || echo ''", { silent: true }).trim();
+      if (jsBundle) {
+        const jsSrc = jsBundle.replace('src="', '').replace('"', '');
+        const jsBundleCheck = run(`curl -s -o /dev/null -w '%{http_code}' --max-time 15 'https://ulyssepro.org${jsSrc}' 2>/dev/null || echo '000'`, { silent: true }).trim();
+        postTests.push({ name: "JS bundle accessible", pass: jsBundleCheck === "200", detail: `${jsSrc} → HTTP ${jsBundleCheck}` });
+      } else {
+        postTests.push({ name: "JS bundle accessible", pass: false, detail: "Bundle JS introuvable dans le HTML" });
+      }
+
+      const htmlRef = run("curl -s --max-time 10 https://ulyssepro.org/ 2>/dev/null | grep -oP 'index-[A-Za-z0-9_-]+\\.js' || echo ''", { silent: true }).trim();
+      const localRef = run("ls dist/public/assets/index-*.js 2>/dev/null | head -1 || echo ''", { silent: true }).trim();
+      const localHash = localRef.split("/").pop() || "";
+      const hashMatch = htmlRef === localHash;
+      postTests.push({ name: "JS hash cohérent (local=prod)", pass: hashMatch, detail: `local=${localHash}, prod=${htmlRef}` });
+
+      const conversationsCheck = run("curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://ulyssepro.org/api/conversations 2>/dev/null || echo '000'", { silent: true }).trim();
+      postTests.push({ name: "API conversations", pass: conversationsCheck === "200" || conversationsCheck === "304" || conversationsCheck === "401", detail: `HTTP ${conversationsCheck}` });
+
+      const loginPageCheck = run("curl -s --max-time 10 https://ulyssepro.org/login 2>/dev/null | grep -c '<html' || echo '0'", { silent: true }).trim();
+      postTests.push({ name: "Page /login rendu HTML", pass: parseInt(loginPageCheck) > 0, detail: `${loginPageCheck} balise(s) HTML` });
 
       const passed = postTests.filter(t => t.pass).length;
       const failed = postTests.filter(t => !t.pass).length;

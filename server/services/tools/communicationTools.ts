@@ -287,7 +287,7 @@ export const communicationToolDefs: ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "devops_intelligence",
-            description: "Moteur d'intelligence DevOps d'Ulysse — 7 algorithmes: (1) BRAIN_IMPACT_MAP: graphe de dépendances enrichi, (2) ULYSSE_CI_ORACLE: scoring de risque 0-100, (3) AUTO_PATCH_ADVISOR: 3 niveaux de patchs, (4) HOMEWORK_BRAIN_PLANNER: détection lacunes, (5) CODE_REVIEW_AI: analyse diff, (6) AUTO_RISK_CHECK: hook auto pour apply_patch, (7) DYNAMIC_FRAGILITY: apprentissage dynamique des fragilités depuis l'historique réel des bugs/reverts/hotfix. Actions fragility: fragility_leaderboard (top fichiers fragiles), fragility_check (score d'un fichier), record_event (enregistrer un événement), report_bug (signaler un bug sur des fichiers).",
+            description: "Moteur d'intelligence DevOps d'Ulysse — 4 algorithmes: (1) BRAIN_IMPACT_MAP: graphe de dépendances enrichi (fichier → domaines), (2) ULYSSE_CI_ORACLE: scoring de risque 0-100 par changement, (3) AUTO_PATCH_ADVISOR: génération + ranking de patchs (3 niveaux), (4) HOMEWORK_BRAIN_PLANNER: auto-apprentissage depuis les échecs/lacunes. Utilitaires fragility: fragility_leaderboard (top fichiers fragiles), fragility_check (score d'un fichier), record_event (enregistrer un événement), report_bug (signaler un bug sur des fichiers), dynamic_fragility (apprentissage dynamique depuis historique bugs/reverts/hotfix).",
             parameters: {
                 type: "object",
                 properties: {

@@ -390,8 +390,6 @@ export function StudioPanel({ isOpen, onClose, initialFileId }: StudioPanelProps
     }
   }, [isOpen, initialFileId]);
 
-  if (!isOpen) return null;
-
   const isImage = selectedFile?.mimeType.startsWith("image/");
   const isVideo = selectedFile?.mimeType.startsWith("video/");
   const isAudio = selectedFile?.mimeType.startsWith("audio/");
@@ -425,6 +423,8 @@ export function StudioPanel({ isOpen, onClose, initialFileId }: StudioPanelProps
       setAnalysis3D(null);
     }
   }, [is3D, selectedFileId]);
+
+  if (!isOpen) return null;
 
   return (
     <motion.div

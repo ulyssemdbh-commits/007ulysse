@@ -725,13 +725,13 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
         type: "function",
         function: {
             name: "devops_github",
-            description: "Gère les repos GitHub de Maurice via le DevOps Bridge. Actions: list_repos, repo_info, create_repo, list_branches, delete_branch, list_commits, list_prs, create_branch, create_pr, merge_pr, get_file, update_file, delete_file, apply_patch, smart_sync, browse_files, search_code, list_workflows, list_workflow_runs, trigger_workflow, rerun_workflow, cancel_workflow, get_deploy_urls, set_deploy_urls, pages_status, enable_pages, update_pages, disable_pages, pages_build, dry_run_patch, devops_pipeline, crawl_preview, analyze_preview. smart_sync: Push optimisé — compare les SHA git blob local vs remote, ne pousse QUE les fichiers modifiés. UTILISER PRÉFÉRENTIELLEMENT à apply_patch pour les syncs multi-fichiers (économise bande passante et API calls). Format: owner, repo, branch, files=[{path, content}], message. crawl_preview: crawle/monitore en temps réel le site déployé d'un repo. analyze_preview: analyse VisionHub du design. IMPORTANT — apply_patch/smart_sync OBLIGATOIRE: owner='ulyssemdbh-commits', repo='NomDuRepo', branch='la-branche', message='description du commit', files=[{path:'chemin/fichier.js', content:'CONTENU COMPLET DU FICHIER'}]. TOUJOURS fournir owner+repo+files. Si branch omis, utilise la branche par défaut du repo.",
+            description: "Gère les repos GitHub de Maurice via le DevOps Bridge. Actions: list_repos, repo_info, create_repo, list_branches, delete_branch, list_commits, list_prs, create_branch, create_pr, merge_pr, get_file, update_file, delete_file, apply_patch, smart_sync, browse_files, search_code, analyze_repo, list_workflows, list_workflow_runs, trigger_workflow, rerun_workflow, cancel_workflow, get_deploy_urls, set_deploy_urls, pages_status, enable_pages, update_pages, disable_pages, pages_build, dry_run_patch, devops_pipeline, crawl_preview, analyze_preview. smart_sync: Push optimisé — compare les SHA git blob local vs remote, ne pousse QUE les fichiers modifiés. UTILISER PRÉFÉRENTIELLEMENT à apply_patch pour les syncs multi-fichiers (économise bande passante et API calls). Format: owner, repo, branch, files=[{path, content}], message. crawl_preview: crawle/monitore en temps réel le site déployé d'un repo. analyze_preview: analyse VisionHub du design. analyze_repo: Analyse complète d'un repo — lit tous les fichiers code, extrait exports/imports/fonctions/classes, cartographie l'architecture, génère un résumé IA. Params optionnels: path (cibler un dossier), depth ('light'|'standard'|'deep'), focus (filtre par mot-clé dans les paths). UTILISER EN PRIORITÉ quand on demande de 'connaître' ou 'analyser' un repo. IMPORTANT — apply_patch/smart_sync OBLIGATOIRE: owner='ulyssemdbh-commits', repo='NomDuRepo', branch='la-branche', message='description du commit', files=[{path:'chemin/fichier.js', content:'CONTENU COMPLET DU FICHIER'}]. TOUJOURS fournir owner+repo+files. Si branch omis, utilise la branche par défaut du repo.",
             parameters: {
                 type: "object",
                 properties: {
                     action: {
                         type: "string",
-                        enum: ["list_repos", "repo_info", "create_repo", "delete_repo", "list_branches", "delete_branch", "list_commits", "list_prs", "create_branch", "create_pr", "merge_pr", "get_file", "update_file", "delete_file", "apply_patch", "smart_sync", "browse_files", "search_code", "list_workflows", "list_workflow_runs", "trigger_workflow", "rerun_workflow", "cancel_workflow", "get_deploy_urls", "set_deploy_urls", "pages_status", "enable_pages", "update_pages", "disable_pages", "pages_build", "dry_run_patch", "devops_pipeline", "crawl_preview", "analyze_preview", "design_dashboard", "list_issues", "get_issue", "create_issue", "update_issue", "add_issue_comment", "list_releases", "create_release", "list_tags", "create_tag", "compare_branches", "blame", "get_commit_diff", "review_pr", "submit_review", "list_org_repos"],
+                        enum: ["list_repos", "repo_info", "create_repo", "delete_repo", "list_branches", "delete_branch", "list_commits", "list_prs", "create_branch", "create_pr", "merge_pr", "get_file", "update_file", "delete_file", "apply_patch", "smart_sync", "browse_files", "search_code", "analyze_repo", "list_workflows", "list_workflow_runs", "trigger_workflow", "rerun_workflow", "cancel_workflow", "get_deploy_urls", "set_deploy_urls", "pages_status", "enable_pages", "update_pages", "disable_pages", "pages_build", "dry_run_patch", "devops_pipeline", "crawl_preview", "analyze_preview", "design_dashboard", "list_issues", "get_issue", "create_issue", "update_issue", "add_issue_comment", "list_releases", "create_release", "list_tags", "create_tag", "compare_branches", "blame", "get_commit_diff", "review_pr", "submit_review", "list_org_repos"],
                         description: "Action à exécuter"
                     },
                     owner: { type: "string", description: "Propriétaire du repo (ex: Ulysseproject, ulyssemdbh-commits)" },
@@ -791,7 +791,7 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
 — NGINX: nginx_configs (voir toutes les configs Nginx actives), nginx_create (créer/réécrire une config Nginx pro — type=static|proxy, avec gzip, HTTP2, SSL, logs, sécurité), nginx_delete (supprimer une config Nginx et recharger), nginx_show (afficher le contenu d'une config spécifique), nginx_test (tester la syntaxe Nginx), nginx_reload (tester + recharger Nginx), nginx_logs (voir access/error logs d'une app — logType=access|error|both), nginx_audit (vérifie que chaque app PM2 a sa config Nginx et auto-crée celles qui manquent), nginx_catchall (installe un serveur par défaut 404 pour les domaines non configurés), verify_url (vérifie qu'un domaine est correctement configuré: Nginx + SSL + réponse HTTP), ssl_status (état SSL de tous les domaines ou d'un domaine spécifique), ssl_renew (forcer le renouvellement SSL via certbot)
 — URL DIAGNOSTIC: url_diagnose (diagnostic COMPLET + auto-réparation d'une URL: teste dossier, Nginx, SSL, PM2, port, root path et CORRIGE automatiquement 502/404/503/000), url_diagnose_all (teste ET corrige automatiquement staging + production pour un appName: {appName}-dev.ulyssepro.org ET {appName}.ulyssepro.org en une seule action)
 — CRON: cron_list (voir les tâches planifiées), cron_add (ajouter une tâche cron), cron_delete (supprimer une tâche)
-— INGÉNIERIE: install_packages (npm/yarn install dans une app), run_tests (npm test/vitest/jest dans une app), analyze_deps (audit dépendances: vulnérabilités, outdated, taille), debug_app (diagnostic complet: logs + PM2 status + port check + nginx + error patterns), refactor_check (linter, dead code, complexity analysis)
+— INGÉNIERIE: install_packages (npm/yarn install dans une app), run_tests (npm test/vitest/jest dans une app), run_tests_local (exécute vitest/tsc --noEmit/eslint sur Replit AVANT de push — vérifie la qualité du code localement), analyze_deps (audit dépendances: vulnérabilités, outdated, taille), debug_app (diagnostic complet: logs + PM2 status + port check + nginx + error patterns), refactor_check (linter, dead code, complexity analysis)
 — SÉCURITÉ & FIABILITÉ: security_scan (audit complet: secrets dans le code, vulnérabilités, headers HTTP, SSL, patterns dangereux, permissions), backup_app (backup complet: code + DB + nginx + env), rollback_app (rollback Git + rebuild + PM2 restart + health check, avec backup branch auto)
 — PERFORMANCE: profile_app (métriques process, mémoire, heap, response time benchmark 5x, connections ouvertes, I/O disque), perf_loadtest (test de charge: N requêtes × C concurrency via ab ou curl, avec stats serveur post-test)
 — DATA: migrate_db, log_search, db_inspect (schema+indexes+foreign keys+slow queries+bloat+connexions)
@@ -1022,6 +1022,28 @@ function devopsDiscordNotify(title: string, message: string, type: 'success' | '
     }).catch(() => {});
 }
 
+async function devopsAutoJournal(repoFullName: string, entryType: string, title: string, description?: string, filesChanged?: string[], metadata?: Record<string, any>) {
+    try {
+        const { db } = await import("../../db");
+        const { sql } = await import("drizzle-orm");
+        const [project] = await db.execute(sql`
+            SELECT id FROM devmax_projects 
+            WHERE (repo_owner || '/' || repo_name) = ${repoFullName} 
+            OR deploy_slug = ${repoFullName.split('/').pop() || ''}
+            LIMIT 1
+        `).then((r: any) => r.rows || r).catch(() => []);
+        if (!project?.id) return;
+        const filesArr = filesChanged && filesChanged.length > 0 ? `{${filesChanged.map(f => `"${f.replace(/"/g, '\\"')}"`).join(',')}}` : null;
+        await db.execute(sql.raw(`
+            INSERT INTO devmax_project_journal (project_id, entry_type, title, description, files_changed, metadata)
+            VALUES ('${project.id}', '${entryType}', '${title.replace(/'/g, "''")}', ${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'}, ${filesArr ? `'${filesArr}'::text[]` : 'NULL'}, ${metadata ? `'${JSON.stringify(metadata).replace(/'/g, "''")}'::jsonb` : 'NULL'})
+        `));
+        console.log(`[DevOps-Journal] ${entryType}: ${title} → project ${project.id}`);
+    } catch (e: any) {
+        console.log(`[DevOps-Journal] Skip: ${e.message}`);
+    }
+}
+
 async function resolveGitHubTokenForProject(db: any, owner?: string, repo?: string, projectId?: string): Promise<string | null> {
     try {
         const { sql } = await import("drizzle-orm");
@@ -1147,14 +1169,26 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
             }
             case "list_commits": {
                 if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
-                const commits = await githubService.listCommits(owner, repo, branch || undefined, 10);
-                const list = Array.isArray(commits) ? (commits as any[]).map((c: any) => ({
+                const commitLimit = limit || args.count || 20;
+                const commitOpts: { author?: string; since?: string; until?: string; path?: string } = {};
+                if (args.author) commitOpts.author = args.author;
+                if (args.since) commitOpts.since = args.since;
+                if (args.until) commitOpts.until = args.until;
+                if (args.file_path || args.filePath) commitOpts.path = args.file_path || args.filePath;
+                const commits = await githubService.listCommits(owner, repo, branch || undefined, commitLimit, Object.keys(commitOpts).length ? commitOpts : undefined);
+                let list = Array.isArray(commits) ? (commits as any[]).map((c: any) => ({
                     sha: c.sha?.slice(0, 7),
+                    fullSha: c.sha,
                     message: c.commit?.message?.split("\n")[0],
                     author: c.commit?.author?.name,
-                    date: c.commit?.author?.date
+                    date: c.commit?.author?.date,
+                    filesChanged: c.files?.length || null
                 })) : [];
-                return JSON.stringify({ commits: list });
+                if (args.search || args.messageFilter) {
+                    const searchTerm = (args.search || args.messageFilter).toLowerCase();
+                    list = list.filter(c => c.message?.toLowerCase().includes(searchTerm));
+                }
+                return JSON.stringify({ commits: list, count: list.length, filters: { branch, ...commitOpts, search: args.search || args.messageFilter || null } });
             }
             case "list_prs": {
                 if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
@@ -1181,21 +1215,49 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                     { name: "PR", value: `#${(pr as any)?.number || '?'}`, inline: true },
                     { name: "Repo", value: `${owner}/${repo}`, inline: true }
                 ]);
+                devopsAutoJournal(`${owner}/${repo}`, "code_edit", `PR #${(pr as any)?.number || '?'}: ${title}`, `${head} → ${base || "main"}`, [], { prNumber: (pr as any)?.number, head, base: base || "main" });
                 return JSON.stringify({ success: true, pr });
             }
             case "merge_pr": {
                 if (!owner || !repo || !pullNumber) return JSON.stringify({ error: "owner, repo et pullNumber requis" });
                 const merged = await githubService.mergePullRequest(owner, repo, pullNumber);
                 devopsDiscordNotify("PR Mergée", `PR #${pullNumber} mergée sur **${owner}/${repo}**`, "success");
+                devopsAutoJournal(`${owner}/${repo}`, "deploy", `PR #${pullNumber} mergée`, undefined, [], { prNumber: pullNumber });
                 return JSON.stringify({ success: true, merged });
             }
             case "get_file": {
                 if (!owner || !repo || !path) return JSON.stringify({ error: "owner, repo et path requis" });
-                const file = await githubService.getFileContent(owner, repo, path, branch);
-                if ((file as any).content) {
-                    const decoded = Buffer.from((file as any).content, "base64").toString("utf-8");
+                let file: any = null;
+                let resolvedPath = path;
+                try {
+                    file = await githubService.getFileContent(owner, repo, path, branch);
+                } catch (e: any) {
+                    const extSwaps: Record<string, string> = { ".js": ".ts", ".ts": ".js", ".jsx": ".tsx", ".tsx": ".jsx" };
+                    const ext = "." + (path.split(".").pop() || "");
+                    const alt = extSwaps[ext];
+                    if (alt) {
+                        const altPath = path.slice(0, -ext.length) + alt;
+                        try {
+                            file = await githubService.getFileContent(owner, repo, altPath, branch);
+                            resolvedPath = altPath;
+                        } catch {}
+                    }
+                    if (!file) {
+                        const structured = e.structured || {};
+                        return JSON.stringify({
+                            error: structured.code || "file_not_found",
+                            path,
+                            suggestion: structured.suggestion || "Fichier introuvable.",
+                            hint: `Utilise browse_files pour voir les fichiers réels du repo — les extensions (.ts/.js/.tsx/.jsx) peuvent différer de ce que tu attends. Ne devine JAMAIS un chemin.`
+                        });
+                    }
+                }
+                if (file?.content) {
+                    const decoded = Buffer.from(file.content, "base64").toString("utf-8");
                     const maxChars = args.full ? 50000 : 15000;
-                    return JSON.stringify({ path, content: decoded.slice(0, maxChars), truncated: decoded.length > maxChars, totalChars: decoded.length });
+                    const result: any = { path: resolvedPath, content: decoded.slice(0, maxChars), truncated: decoded.length > maxChars, totalChars: decoded.length };
+                    if (resolvedPath !== path) result.note = `Fichier trouvé sous ${resolvedPath} (extension corrigée automatiquement).`;
+                    return JSON.stringify(result);
                 }
                 return JSON.stringify(file);
             }
@@ -1355,12 +1417,20 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                 if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
                 const query = message || content || path || "";
                 if (!query) return JSON.stringify({ error: "query requis (via message, content ou path)" });
-                const results = await githubService.searchCode(owner, repo, query);
-                const items = ((results as any).items || []).map((i: any) => ({
-                    path: i.path, name: i.name, sha: i.sha,
-                    score: i.score
-                }));
-                return JSON.stringify({ results: items, total: (results as any).total_count });
+                try {
+                    const results = await githubService.searchCode(owner, repo, query);
+                    const items = ((results as any).items || []).map((i: any) => ({
+                        path: i.path, name: i.name, sha: i.sha,
+                        score: i.score
+                    }));
+                    const response: any = { results: items, total: (results as any).total_count };
+                    if (items.length === 0) {
+                        response.hint = "Aucun résultat. Essaie une recherche plus large ou utilise browse_files pour explorer l'arborescence et trouver les fichiers manuellement.";
+                    }
+                    return JSON.stringify(response);
+                } catch (e: any) {
+                    return JSON.stringify({ error: e.message || "Erreur search_code", hint: "La recherche de code GitHub peut échouer sur les repos récents ou petits. Utilise browse_files pour explorer l'arborescence à la place." });
+                }
             }
             case "apply_patch": {
                 if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis. Exemple: owner='ulyssemdbh-commits', repo='HorlogeMax'" });
@@ -1433,6 +1503,7 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                         { name: "Risque", value: `${analysis.riskScore}/100`, inline: true },
                         { name: "Branche", value: safeBranch, inline: true }
                     ]);
+                    devopsAutoJournal(`${owner}/${repo}`, "code_edit", `Patch (branche sécu): ${message}`, `Risque ${analysis.riskScore}/100 → ${safeBranch}`, files.map((f: any) => f.path), { riskScore: analysis.riskScore, branch: safeBranch, prNumber: pr ? (pr as any).number : null });
                     return JSON.stringify({
                         success: true,
                         redirected: true,
@@ -1451,6 +1522,7 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                     { name: "Risque", value: `${analysis.riskScore}/100`, inline: true },
                     { name: "Destructif", value: `${analysis.destructiveScore}`, inline: true }
                 ]);
+                devopsAutoJournal(`${owner}/${repo}`, "code_edit", `Patch: ${message}`, `${files.length} fichier(s) sur ${patchBranch}, risque ${analysis.riskScore}/100`, files.map((f: any) => f.path), { riskScore: analysis.riskScore, branch: patchBranch, riskLevel: analysis.riskLevel });
                 return JSON.stringify({
                     success: true,
                     result,
@@ -1551,17 +1623,25 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                 if (!browsePath) {
                     const codeDirList = dirSummary.filter(d => d.category === "code").map(d => d.name);
                     const subdirsDetail: Record<string, string[]> = {};
+                    const keyFiles: Record<string, string[]> = {};
                     for (const codeDir of codeDirList.slice(0, 8)) {
                         const prefix2 = codeDir + "/";
                         const subItems = allItems.filter((f: any) => f.path.startsWith(prefix2));
                         const subs = new Set<string>();
+                        const directFiles: string[] = [];
                         for (const si of subItems) {
                             const relParts = si.path.slice(prefix2.length).split("/");
                             if (relParts.length > 1) subs.add(relParts[0]);
+                            if (relParts.length <= 2 && codeExtensions.has("." + (si.path.split(".").pop() || ""))) {
+                                directFiles.push(si.path);
+                            }
                         }
                         if (subs.size > 0) {
                             const sorted = Array.from(subs).sort();
                             subdirsDetail[codeDir] = sorted.length > 15 ? [...sorted.slice(0, 12), `... +${sorted.length - 12} more`] : sorted;
+                        }
+                        if (directFiles.length > 0) {
+                            keyFiles[codeDir] = directFiles.slice(0, 8);
                         }
                     }
 
@@ -1570,15 +1650,22 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                         trimmedDirs.push({ name: "...", type: "summary", files: dirSummary.slice(maxDirs).reduce((s, d) => s + d.files, 0), totalSize: 0, subdirs: 0, category: "other" } as any);
                     }
 
+                    const tsCount = allItems.filter((f: any) => f.path.endsWith(".ts") || f.path.endsWith(".tsx")).length;
+                    const jsCount = allItems.filter((f: any) => f.path.endsWith(".js") || f.path.endsWith(".jsx")).length;
+                    const stackHint = tsCount > jsCount ? `Stack TypeScript détectée (${tsCount} fichiers .ts/.tsx). Les fichiers sont en .ts PAS en .js.` : "";
+
                     return JSON.stringify({
                         path: "/",
                         repoSize: { totalFiles: allItems.length, totalDirs: dirs.size, isLarge: isLargeRepo },
                         directories: trimmedDirs,
                         codeStructure: subdirsDetail,
+                        keyFilesPerDir: keyFiles,
                         files: sortedFiles.slice(0, maxRootFiles),
-                        hint: isLargeRepo
+                        hint: (isLargeRepo
                             ? "Repo volumineux. Explore par dossier: browse_files path='client/src' ou path='server/services'. Ne tente PAS d'explorer tout le repo d'un coup."
-                            : "Utilise browse_files avec path='client/src' ou path='server/services' pour explorer un sous-dossier."
+                            : "Utilise browse_files avec path='client/src' ou path='server/services' pour explorer un sous-dossier.")
+                            + " IMPORTANT: pour lire un fichier, utilise EXACTEMENT le path affiché ici (extensions incluses). Ne devine PAS les noms de fichiers."
+                            + (stackHint ? ` ${stackHint}` : "")
                     });
                 }
 
@@ -1589,9 +1676,10 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                     files: sortedFiles.slice(0, maxSubFiles),
                     totalFiles: filtered.length,
                     totalDirs: dirs.size,
-                    hint: filtered.length > maxSubFiles
+                    hint: (filtered.length > maxSubFiles
                         ? `${filtered.length - maxSubFiles} fichiers non affichés. Cible un sous-dossier spécifique pour voir plus.`
-                        : "Utilise browse_files avec path='sous-dossier' pour explorer plus en profondeur."
+                        : "Utilise browse_files avec path='sous-dossier' pour explorer plus en profondeur.")
+                        + " Pour lire un fichier, utilise EXACTEMENT le path affiché (extensions incluses)."
                 });
             }
             case "list_workflows": {
@@ -2446,6 +2534,329 @@ This is a UI/UX design mockup for a web developer to implement. Make it look lik
                 return JSON.stringify({ action: "delete_repo", success: true, repo: `${owner}/${repo}` });
             }
 
+            case "diff_preview": {
+                if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
+                const diffFiles = args.files || [];
+                if (!diffFiles.length) return JSON.stringify({ error: "files requis — [{path, content}] pour prévisualiser les changements" });
+                const diffResults: any[] = [];
+                for (const file of diffFiles) {
+                    try {
+                        const existing = await githubService.getFileContent(owner, repo, file.path, branch || "main");
+                        const oldContent = existing?.content ? Buffer.from(existing.content, "base64").toString("utf-8") : "";
+                        const oldLines = oldContent.split("\n");
+                        const newLines = (file.content || "").split("\n");
+                        const additions = newLines.filter((line: string, i: number) => i >= oldLines.length || line !== oldLines[i]).length;
+                        const deletions = oldLines.filter((line: string, i: number) => i >= newLines.length || line !== newLines[i]).length;
+                        const unchanged = oldLines.filter((line: string, i: number) => i < newLines.length && line === newLines[i]).length;
+                        const diffChunks: string[] = [];
+                        const maxContext = 3;
+                        let chunkStart = -1;
+                        for (let i = 0; i < Math.max(oldLines.length, newLines.length); i++) {
+                            const oldLine = i < oldLines.length ? oldLines[i] : undefined;
+                            const newLine = i < newLines.length ? newLines[i] : undefined;
+                            if (oldLine !== newLine) {
+                                if (chunkStart < 0) chunkStart = Math.max(0, i - maxContext);
+                                if (oldLine !== undefined && oldLine !== newLine) diffChunks.push(`- ${oldLine}`);
+                                if (newLine !== undefined && oldLine !== newLine) diffChunks.push(`+ ${newLine}`);
+                            } else if (chunkStart >= 0 && diffChunks.length > 0) {
+                                diffChunks.push(`  ${oldLine}`);
+                                if (diffChunks.filter(l => l.startsWith("  ")).length >= maxContext) {
+                                    chunkStart = -1;
+                                }
+                            }
+                        }
+                        diffResults.push({
+                            path: file.path,
+                            status: "modified",
+                            oldLines: oldLines.length,
+                            newLines: newLines.length,
+                            additions,
+                            deletions,
+                            unchanged,
+                            diff: diffChunks.slice(0, 60).join("\n") + (diffChunks.length > 60 ? `\n... +${diffChunks.length - 60} more lines` : ""),
+                        });
+                    } catch {
+                        const newLines = (file.content || "").split("\n");
+                        diffResults.push({
+                            path: file.path,
+                            status: "new_file",
+                            oldLines: 0,
+                            newLines: newLines.length,
+                            additions: newLines.length,
+                            deletions: 0,
+                            diff: newLines.slice(0, 20).map((l: string) => `+ ${l}`).join("\n") + (newLines.length > 20 ? `\n... +${newLines.length - 20} more lines` : ""),
+                        });
+                    }
+                }
+                const totalAdd = diffResults.reduce((s, d) => s + d.additions, 0);
+                const totalDel = diffResults.reduce((s, d) => s + d.deletions, 0);
+                return JSON.stringify({
+                    action: "diff_preview",
+                    files: diffResults,
+                    summary: `${diffResults.length} fichier(s) — +${totalAdd} / -${totalDel} lignes`,
+                    newFiles: diffResults.filter(d => d.status === "new_file").length,
+                    modifiedFiles: diffResults.filter(d => d.status === "modified").length,
+                    hint: "Vérifie les changements ci-dessus. Si OK, utilise apply_patch pour les appliquer.",
+                });
+            }
+
+            case "analyze_repo": {
+                if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
+                const analyzeRepoStart = Date.now();
+                const targetPath = args.path || "";
+                const depth = args.depth || "standard";
+                const focusOn = args.focus || "";
+
+                try {
+                    const repoInfo = await githubService.getRepo(owner, repo);
+                    const defaultBranchRepo = (repoInfo as any).default_branch || "main";
+                    const targetBranch = branch || defaultBranchRepo;
+                    const tree = await githubService.getTree(owner, repo, targetBranch);
+                    const allTreeItems = ((tree as any).tree || []).map((t: any) => ({
+                        path: t.path, type: t.type, size: t.size, sha: t.sha
+                    }));
+
+                    const codeExts = new Set([".ts", ".tsx", ".js", ".jsx", ".json", ".py", ".css", ".html", ".vue", ".svelte", ".go", ".rs", ".java", ".rb", ".php", ".sh", ".yml", ".yaml", ".sql", ".md"]);
+                    const skipDirs = new Set(["node_modules", ".git", "dist", "build", ".next", ".cache", "coverage", "__pycache__", ".turbo", "attached_assets", ".canvas"]);
+
+                    let codeFiles = allTreeItems.filter((f: any) => {
+                        if (f.type !== "blob") return false;
+                        const ext = "." + (f.path.split(".").pop() || "");
+                        if (!codeExts.has(ext)) return false;
+                        const firstDir = f.path.split("/")[0];
+                        if (skipDirs.has(firstDir)) return false;
+                        if (targetPath) {
+                            const prefix = targetPath.endsWith("/") ? targetPath : targetPath + "/";
+                            if (!f.path.startsWith(prefix) && f.path !== targetPath) return false;
+                        }
+                        if (focusOn) {
+                            const focusLower = focusOn.toLowerCase();
+                            if (!f.path.toLowerCase().includes(focusLower)) return false;
+                        }
+                        return true;
+                    });
+
+                    const maxFiles = depth === "deep" ? 80 : depth === "light" ? 20 : 50;
+                    codeFiles.sort((a: any, b: any) => {
+                        const extPriority: Record<string, number> = { ".ts": 0, ".tsx": 1, ".js": 2, ".jsx": 3, ".py": 4, ".vue": 5, ".go": 6 };
+                        const aExt = "." + (a.path.split(".").pop() || "");
+                        const bExt = "." + (b.path.split(".").pop() || "");
+                        const aPri = extPriority[aExt] ?? 10;
+                        const bPri = extPriority[bExt] ?? 10;
+                        if (aPri !== bPri) return aPri - bPri;
+                        const aDepth = a.path.split("/").length;
+                        const bDepth = b.path.split("/").length;
+                        if (aDepth !== bDepth) return aDepth - bDepth;
+                        return a.path.localeCompare(b.path);
+                    });
+
+                    const filesToRead = codeFiles.slice(0, maxFiles);
+                    const skippedCount = codeFiles.length - filesToRead.length;
+
+                    const BATCH_SIZE = 10;
+                    const fileAnalyses: any[] = [];
+                    const importGraph: Record<string, string[]> = {};
+                    const exportMap: Record<string, string[]> = {};
+
+                    for (let i = 0; i < filesToRead.length; i += BATCH_SIZE) {
+                        const batch = filesToRead.slice(i, i + BATCH_SIZE);
+                        const results = await Promise.all(batch.map(async (f: any) => {
+                            try {
+                                const fileData = await githubService.getFileContent(owner, repo, f.path, targetBranch);
+                                if (!(fileData as any).content) return { path: f.path, error: "no content" };
+                                const content = Buffer.from((fileData as any).content, "base64").toString("utf-8");
+                                const lines = content.split("\n");
+                                const lineCount = lines.length;
+
+                                const imports: string[] = [];
+                                const exports: string[] = [];
+                                const functions: string[] = [];
+                                const classes: string[] = [];
+                                const types: string[] = [];
+
+                                for (const line of lines) {
+                                    const trimmed = line.trim();
+                                    const importMatch = trimmed.match(/^import\s+.*?from\s+['"](.*?)['"]/);
+                                    if (importMatch) imports.push(importMatch[1]);
+                                    else if (trimmed.match(/^const\s+.*?=\s*require\(['"](.*?)['"]\)/)) {
+                                        const m = trimmed.match(/require\(['"](.*?)['"]\)/);
+                                        if (m) imports.push(m[1]);
+                                    }
+
+                                    if (trimmed.startsWith("export default")) exports.push("default");
+                                    else if (trimmed.match(/^export\s+(async\s+)?function\s+(\w+)/)) {
+                                        const m = trimmed.match(/^export\s+(async\s+)?function\s+(\w+)/);
+                                        if (m) { exports.push(m[2]); functions.push(m[2]); }
+                                    } else if (trimmed.match(/^export\s+(const|let|var)\s+(\w+)/)) {
+                                        const m = trimmed.match(/^export\s+(const|let|var)\s+(\w+)/);
+                                        if (m) exports.push(m[2]);
+                                    } else if (trimmed.match(/^export\s+(class|interface|type|enum)\s+(\w+)/)) {
+                                        const m = trimmed.match(/^export\s+(class|interface|type|enum)\s+(\w+)/);
+                                        if (m) { exports.push(m[2]); if (m[1] === "class") classes.push(m[2]); else types.push(m[2]); }
+                                    }
+
+                                    if (!trimmed.startsWith("export")) {
+                                        const fnMatch = trimmed.match(/^(?:async\s+)?function\s+(\w+)/);
+                                        if (fnMatch) functions.push(fnMatch[1]);
+                                        const classMatch = trimmed.match(/^class\s+(\w+)/);
+                                        if (classMatch) classes.push(classMatch[1]);
+                                    }
+                                }
+
+                                const localImports = imports.filter(i => i.startsWith(".") || i.startsWith("@/") || i.startsWith("@shared"));
+                                const externalDeps = imports.filter(i => !i.startsWith(".") && !i.startsWith("@/") && !i.startsWith("@shared"));
+                                importGraph[f.path] = localImports;
+                                exportMap[f.path] = exports;
+
+                                const firstComment = lines.slice(0, 10).find(l => l.trim().startsWith("//") || l.trim().startsWith("/*") || l.trim().startsWith("*"));
+
+                                return {
+                                    path: f.path,
+                                    lines: lineCount,
+                                    size: f.size,
+                                    exports: exports.slice(0, 20),
+                                    functions: functions.slice(0, 15),
+                                    classes: classes.slice(0, 10),
+                                    types: types.slice(0, 10),
+                                    localImports: localImports.slice(0, 15),
+                                    externalDeps: [...new Set(externalDeps)].slice(0, 10),
+                                    firstComment: firstComment?.trim().slice(0, 100) || null,
+                                    preview: lines.slice(0, 5).join("\n").slice(0, 300)
+                                };
+                            } catch (err: any) {
+                                return { path: f.path, error: err.message || "read failed" };
+                            }
+                        }));
+                        fileAnalyses.push(...results);
+                    }
+
+                    const dirStats: Record<string, { files: number; totalLines: number; totalSize: number; extensions: Record<string, number> }> = {};
+                    for (const fa of fileAnalyses) {
+                        if (fa.error) continue;
+                        const dir = fa.path.includes("/") ? fa.path.split("/").slice(0, -1).join("/") : "/";
+                        if (!dirStats[dir]) dirStats[dir] = { files: 0, totalLines: 0, totalSize: 0, extensions: {} };
+                        dirStats[dir].files++;
+                        dirStats[dir].totalLines += fa.lines || 0;
+                        dirStats[dir].totalSize += fa.size || 0;
+                        const ext = "." + (fa.path.split(".").pop() || "");
+                        dirStats[dir].extensions[ext] = (dirStats[dir].extensions[ext] || 0) + 1;
+                    }
+
+                    const tsCount = allTreeItems.filter((f: any) => f.path.endsWith(".ts") || f.path.endsWith(".tsx")).length;
+                    const jsCount = allTreeItems.filter((f: any) => f.path.endsWith(".js") || f.path.endsWith(".jsx")).length;
+                    const pyCount = allTreeItems.filter((f: any) => f.path.endsWith(".py")).length;
+                    const primaryLang = tsCount >= jsCount && tsCount >= pyCount ? "TypeScript" : jsCount > pyCount ? "JavaScript" : pyCount > 0 ? "Python" : "Mixed";
+
+                    const totalLines = fileAnalyses.reduce((s, f) => s + (f.lines || 0), 0);
+                    const successFiles = fileAnalyses.filter(f => !f.error);
+
+                    const entryPoints = successFiles.filter(f =>
+                        f.path.match(/index\.(ts|tsx|js|jsx)$/) ||
+                        f.path.match(/main\.(ts|tsx|js|jsx)$/) ||
+                        f.path.match(/app\.(ts|tsx|js|jsx)$/i) ||
+                        f.path.match(/server\.(ts|js)$/) ||
+                        f.path === "package.json"
+                    );
+
+                    const heavyFiles = successFiles
+                        .filter(f => f.lines > 200)
+                        .sort((a, b) => b.lines - a.lines)
+                        .slice(0, 10)
+                        .map(f => ({ path: f.path, lines: f.lines }));
+
+                    const allExternalDeps = new Set<string>();
+                    for (const f of successFiles) {
+                        (f.externalDeps || []).forEach((d: string) => allExternalDeps.add(d.split("/").slice(0, d.startsWith("@") ? 2 : 1).join("/")));
+                    }
+
+                    const mostConnected = successFiles
+                        .map(f => ({ path: f.path, connections: (f.localImports?.length || 0) + (f.exports?.length || 0) }))
+                        .sort((a, b) => b.connections - a.connections)
+                        .slice(0, 10);
+
+                    let aiSummary = "";
+                    if (depth !== "light") {
+                        try {
+                            const openai = getOpenAI();
+                            const filesContext = successFiles.slice(0, 30).map(f =>
+                                `📄 ${f.path} (${f.lines} lines) — exports: [${(f.exports || []).slice(0, 5).join(", ")}] — imports: [${(f.localImports || []).slice(0, 5).join(", ")}]${f.firstComment ? ` — ${f.firstComment}` : ""}`
+                            ).join("\n");
+
+                            const aiRes = await openai.chat.completions.create({
+                                model: "gpt-4o-mini",
+                                messages: [{
+                                    role: "system",
+                                    content: "Tu es un architecte logiciel senior. Analyse la structure du repo et produis un résumé technique concis en français. Max 500 mots."
+                                }, {
+                                    role: "user",
+                                    content: `Repo: ${owner}/${repo} (${primaryLang}, ${totalLines} lignes, ${successFiles.length} fichiers)
+                                    
+Directories: ${Object.entries(dirStats).map(([d, s]) => `${d}: ${s.files} files, ${s.totalLines} lines`).join("; ")}
+
+Files:\n${filesContext}
+
+External deps: ${[...allExternalDeps].slice(0, 20).join(", ")}
+
+Résume: 1) But du projet, 2) Architecture (patterns, stack), 3) Fichiers clés et leur rôle, 4) Dépendances notables, 5) Points d'attention (dette technique, complexité).`
+                                }],
+                                max_tokens: 1000,
+                                temperature: 0.3
+                            });
+                            aiSummary = aiRes.choices?.[0]?.message?.content || "";
+                        } catch (aiErr: any) {
+                            aiSummary = `[AI summary failed: ${aiErr.message}]`;
+                        }
+                    }
+
+                    return JSON.stringify({
+                        action: "analyze_repo",
+                        repo: `${owner}/${repo}`,
+                        branch: targetBranch,
+                        path: targetPath || "/",
+                        depth,
+                        timing: `${Date.now() - analyzeRepoStart}ms`,
+                        overview: {
+                            primaryLanguage: primaryLang,
+                            totalFiles: allTreeItems.length,
+                            codeFiles: codeFiles.length,
+                            analyzedFiles: successFiles.length,
+                            skippedFiles: skippedCount,
+                            totalLinesAnalyzed: totalLines,
+                            languageBreakdown: { ts: tsCount, js: jsCount, py: pyCount }
+                        },
+                        architecture: {
+                            entryPoints: entryPoints.map(f => f.path),
+                            directoryStats: Object.fromEntries(
+                                Object.entries(dirStats)
+                                    .sort(([, a], [, b]) => b.totalLines - a.totalLines)
+                                    .slice(0, 15)
+                            ),
+                            heavyFiles,
+                            mostConnected,
+                            externalDependencies: [...allExternalDeps].sort().slice(0, 30)
+                        },
+                        files: fileAnalyses.map(f => f.error
+                            ? { path: f.path, error: f.error }
+                            : {
+                                path: f.path,
+                                lines: f.lines,
+                                exports: f.exports,
+                                functions: f.functions?.slice(0, 10),
+                                classes: f.classes,
+                                types: f.types,
+                                localImports: f.localImports,
+                                externalDeps: f.externalDeps,
+                                preview: depth === "deep" ? f.preview : undefined
+                            }
+                        ),
+                        importGraph: depth === "deep" ? importGraph : undefined,
+                        aiSummary: aiSummary || undefined,
+                        hint: skippedCount > 0 ? `${skippedCount} fichiers non analysés. Utilise depth='deep' ou path='sous-dossier' pour cibler.` : undefined
+                    });
+                } catch (err: any) {
+                    return JSON.stringify({ error: `analyze_repo failed: ${err.message}`, hint: "Vérifie owner/repo et les permissions." });
+                }
+            }
             case "list_org_repos": {
                 const org = args.org || owner;
                 const orgRepos = await githubService.listOrgRepos(org, { per_page: limit || 30 });
@@ -2464,7 +2875,7 @@ This is a UI/UX design mockup for a web developer to implement. Make it look lik
             }
 
             default:
-                return JSON.stringify({ error: `Action DevOps inconnue: ${action}. Actions disponibles: list_repos, repo_info, create_repo, delete_repo, list_branches, delete_branch, list_commits, list_prs, create_branch, create_pr, merge_pr, get_file, update_file, delete_file, apply_patch, browse_files, search_code, list_workflows, list_workflow_runs, trigger_workflow, rerun_workflow, cancel_workflow, get_deploy_urls, set_deploy_urls, pages_status, enable_pages, update_pages, disable_pages, pages_build, dry_run_patch, devops_pipeline, crawl_preview, analyze_preview, list_issues, get_issue, create_issue, update_issue, add_issue_comment, list_releases, create_release, list_tags, create_tag, compare_branches, blame, get_commit_diff, review_pr, submit_review, list_org_repos` });
+                return JSON.stringify({ error: `Action DevOps inconnue: ${action}. Actions disponibles: list_repos, repo_info, create_repo, delete_repo, list_branches, delete_branch, list_commits, list_prs, create_branch, create_pr, merge_pr, get_file, update_file, delete_file, apply_patch, browse_files, search_code, analyze_repo, list_workflows, list_workflow_runs, trigger_workflow, rerun_workflow, cancel_workflow, get_deploy_urls, set_deploy_urls, pages_status, enable_pages, update_pages, disable_pages, pages_build, dry_run_patch, devops_pipeline, crawl_preview, analyze_preview, list_issues, get_issue, create_issue, update_issue, add_issue_comment, list_releases, create_release, list_tags, create_tag, compare_branches, blame, get_commit_diff, review_pr, submit_review, list_org_repos` });
         }
         };
 
@@ -5080,11 +5491,20 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                         } catch {}
                     }
                 }
+                if (result.success) {
+                    const repoMatch = repoUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+                    if (repoMatch) {
+                        devopsAutoJournal(`${repoMatch[1]}/${repoMatch[2]}`, "deploy", `Deploy ${isStagingDeploy ? "staging" : "production"}: ${appName}`, `Branche: ${branch || "main"}, URL: ${isStagingDeploy ? `${baseAppName}-dev.ulyssepro.org` : `${appName}.ulyssepro.org`}`, [], { environment: isStagingDeploy ? "staging" : "production", appName, branch: branch || "main" });
+                    }
+                }
                 return JSON.stringify({ action: "deploy", ...result });
             }
             case "update": {
                 if (!appName) return JSON.stringify({ error: "appName requis pour update" });
                 const result = await sshService.updateApp(appName, branch || "main");
+                if (result.success) {
+                    devopsAutoJournal(appName, "deploy", `Update: ${appName}`, `git pull + rebuild sur branche ${branch || "main"}`, [], { appName, branch: branch || "main" });
+                }
                 return JSON.stringify({ action: "update", ...result });
             }
             case "logs": {
@@ -5337,6 +5757,41 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                 if (!allowedScripts.includes(testCmd)) return JSON.stringify({ error: `Script "${testCmd}" non autorisé. Utilisez: ${allowedScripts.join(", ")}` });
                 const testResult = await sshService.executeCommand(`cd ${appDir} && npm run ${testCmd} 2>&1 | tail -50`, 120000);
                 return JSON.stringify({ action: "run_tests", appName: sanitizedApp, script: testCmd, availableScripts, success: testResult.success, output: testResult.output, error: testResult.error });
+            }
+            case "run_tests_local": {
+                const checks: Array<{ name: string; pass: boolean; output: string; duration: number }> = [];
+                const runLocal = async (name: string, cmd: string, timeoutMs = 60000): Promise<void> => {
+                    const start = Date.now();
+                    try {
+                        const { execSync } = await import("child_process");
+                        const out = execSync(cmd, { timeout: timeoutMs, cwd: process.cwd(), encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+                        checks.push({ name, pass: true, output: (out || "").slice(-500), duration: Date.now() - start });
+                    } catch (e: any) {
+                        const stderr = e.stderr ? String(e.stderr).slice(-500) : "";
+                        const stdout = e.stdout ? String(e.stdout).slice(-500) : "";
+                        checks.push({ name, pass: false, output: stderr || stdout || e.message?.slice(0, 300) || "unknown error", duration: Date.now() - start });
+                    }
+                };
+
+                const suite = command || "all";
+                if (suite === "all" || suite === "typecheck") {
+                    await runLocal("TypeScript typecheck", "npx tsc --noEmit --pretty 2>&1 | tail -30", 90000);
+                }
+                if (suite === "all" || suite === "vitest") {
+                    await runLocal("Vitest unit tests", "npx vitest run --reporter=verbose 2>&1 | tail -50", 120000);
+                }
+                if (suite === "all" || suite === "lint") {
+                    await runLocal("ESLint", "npx eslint . --ext .ts,.tsx --max-warnings=50 2>&1 | tail -30", 60000);
+                }
+                if (suite === "all" || suite === "build") {
+                    await runLocal("Build check", "npx vite build --mode development 2>&1 | tail -20", 120000);
+                }
+
+                const passed = checks.filter(c => c.pass).length;
+                const failed = checks.filter(c => !c.pass).length;
+                const summary = checks.map(c => `${c.pass ? "✅" : "❌"} ${c.name} (${c.duration}ms)${c.pass ? "" : "\n   " + c.output.split("\n").slice(0, 5).join("\n   ")}`).join("\n");
+
+                return JSON.stringify({ action: "run_tests_local", suite, totalChecks: checks.length, passed, failed, allPassed: failed === 0, summary, checks });
             }
             case "analyze_deps": {
                 if (!appName) return JSON.stringify({ error: "appName requis" });
