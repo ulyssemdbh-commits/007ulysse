@@ -307,6 +307,35 @@ PRISE EN MAIN & MONITORING ÉCRAN:
   })
 );
 
+function buildSmartDirectives(msg: string, personaKey: string): string {
+  let directives = "";
+
+  const isReadOnly = /ne (modifi|touche|change)|lecture seule|sans modif|read.?only|ne rien (modif|touch|chang)|juste (regarde|analyse|vérifie|check)|uniquement (lire|analyser|vérifier)/i.test(msg);
+  const isAnalyzeRepo = /analy[sz]e.*repo|repo.*analy[sz]e|explore.*repo|repo.*100%|audit.*repo|scan.*repo|examine.*repo/i.test(msg);
+  const isNoAction = /ne (fais|fait) rien|sans action|pas d'action|n'agis pas|don'?t (do|change|modify|touch)/i.test(msg);
+
+  if (isReadOnly || isNoAction) {
+    directives += `\n\n🚨 DIRECTIVE SYSTÈME — LECTURE SEULE :
+L'utilisateur a EXPLICITEMENT demandé de ne rien modifier. INTERDICTION ABSOLUE d'appeler des outils d'écriture (update_file, apply_patch, create_branch, create_pr, delete_file, env_set, etc.). Utilise UNIQUEMENT des outils de lecture. À la fin, donne TON RAPPORT — ne propose PAS de modifications, de "prochaines étapes", ni de "je vais procéder à...". Si tu trouves des problèmes, LISTE-les mais ne les corrige PAS sans demander.`;
+  }
+
+  if (isAnalyzeRepo) {
+    const hasDevOpsTools = ["maxai", "ulysse"].includes(personaKey);
+    if (hasDevOpsTools) {
+      directives += `\n\n🚨 DIRECTIVE SYSTÈME — ANALYSE REPO :
+L'utilisateur demande une analyse de repo. Tu DOIS utiliser l'outil devops_github avec action="analyze_repo" et depth="deep". C'est UN SEUL appel qui lit tous les fichiers, extrait exports/imports, et génère un résumé IA complet. NE FAIS PAS de get_file en boucle — c'est lent (5 fichiers sur 789), tu devines des chemins qui n'existent pas, et le résultat est incomplet. analyze_repo est TOUJOURS supérieur pour cette tâche.`;
+    }
+  }
+
+  const isExplainOnly = /explique|c'est quoi|comment (ça|ca) (marche|fonctionne)|décris|describe|what is|how does/i.test(msg);
+  if (isExplainOnly && !isAnalyzeRepo) {
+    directives += `\n\n📖 DIRECTIVE SYSTÈME — EXPLICATION :
+L'utilisateur pose une question de compréhension. Réponds avec une explication claire et structurée. N'exécute PAS d'actions sauf si nécessaire pour obtenir l'information demandée.`;
+  }
+
+  return directives;
+}
+
 function buildContextFromHistory(history: { sender: string; senderName: string; content: string }[]): string {
   if (history.length === 0) return "";
   const lines = history.map(m => {
@@ -552,7 +581,9 @@ router.post("/message", async (req: Request, res: Response) => {
 
       const toolInstruction = `\n\n🔧 OUTILS DISPONIBLES : Tu as accès à de VRAIS outils que tu peux exécuter maintenant. Quand Moe demande de tester, vérifier ou utiliser un outil, tu dois RÉELLEMENT l'appeler via function calling — ne simule JAMAIS. Si un outil échoue, dis-le honnêtement avec l'erreur exacte.`;
 
-      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + screenContextStr + (extraSystemSuffix || "");
+      const smartDirectives = buildSmartDirectives(message, personaKey);
+
+      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + screenContextStr + smartDirectives + (extraSystemSuffix || "");
 
       const messages: ChatMessage[] = [
         { role: "system", content: systemContent },
