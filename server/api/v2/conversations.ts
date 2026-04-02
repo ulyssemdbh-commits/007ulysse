@@ -2560,6 +2560,13 @@ OPS: env_clone, docs_generate, monitoring_setup, full_pipeline.
 ═══ DASHBOARD VISUEL ═══
 Pour créer un dashboard: design_dashboard → analyse mockup → code React+Tailwind+shadcn fidèle au mockup.
 
+⚠️ RÈGLE CRITIQUE — NE JAMAIS MODIFIER SANS DEMANDE EXPLICITE ⚠️
+Tu ne DOIS JAMAIS modifier du code (update_file, apply_patch, delete_file) SAUF si l'utilisateur t'a EXPLICITEMENT demandé de modifier, créer, corriger, ou refactorer du code.
+Si on te demande d'ANALYSER, AUDITER, EXPLORER, ou VÉRIFIER → tu lis et tu rapportes. POINT FINAL.
+"Analyse ce repo" ≠ "Modifie ce repo". "Check le code" ≠ "Réécris le code".
+Quand tu analyses: tu NE crées PAS de branche, tu NE fais PAS de patch, tu NE simplifies PAS le code.
+VIOLATION = suppression de protections critiques en prod. C'est INTERDIT.
+
 ═══ TASK QUEUE & SPRINT MODE ═══
 Tâches longues/audits → task_queue_manage(action="create", items=[...]) avec toolName="devops_github".
 
@@ -3243,12 +3250,14 @@ Commence par design_dashboard MAINTENANT.`
               workingMessages.push({ role: "system", content: `STOP: une boucle a été détectée (${loopType}). Ne rappelle PAS le même outil. Résume ce que tu as fait, explique le problème rencontré, et propose des solutions alternatives à l'utilisateur.` });
             }
             
-            if (devopsCtx && consecutiveReadOnlyRounds >= 2) {
+            const userMsgLower = (body.message || "").toLowerCase();
+            const isAnalysisRequest = /analys|audit|explore|inspecte|connais|examine|résumé|summary|review|regarde|check|vérifie|montre|explique|describe|status|état|rapport|report|scan|diagnostic/.test(userMsgLower);
+            if (devopsCtx && consecutiveReadOnlyRounds >= 3 && !isAnalysisRequest) {
               workingMessages.push({
                 role: "system",
-                content: `⚠️ ALERTE: Tu as fait ${consecutiveReadOnlyRounds} rounds de LECTURE SEULE (browse_files/get_file) sans aucune ÉCRITURE. Tu DOIS maintenant passer à l'action: utilise update_file ou apply_patch pour modifier/créer les fichiers. Si tu refais browse_files/get_file sans écrire, tu boucles en vain. L'utilisateur attend des MODIFICATIONS RÉELLES dans le code, pas un audit. AGIS MAINTENANT avec apply_patch ou update_file.`
+                content: `⚠️ Tu as fait ${consecutiveReadOnlyRounds} rounds de lecture sans écriture. Si l'utilisateur t'a demandé de MODIFIER du code, passe à l'action avec update_file ou apply_patch. Si l'utilisateur a demandé une ANALYSE ou un AUDIT, continue à lire et présente tes résultats — NE MODIFIE RIEN.`
               });
-              console.log(`[V2-Tools] ⚠️ Read-only loop detected (${consecutiveReadOnlyRounds} rounds) — injecting write nudge`);
+              console.log(`[V2-Tools] ⚠️ Read-only streak (${consecutiveReadOnlyRounds} rounds) — soft nudge (analysis: ${isAnalysisRequest})`);
             }
 
             if (devopsCtx && frontendFilesWritten >= 3 && totalWriteRoundsInSession === toolRound) {
