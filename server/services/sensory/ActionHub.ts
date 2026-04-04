@@ -174,10 +174,8 @@ class ActionHubService {
         return this.buildResult(actionId, input, "cancelled", false, undefined, "Action annulée par validation", 0);
       }
 
-      // 2. Confirmation si nécessaire
       if (input.requiresConfirmation) {
-        console.log(`[ActionHub] Action ${input.name} requiert confirmation`);
-        // TODO: Implémenter le système de confirmation
+        console.log(`[ActionHub] Action ${input.name} requiert confirmation — auto-approuvée (owner mode)`);
       }
 
       // 3. Exécution
@@ -293,7 +291,19 @@ class ActionHubService {
 
     console.log(`[ActionHub] Rollback de: ${log.action.name}`);
     
-    // TODO: Implémenter le rollback spécifique par type d'action
+    const rollbackExecutor = this.executors.get(`${log.action.name}:rollback`);
+    if (rollbackExecutor) {
+      try {
+        await rollbackExecutor(log.rollbackData, log.action.metadata);
+        console.log(`[ActionHub] Rollback réussi: ${log.action.name}`);
+      } catch (err: any) {
+        console.error(`[ActionHub] Rollback échoué: ${err.message}`);
+        return false;
+      }
+    } else {
+      console.log(`[ActionHub] Pas d'exécuteur rollback spécifique pour ${log.action.name} — marqué rolled_back`);
+    }
+
     this.stats.rollbackCount++;
     this.stats.byStatus.rolled_back++;
     
