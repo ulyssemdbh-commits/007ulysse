@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { db } from "../db";
 import { users, sessions, approvedUsers, webauthnCredentials, auditLogs } from "@shared/schema";
