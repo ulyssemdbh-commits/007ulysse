@@ -3,7 +3,7 @@ import { db } from "../../db";
 import { devices, apiTokens, users } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
 const router = Router();
