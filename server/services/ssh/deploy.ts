@@ -444,6 +444,7 @@ export function createDeployMethods(service: SSHService) {
       logs.push(`[6/10] Install: OK`);
 
       logs.push(`[7/10] Building...`);
+      await service.executeCommand(`cd ${appDir} && touch .env`, 5000);
       const buildResult = await service.executeCommand(
         `cd ${appDir} && set -a && . .env && set +a && ${actualBuildCmd} 2>&1 | tail -15`,
         180000
