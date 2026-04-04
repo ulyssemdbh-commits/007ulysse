@@ -72,6 +72,155 @@ interface TestSuiteResult {
   blocking: boolean;
 }
 
+async function runSourceCodePreflight(
+  repoOwner: string,
+  repoName: string,
+  githubToken: string | null,
+  logs: string[]
+): Promise<{ pass: boolean; issues: string[]; fixes: string[]; blocking: boolean }> {
+  const issues: string[] = [];
+  const fixes: string[] = [];
+
+  try {
+    const { default: githubServiceMod } = await import("../services/github/githubService");
+    const gs = githubServiceMod;
+
+    const fetchFile = async (path: string): Promise<string | null> => {
+      try {
+        const result = await gs.getFileContent(repoOwner, repoName, path, githubToken || undefined);
+        if (result && typeof result === "object" && "content" in result) {
+          return Buffer.from((result as any).content, "base64").toString("utf8");
+        }
+        return typeof result === "string" ? result : null;
+      } catch { return null; }
+    };
+
+    const pkgContent = await fetchFile("package.json");
+    if (!pkgContent) {
+      issues.push("package.json introuvable dans le repo");
+      return { pass: false, issues, fixes, blocking: true };
+    }
+
+    let pkg: any;
+    try { pkg = JSON.parse(pkgContent); } catch {
+      issues.push("package.json invalide (JSON mal formé)");
+      return { pass: false, issues, fixes, blocking: true };
+    }
+
+    const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+    const scripts = pkg.scripts || {};
+    const buildScript: string = scripts.build || "";
+    const startScript: string = scripts.start || "";
+
+    if (!buildScript && !startScript) {
+      issues.push("Ni script 'build' ni script 'start' dans package.json");
+    }
+
+    if (buildScript) {
+      let scanContent = buildScript;
+
+      const buildFileMatch = buildScript.match(/(?:tsx|ts-node|node)\s+([^\s&|;]+\.\w+)/);
+      if (buildFileMatch) {
+        const buildFileContent = await fetchFile(buildFileMatch[1]);
+        if (buildFileContent) {
+          scanContent += " " + buildFileContent;
+          logs.push(`[PREFLIGHT] Scanning build file: ${buildFileMatch[1]}`);
+        }
+      }
+
+      const buildToolChecks: { tool: string; pkg: string; match: RegExp }[] = [
+        { tool: "tsx", pkg: "tsx", match: /\btsx\b/ },
+        { tool: "tsc", pkg: "typescript", match: /\btsc\b/ },
+        { tool: "vite", pkg: "vite", match: /\bvite\b/ },
+        { tool: "esbuild", pkg: "esbuild", match: /\besbuild\b/ },
+        { tool: "next", pkg: "next", match: /\bnext\b/ },
+        { tool: "nuxt", pkg: "nuxt", match: /\bnuxt\b/ },
+        { tool: "webpack", pkg: "webpack", match: /\bwebpack\b/ },
+      ];
+
+      for (const { tool, pkg: pkgName, match } of buildToolChecks) {
+        if (!match.test(scanContent)) continue;
+        const inDeps = allDeps[pkgName];
+        if (!inDeps) {
+          issues.push(`Build utilise "${tool}" mais "${pkgName}" n'est pas dans les dépendances`);
+          fixes.push(`Ajouter "${pkgName}" aux devDependencies`);
+        }
+      }
+
+      if (scanContent !== buildScript) {
+        const buildImportPattern = /from\s+['"]([^'"./][^'"]*)['"]/g;
+        const requirePattern = /require\s*\(\s*['"]([^'"./][^'"]*)['"]\s*\)/g;
+        for (const pat of [buildImportPattern, requirePattern]) {
+          let m;
+          while ((m = pat.exec(scanContent)) !== null) {
+            const pkgImport = m[1].startsWith("@") ? m[1].split("/").slice(0, 2).join("/") : m[1].split("/")[0];
+            if (pkgImport === "node" || pkgImport.startsWith("node:")) continue;
+            if (!allDeps[pkgImport]) {
+              issues.push(`Build file importe "${pkgImport}" mais absent du package.json`);
+              fixes.push(`Ajouter "${pkgImport}" aux devDependencies`);
+            }
+          }
+        }
+      }
+    }
+
+    const importPattern = /from\s+['"]([^'"./][^'"]*)['"]/g;
+    const coreFiles = ["server/index.ts", "src/index.ts", "src/app.ts", "server/app.ts", "index.ts"];
+    const detectedImports = new Set<string>();
+
+    for (const file of coreFiles) {
+      const content = await fetchFile(file);
+      if (!content) continue;
+      let m;
+      while ((m = importPattern.exec(content)) !== null) {
+        const pkgImport = m[1].startsWith("@") ? m[1].split("/").slice(0, 2).join("/") : m[1].split("/")[0];
+        if (!["node", "fs", "path", "http", "https", "crypto", "util", "os", "url", "stream", "events", "child_process", "buffer", "net", "dns", "tls", "zlib", "querystring", "assert", "readline"].includes(pkgImport)) {
+          detectedImports.add(pkgImport);
+        }
+      }
+    }
+
+    for (const imp of detectedImports) {
+      if (!allDeps[imp]) {
+        issues.push(`"${imp}" importé dans le code mais absent du package.json`);
+        fixes.push(`Ajouter "${imp}" aux dependencies`);
+      }
+    }
+
+    if (startScript.includes("dist/") || startScript.includes("build/")) {
+      if (!buildScript) {
+        issues.push(`Le script start attend un dossier dist/build mais aucun script build n'est défini`);
+        fixes.push(`Ajouter un script "build" dans package.json`);
+      }
+    }
+
+    const hasLockFile = await fetchFile("package-lock.json");
+    if (!hasLockFile) {
+      logs.push(`[PREFLIGHT] ⚠️ Pas de package-lock.json — l'install utilisera npm install au lieu de npm ci`);
+    }
+
+    if (issues.length > 0) {
+      logs.push(`[PREFLIGHT] ⚠️ ${issues.length} problème(s) détecté(s):`);
+      issues.forEach(i => logs.push(`  ❌ ${i}`));
+      if (fixes.length > 0) {
+        logs.push(`[PREFLIGHT] 🔧 Corrections suggérées:`);
+        fixes.forEach(f => logs.push(`  → ${f}`));
+      }
+    } else {
+      logs.push(`[PREFLIGHT] ✅ Code source validé — aucun problème détecté`);
+    }
+
+    const blocking = issues.some(i =>
+      i.includes("introuvable") || i.includes("invalide") || i.includes("ni script")
+    );
+
+    return { pass: issues.length === 0, issues, fixes, blocking };
+  } catch (err: any) {
+    logs.push(`[PREFLIGHT] Erreur: ${err.message?.slice(0, 200)}`);
+    return { pass: true, issues: [], fixes: [], blocking: false };
+  }
+}
+
 async function runPreDeployTests(appName: string, sshService: any): Promise<TestSuiteResult> {
   const start = Date.now();
   const tests: TestResult[] = [];
@@ -767,6 +916,18 @@ router.get("/search", async (req: Request, res: Response) => {
   }
 });
 
+router.post("/preflight-check", async (req: Request, res: Response) => {
+  try {
+    const repo = await getProjectRepo(req, res);
+    if (!repo) return;
+    const logs: string[] = [];
+    const preflight = await runSourceCodePreflight(repo.owner, repo.name, repo.githubToken, logs);
+    res.json({ ...preflight, logs });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post("/deploy-staging", async (req: Request, res: Response) => {
   try {
     const startTime = Date.now();
@@ -785,6 +946,16 @@ router.post("/deploy-staging", async (req: Request, res: Response) => {
     const appName = repo.deploySlug;
     const stagingRepoName = `${repo.name}-test`;
     const stagingLogs: string[] = [];
+
+    const preflight = await runSourceCodePreflight(repo.owner, repo.name, repo.githubToken, stagingLogs);
+    if (preflight.blocking) {
+      return res.status(422).json({
+        success: false,
+        message: `Déploiement bloqué par le preflight:\n${preflight.issues.join("\n")}`,
+        preflight,
+        logs: stagingLogs,
+      });
+    }
 
     let stagingRepoUrl = repoUrl;
     try {
@@ -2499,4 +2670,5 @@ router.post("/run-tests-protocol", async (req: Request, res: Response) => {
   }
 });
 
+export { runSourceCodePreflight };
 export default router;
