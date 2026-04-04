@@ -2,6 +2,107 @@ import type { SSHService } from "./core";
 import { staticNginxBlock, proxyNginxBlock, pm2EcosystemConfig, sslCertForDomain, normalizeNginxName, nginxCleanupCmd, resolveAppDomain } from "./helpers";
 
 export function createDeployMethods(service: SSHService) {
+  const LOCK_TIMEOUT_MIN = 15;
+
+  async function acquireDeployLock(appName: string, logs: string[]): Promise<boolean> {
+    const lockFile = `/tmp/deploy-lock-${appName}`;
+    const checkLock = await service.executeCommand(
+      `if [ -f "${lockFile}" ]; then ` +
+      `  AGE=$(( ($(date +%s) - $(stat -c %Y "${lockFile}" 2>/dev/null || echo 0)) / 60 )); ` +
+      `  if [ "$AGE" -gt ${LOCK_TIMEOUT_MIN} ]; then ` +
+      `    echo "STALE"; ` +
+      `  else ` +
+      `    cat "${lockFile}"; echo "LOCKED"; ` +
+      `  fi; ` +
+      `else echo "FREE"; fi`,
+      5000
+    );
+    const out = checkLock.output?.trim() || "";
+    if (out.includes("LOCKED")) {
+      logs.push(`[LOCK] Deploy blocked — another deploy is running: ${out.replace("LOCKED", "").trim()}`);
+      return false;
+    }
+    if (out.includes("STALE")) {
+      logs.push(`[LOCK] Stale lock detected (>${LOCK_TIMEOUT_MIN}min) — forcing release`);
+    }
+    await service.executeCommand(`echo "pid=$$ started=$(date -Iseconds)" > ${lockFile}`, 3000);
+    return true;
+  }
+
+  async function releaseDeployLock(appName: string): Promise<void> {
+    await service.executeCommand(`rm -f /tmp/deploy-lock-${appName}`, 3000).catch(() => {});
+  }
+
+  async function robustNpmInstall(appDir: string, logs: string[], stepLabel: string, timeoutMs = 180000): Promise<{ success: boolean; output: string; error?: string }> {
+    const hasLock = await service.executeCommand(`[ -f "${appDir}/package-lock.json" ] && echo "HAS_LOCK" || echo "NO_LOCK"`, 5000);
+    const isLock = hasLock.output?.includes("HAS_LOCK");
+
+    const strategies = [
+      ...(isLock ? [`cd ${appDir} && npm ci --include=dev`] : []),
+      ...(isLock ? [`cd ${appDir} && npm ci --include=dev --ignore-scripts`] : []),
+      `cd ${appDir} && npm install --include=dev --no-audit --no-fund`,
+      `cd ${appDir} && npm install --include=dev --no-audit --no-fund --ignore-scripts`,
+    ];
+
+    let result: any = { success: false, output: "", error: "No install strategy attempted" };
+    for (let i = 0; i < strategies.length; i++) {
+      result = await service.executeCommand(`${strategies[i]} 2>&1 | tail -15`, timeoutMs);
+      if (result.success) {
+        if (i > 0) logs.push(`${stepLabel} Install: OK (fallback strategy ${i + 1}/${strategies.length})`);
+        else logs.push(`${stepLabel} Install: OK`);
+        break;
+      }
+      if (i < strategies.length - 1) {
+        logs.push(`${stepLabel} Install strategy ${i + 1} failed, trying next...`);
+      }
+    }
+
+    if (!result.success) return result;
+
+    await ensureBuildTools(appDir, logs, stepLabel);
+    return result;
+  }
+
+  async function ensureBuildTools(appDir: string, logs: string[], stepLabel: string): Promise<void> {
+    const pkgResult = await service.executeCommand(`cd ${appDir} && cat package.json 2>/dev/null`, 5000);
+    let buildScript = "";
+    try {
+      const pkg = JSON.parse(pkgResult.output || "{}");
+      buildScript = pkg.scripts?.build || "";
+    } catch {}
+    if (!buildScript) return;
+
+    const toolChecks: { tool: string; pkg: string; match: RegExp }[] = [
+      { tool: "tsx", pkg: "tsx", match: /\btsx\b/ },
+      { tool: "tsc", pkg: "typescript", match: /\btsc\b/ },
+      { tool: "vite", pkg: "vite", match: /\bvite\b/ },
+      { tool: "esbuild", pkg: "esbuild", match: /\besbuild\b/ },
+      { tool: "webpack", pkg: "webpack webpack-cli", match: /\bwebpack\b/ },
+      { tool: "next", pkg: "next", match: /\bnext\b/ },
+      { tool: "nuxt", pkg: "nuxt", match: /\bnuxt\b/ },
+    ];
+
+    for (const { tool, pkg, match } of toolChecks) {
+      if (!match.test(buildScript)) continue;
+      const exists = await service.executeCommand(`[ -f "${appDir}/node_modules/.bin/${tool}" ] && echo "YES" || echo "NO"`, 3000);
+      if (exists.output?.includes("YES")) continue;
+
+      logs.push(`${stepLabel} Build tool "${tool}" missing — auto-installing...`);
+      await service.executeCommand(`cd ${appDir} && npm install --no-save ${pkg} 2>&1 | tail -3`, 60000);
+
+      const recheck = await service.executeCommand(`[ -f "${appDir}/node_modules/.bin/${tool}" ] && echo "YES" || echo "NO"`, 3000);
+      if (recheck.output?.includes("YES")) {
+        logs.push(`${stepLabel} ${tool}: installed OK`);
+      } else {
+        logs.push(`${stepLabel} WARNING: ${tool} still missing after install — build may fail`);
+      }
+    }
+  }
+
+  function buildEnvCmd(appDir: string, cmd: string): string {
+    return `bash -c 'cd ${appDir} && touch .env && set -a && source .env && set +a && ${cmd} 2>&1 | tail -15'`;
+  }
+
   return {
     async deployApp(params: {
       repoUrl: string;
@@ -29,6 +130,13 @@ export function createDeployMethods(service: SSHService) {
       }
       const appDir = `/var/www/apps/${appName}`;
       const logs: string[] = [];
+
+      const lockAcquired = await acquireDeployLock(appName, logs);
+      if (!lockAcquired) {
+        return { success: false, message: `Deploy blocked: another deployment of "${appName}" is in progress.\n${logs.join("\n")}`, logs };
+      }
+
+      try {
 
       if (devmaxProjectId) {
         try {
@@ -155,6 +263,16 @@ export function createDeployMethods(service: SSHService) {
         } catch {}
       }
 
+      let preDeploySnapshot = "";
+      const existingCheck = await service.executeCommand(`[ -d "${appDir}" ] && echo "EXISTS" || echo "NONE"`, 5000);
+      if (existingCheck.output?.trim() === "EXISTS") {
+        const snap = await service.snapshotProduction(appName);
+        if (snap.success) {
+          preDeploySnapshot = snap.snapshotDir;
+          logs.push(`[0/10] Pre-deploy snapshot: ${snap.snapshotDir.split("/").pop()}`);
+        }
+      }
+
       const cloneResult = await service.authenticatedGitClone({ repoUrl, branch, appDir, tokenOverride: projectGitToken });
       if (!cloneResult.success) {
         return { success: false, message: `Clone failed: ${cloneResult.error}`, logs: [`Clone: FAILED — ${cloneResult.method || "no auth"}`] };
@@ -248,10 +366,7 @@ export function createDeployMethods(service: SSHService) {
           missingCoreDeps.push("typescript");
         }
 
-        const hasLock = await service.executeCommand(`[ -f "${appDir}/package-lock.json" ] && echo "HAS_LOCK" || echo "NO_LOCK"`, 5000);
-        const installCmd = hasLock.output?.includes("HAS_LOCK") ? "npm ci --production=false" : "npm install --production=false --no-audit --no-fund";
-        const installResult = await service.executeCommand(`cd ${appDir} && ${installCmd} 2>&1 | tail -10`, 120000);
-        logs.push(`[4/8] Install: ${installResult.success ? "OK" : installResult.error || "failed"}`);
+        const installResult = await robustNpmInstall(appDir, logs, "[4/8]");
         if (!installResult.success) return { success: false, message: `Install failed: ${installResult.error}`, logs };
 
         if (missingCoreDeps.length > 0) {
@@ -262,11 +377,11 @@ export function createDeployMethods(service: SSHService) {
         const hasBuildScript = !!pkgScripts.build;
         let buildResult: any;
         if (hasBuildScript) {
-          buildResult = await service.executeCommand(`cd ${appDir} && npm run build 2>&1 | tail -15`, 120000);
+          buildResult = await service.executeCommand(buildEnvCmd(appDir, "npm run build"), 120000);
         } else {
           logs.push(`[5/8] No build script in package.json — using npx vite build`);
           await service.executeCommand(`cd ${appDir} && npm install --save-dev vite @vitejs/plugin-react typescript 2>&1 | tail -3`, 60000);
-          buildResult = await service.executeCommand(`cd ${appDir} && npx vite build 2>&1 | tail -15`, 120000);
+          buildResult = await service.executeCommand(buildEnvCmd(appDir, "npx vite build"), 120000);
         }
 
         const buildOutput = buildResult.output || "";
@@ -275,7 +390,7 @@ export function createDeployMethods(service: SSHService) {
         if (buildFailed && hasBuildScript) {
           logs.push(`[5/8] Build script failed, retrying with npx vite build...`);
           await service.executeCommand(`cd ${appDir} && npm install --save-dev vite @vitejs/plugin-react typescript 2>&1 | tail -3`, 60000);
-          buildResult = await service.executeCommand(`cd ${appDir} && npx vite build 2>&1 | tail -15`, 120000);
+          buildResult = await service.executeCommand(buildEnvCmd(appDir, "npx vite build"), 120000);
         }
 
         const finalBuildOutput = buildResult.output || "";
@@ -430,23 +545,15 @@ export function createDeployMethods(service: SSHService) {
       await service.writeRemoteFile(`${appDir}/.env`, envExportLine);
       await service.writeRemoteFile(`${appDir}/ecosystem.config.cjs`, ecosystemContent);
 
-      const hasLockFile = await service.executeCommand(`[ -f "${appDir}/package-lock.json" ] && echo "HAS_LOCK" || echo "NO_LOCK"`, 5000);
-      const npmInstallCmd = hasLockFile.output?.includes("HAS_LOCK") ? "npm ci --include=dev" : "npm install --include=dev --no-audit --no-fund";
-
       logs.push(`[6/10] Installing dependencies...`);
-      const installResult = await service.executeCommand(
-        `cd ${appDir} && ${npmInstallCmd} 2>&1 | tail -10`,
-        180000
-      );
+      const installResult = await robustNpmInstall(appDir, logs, "[6/10]");
       if (!installResult.success) {
         return { success: false, message: `Install failed:\n${installResult.error || installResult.output}`, logs };
       }
-      logs.push(`[6/10] Install: OK`);
 
       logs.push(`[7/10] Building...`);
-      await service.executeCommand(`cd ${appDir} && touch .env`, 5000);
       const buildResult = await service.executeCommand(
-        `cd ${appDir} && set -a && . .env && set +a && ${actualBuildCmd} 2>&1 | tail -15`,
+        buildEnvCmd(appDir, actualBuildCmd),
         180000
       );
       logs.push(...(buildResult.output || "").split("\n").filter(l => l.startsWith(">>>")));
@@ -474,7 +581,7 @@ export function createDeployMethods(service: SSHService) {
       if (hasTestScript.success) {
         logs.push(`[8/10] Running tests...`);
         const testResult = await service.executeCommand(
-          `cd ${appDir} && set -a && . .env && set +a && npm test 2>&1 | tail -30`,
+          buildEnvCmd(appDir, "npm test"),
           120000
         );
         if (!testResult.success) {
@@ -496,14 +603,14 @@ export function createDeployMethods(service: SSHService) {
         if (hasPrisma.output?.includes("YES")) {
           logs.push(`[9/10] Running Prisma migrations...`);
           const migrateResult = await service.executeCommand(
-            `cd ${appDir} && set -a && . .env && set +a && npx prisma migrate deploy 2>&1 | tail -10`,
+            buildEnvCmd(appDir, "npx prisma migrate deploy"),
             60000
           );
           logs.push(`[9/10] Prisma migrate: ${migrateResult.success ? "OK" : migrateResult.error || migrateResult.output?.slice(-200) || "failed"}`);
         } else if (hasDrizzle.output?.includes("YES")) {
           logs.push(`[9/10] Running Drizzle migrations...`);
           const migrateResult = await service.executeCommand(
-            `cd ${appDir} && set -a && . .env && set +a && npx drizzle-kit push 2>&1 | tail -10`,
+            buildEnvCmd(appDir, "npx drizzle-kit push"),
             60000
           );
           logs.push(`[9/10] Drizzle push: ${migrateResult.success ? "OK" : migrateResult.error || migrateResult.output?.slice(-200) || "failed"}`);
@@ -570,6 +677,29 @@ export function createDeployMethods(service: SSHService) {
 
       const isHealthy = httpCode !== "000" && httpCode !== "502" && httpCode !== "503" && httpCode !== "504";
       const isWarning = httpCode === "404" || httpCode === "500" || httpCode === "301" || httpCode === "302";
+
+      if (!isHealthy && preDeploySnapshot) {
+        logs.push(`[AUTO-ROLLBACK] Health check failed (HTTP ${httpCode}) — restoring from snapshot...`);
+        try {
+          const rollbackResult = await service.rollbackProduction({ appName, snapshotDir: preDeploySnapshot, caller });
+          if (rollbackResult.success) {
+            logs.push(`[AUTO-ROLLBACK] Restored successfully from ${preDeploySnapshot.split("/").pop()}`);
+          } else {
+            logs.push(`[AUTO-ROLLBACK] Restore failed: ${rollbackResult.message}`);
+          }
+        } catch (rbErr: any) {
+          logs.push(`[AUTO-ROLLBACK] Error: ${rbErr.message}`);
+        }
+        return {
+          success: false,
+          message: `Deploy failed — app not responding (HTTP ${httpCode}). Auto-rolled back to previous version.\n${logs.join("\n")}`,
+          url,
+          port: actualPort,
+          httpCode,
+          logs
+        };
+      }
+
       return {
         success: httpCode !== "000",
         message: isHealthy && !isWarning
@@ -582,6 +712,10 @@ export function createDeployMethods(service: SSHService) {
         httpCode,
         logs
       };
+
+      } finally {
+        await releaseDeployLock(appName);
+      }
     },
 
     async deployStagingApp(params: {
@@ -638,6 +772,13 @@ export function createDeployMethods(service: SSHService) {
       const prodDir = `/var/www/apps/${appName}`;
       const prodDomain = `${appName}.ulyssepro.org`;
       const logs: string[] = [];
+
+      const lockAcquired = await acquireDeployLock(appName, logs);
+      if (!lockAcquired) {
+        return { success: false, message: `Promote blocked: another deployment of "${appName}" is in progress.\n${logs.join("\n")}`, logs };
+      }
+
+      try {
 
       const checkNewDir = await service.executeCommand(`[ -d "${stagingDir}" ] && echo "EXISTS" || echo "NONE"`, 5000);
       if (checkNewDir.output?.trim() !== "EXISTS") {
@@ -781,14 +922,40 @@ export function createDeployMethods(service: SSHService) {
       logs.push(`Post-promote verify: ${verify.message}`);
 
       const productionUrl = `https://${prodDomain}`;
+      const promoteHealthy = httpCode !== "000" && httpCode !== "404";
+
+      if (!promoteHealthy) {
+        logs.push(`[AUTO-ROLLBACK] Promote health check failed (HTTP ${httpCode}) — attempting rollback...`);
+        try {
+          const snapList = await service.listProductionSnapshots(appName);
+          if (snapList.snapshots.length > 0) {
+            const latestSnap = snapList.snapshots[0].dir;
+            const rbResult = await service.rollbackProduction({ appName, snapshotDir: latestSnap, caller });
+            logs.push(`[AUTO-ROLLBACK] ${rbResult.success ? "Restored from " + latestSnap.split("/").pop() : "Failed: " + rbResult.message}`);
+          } else {
+            logs.push(`[AUTO-ROLLBACK] No snapshots available for rollback`);
+          }
+        } catch (rbErr: any) {
+          logs.push(`[AUTO-ROLLBACK] Error: ${rbErr.message}`);
+        }
+        return {
+          success: false,
+          message: `Promotion failed — health check returned ${httpCode}. Auto-rolled back.\n${logs.join("\n")}`,
+          productionUrl,
+          logs,
+        };
+      }
+
       return {
-        success: httpCode !== "000" && httpCode !== "404",
-        message: httpCode !== "000" && httpCode !== "404"
-          ? `Production deployed: ${productionUrl}\n${logs.join("\n")}`
-          : `Promotion done but health check returned ${httpCode}\n${logs.join("\n")}`,
+        success: true,
+        message: `Production deployed: ${productionUrl}\n${logs.join("\n")}`,
         productionUrl,
         logs,
       };
+
+      } finally {
+        await releaseDeployLock(appName);
+      }
     },
 
     async snapshotProduction(appName: string): Promise<{ success: boolean; snapshotDir: string; message: string }> {
@@ -984,13 +1151,10 @@ export function createDeployMethods(service: SSHService) {
       }
 
       if (typeResult === "spa-build") {
-        const hasLock = await service.executeCommand(`[ -f "${appDir}/package-lock.json" ] && echo "HAS_LOCK" || echo "NO_LOCK"`, 5000);
-        const installCmd = hasLock.output?.includes("HAS_LOCK") ? "npm ci --production=false" : "npm install --production=false --no-audit --no-fund";
-        const installResult = await service.executeCommand(`cd ${appDir} && ${installCmd} 2>&1 | tail -10`, 120000);
-        logs.push(`Install: ${installResult.success ? "OK" : installResult.error || "failed"}`);
+        const installResult = await robustNpmInstall(appDir, logs, "[SPA]");
         if (!installResult.success) return { success: false, message: `Install failed: ${installResult.error}`, logs };
 
-        const buildResult = await service.executeCommand(`cd ${appDir} && npm run build 2>&1 | tail -15`, 120000);
+        const buildResult = await service.executeCommand(buildEnvCmd(appDir, "npm run build"), 120000);
         logs.push(`Build: ${buildResult.success ? "OK" : buildResult.error || "failed"}`);
         if (!buildResult.success) return { success: false, message: `Build failed: ${buildResult.error}`, logs };
 
@@ -1017,12 +1181,12 @@ export function createDeployMethods(service: SSHService) {
         return { success: true, message: `SPA "${appName}" built and deployed from ${branch}`, logs };
       }
 
-      const installResult = await service.executeCommand(`cd ${appDir} && npm ci --production=false 2>&1 | tail -3`, 120000);
-      logs.push(`npm ci: ${installResult.success ? "OK" : installResult.error || "failed"}`);
+      const installResult = await robustNpmInstall(appDir, logs, "[Update]");
+      logs.push(`Install: ${installResult.success ? "OK" : installResult.error || "failed"}`);
 
       const hasBuild = await service.executeCommand(`cd ${appDir} && node -e "const p=require('./package.json'); process.exit(p.scripts?.build ? 0 : 1)"`, 5000);
       if (hasBuild.success) {
-        const buildResult = await service.executeCommand(`cd ${appDir} && npm run build 2>&1 | tail -5`, 120000);
+        const buildResult = await service.executeCommand(buildEnvCmd(appDir, "npm run build"), 120000);
         logs.push(`Build: ${buildResult.success ? "OK" : buildResult.error || "failed"}`);
         if (!buildResult.success) return { success: false, message: `Build failed: ${buildResult.error}`, logs };
       }
