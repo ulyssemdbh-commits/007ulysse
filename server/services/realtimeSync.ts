@@ -129,7 +129,8 @@ let syncWss: WebSocketServer | null = null;
 export function setupRealtimeSync(): WebSocketServer {
   syncWss = new WebSocketServer({ 
     noServer: true,
-    perMessageDeflate: false
+    perMessageDeflate: false,
+    maxPayload: 64 * 1024,
   });
 
   console.log("Realtime sync WebSocket server initialized on /ws/sync");
@@ -176,6 +177,10 @@ export function setupRealtimeSync(): WebSocketServer {
 
     ws.on("message", (data) => {
       try {
+        if (data.toString().length > 64 * 1024) {
+          ws.send(JSON.stringify({ type: "error", error: "Message too large", timestamp: Date.now() }));
+          return;
+        }
         const message = JSON.parse(data.toString());
         
         // Handle ping/pong heartbeat
@@ -273,7 +278,7 @@ export function setupRealtimeSync(): WebSocketServer {
             userId: ws.userId!,
             data: message.data,
             timestamp: Date.now()
-          });
+          }, ws);
           return;
         }
 
