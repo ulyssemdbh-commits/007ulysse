@@ -589,14 +589,32 @@ class JobScheduler {
       }
     });
 
-    // Screenshot cache cleanup (every 24 hours)
     this.registerJob({
       id: "screenshot-cache-cleanup",
       name: "Screenshot Cache Cleanup",
-      interval: 24 * 60 * 60 * 1000, // Every 24 hours
+      interval: 24 * 60 * 60 * 1000,
       enabled: true,
       execute: async () => {
-        console.log("[JobScheduler] Screenshot cache cleanup: no-op (functions not available)");
+        try {
+          const fs = await import("fs");
+          const path = await import("path");
+          const cacheDir = path.join(process.cwd(), "data", "screenshots");
+          if (!fs.existsSync(cacheDir)) return;
+          const files = fs.readdirSync(cacheDir);
+          const maxAge = 7 * 24 * 60 * 60 * 1000;
+          let cleaned = 0;
+          for (const file of files) {
+            const filePath = path.join(cacheDir, file);
+            const stat = fs.statSync(filePath);
+            if (Date.now() - stat.mtimeMs > maxAge) {
+              fs.unlinkSync(filePath);
+              cleaned++;
+            }
+          }
+          if (cleaned > 0) console.log(`[JobScheduler] Screenshot cache: ${cleaned} old files cleaned`);
+        } catch (err: any) {
+          console.warn(`[JobScheduler] Screenshot cache cleanup error: ${err.message}`);
+        }
       }
     });
 
