@@ -522,7 +522,7 @@ Ce message est une SIMULATION envoyée par Ulysse pour tester le système Suguva
 
       const successCount = results.filter(r => r.success).length;
       res.json({
-        message: `Simulation terminée: ${successCount}/6 emails envoyés avec succès`,
+        message: `Simulation terminée: ${successCount}/${results.length} emails envoyés avec succès`,
         results,
         destination: "sugu.gestion@gmail.com",
         savedToHistory: true,
