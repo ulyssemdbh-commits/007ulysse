@@ -5,7 +5,14 @@ import { fileURLToPath } from "url";
 import ExcelJS from "exceljs";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType } from "docx";
 import mammoth from "mammoth";
-import PDFDocument from "pdfkit";
+let _PDFDocumentClass: any = null;
+async function loadPDFKit() {
+  if (!_PDFDocumentClass) {
+    const mod = await import("pdfkit");
+    _PDFDocumentClass = mod.default;
+  }
+  return _PDFDocumentClass;
+}
 
 // PDF parsing with lazy loading for ESM compatibility
 let pdfParseFn: any = null;
@@ -695,9 +702,10 @@ export class FileService {
   async generatePDF(content: string, options: { title?: string; author?: string } = {}): Promise<GeneratedFile> {
     const fileName = this.generateFileName(options.title, "pdf", "document");
     const filePath = path.join(GENERATED_DIR, fileName);
+    const PDFDoc = await loadPDFKit();
     
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
+      const doc = new PDFDoc({ size: "A4", margin: 50, bufferPages: true });
       const stream = fs.createWriteStream(filePath);
       
       doc.pipe(stream);
