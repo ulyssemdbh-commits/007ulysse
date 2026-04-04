@@ -1079,6 +1079,7 @@ function DeploymentsPanel() {
   const [logsContent, setLogsContent] = useState<string>("");
   const [logsLoading, setLogsLoading] = useState(false);
   const [restartingApp, setRestartingApp] = useState<string | null>(null);
+  const [deletingApp, setDeletingApp] = useState<string | null>(null);
 
   const { data: deployments, isLoading, refetch } = useQuery<DeployedApp[]>({
     queryKey: ["/api/devops/server/deployments"],
@@ -1112,6 +1113,24 @@ function DeploymentsPanel() {
       toast({ title: "Erreur", description: "Echec du redemarrage", variant: "destructive" });
     }
     setRestartingApp(null);
+  }, [toast, refetch]);
+
+  const deleteApp = useCallback(async (appName: string) => {
+    if (!confirm(`Supprimer definitivement "${appName}" ? Cette action est irreversible.`)) return;
+    setDeletingApp(appName);
+    try {
+      const res = await fetch(`/api/devops/server/app/${appName}`, { method: "DELETE", credentials: "include" });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: "Supprimee", description: `${appName} a ete supprimee du serveur` });
+        setTimeout(() => refetch(), 2000);
+      } else {
+        toast({ title: "Erreur", description: data.error || "Echec de la suppression", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de supprimer l'app", variant: "destructive" });
+    }
+    setDeletingApp(null);
   }, [toast, refetch]);
 
   const activeStatuses = ["online", "static", "deployed"];
@@ -1271,6 +1290,20 @@ function DeploymentsPanel() {
                         </Button>
                       </>
                     )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-[10px] px-2 gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={(e) => { e.stopPropagation(); deleteApp(app.name); }}
+                      disabled={deletingApp === app.name}
+                      data-testid={`button-deploy-delete-${app.name}`}
+                    >
+                      {deletingApp === app.name ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3" />
+                      )}
+                    </Button>
                     <a
                       href={fullUrl}
                       target="_blank"
@@ -1321,6 +1354,7 @@ function HetznerServerTab() {
   const [serverLogs, setServerLogs] = useState<string | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
   const [restartingApp, setRestartingApp] = useState<string | null>(null);
+  const [deletingApp, setDeletingApp] = useState<string | null>(null);
   const [cleanupResult, setCleanupResult] = useState<any>(null);
   const [cleanupLoading, setCleanupLoading] = useState(false);
 
@@ -1420,6 +1454,24 @@ function HetznerServerTab() {
     },
     [toast, refetchApps],
   );
+
+  const deleteApp = useCallback(async (appName: string) => {
+    if (!confirm(`Supprimer definitivement "${appName}" du serveur ? Cette action est irreversible.`)) return;
+    setDeletingApp(appName);
+    try {
+      const res = await fetch(`/api/devops/server/app/${appName}`, { method: "DELETE", credentials: "include" });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: "Supprimee", description: `${appName} supprimee du serveur` });
+        setTimeout(() => refetchApps(), 2000);
+      } else {
+        toast({ title: "Erreur", description: data.error || "Echec", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de supprimer", variant: "destructive" });
+    }
+    setDeletingApp(null);
+  }, [toast, refetchApps]);
 
   return (
     <div className="space-y-4">
@@ -1599,6 +1651,20 @@ function HetznerServerTab() {
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
                         <RotateCcw className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => deleteApp(app.name)}
+                      disabled={deletingApp === app.name}
+                      data-testid={`button-delete-${app.name}`}
+                    >
+                      {deletingApp === app.name ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
                       )}
                     </Button>
                     <Badge
