@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import OpenAI from "openai";
-import PDFDocument from "pdfkit";
 import { z } from "zod";
 import { chatStorage, type SearchParams } from "./storage";
 import { memoryService } from "../../services/memory";
@@ -1890,6 +1889,7 @@ export function registerChatRoutes(app: Express): void {
       const userName = persona.userName || (persona.isOwner ? "Maurice" : "Utilisateur");
       const assistantName = persona.name; // "Ulysse" or "Iris"
       
+      const { default: PDFDocument } = await import("pdfkit");
       const doc = new PDFDocument({ margin: 50 });
       
       res.setHeader("Content-Type", "application/pdf");
