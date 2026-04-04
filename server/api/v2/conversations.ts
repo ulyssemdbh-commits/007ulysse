@@ -517,7 +517,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     const sessionCtx = body.sessionContext || (body.contextHints?.devopsContext ? "devops" : "assistant");
     const isDevMaxSession = sessionCtx === "devops" && (body.contextHints?.systemHint || "").includes("MAX");
-    const hasDevMaxToolAccess = isDevMaxSession && isExternal;
+    const hasDevMaxToolAccess = isDevMaxSession && !isOwner;
     const isSuguSession = sessionCtx.startsWith("sugu_");
     let aiContext: AIContext;
     if (isDevMaxSession) {
