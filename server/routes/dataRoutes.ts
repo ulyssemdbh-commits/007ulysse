@@ -15,7 +15,7 @@ function getUserId(req: Request): number {
 }
 
 // Approved Users Management (owner only)
-router.get("/api/approved-users", async (req, res) => {
+router.get("/approved-users", async (req, res) => {
   try {
     const userId = getUserId(req);
     const user = await storage.getUser(userId);
