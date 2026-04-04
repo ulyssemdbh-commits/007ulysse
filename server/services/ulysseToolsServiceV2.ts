@@ -1473,7 +1473,36 @@ async function executeGetSuguvalChecklist(args: { restaurant?: string }): Promis
         warning: checkedItems.length === 0 ? "Aucun article coché aujourd'hui. Si Maurice demande la liste, explique qu'aucun article n'est encore coché dans la checklist." : undefined
       });
     }
-    return JSON.stringify({ error: "Restaurant Sugumaillane: fonctionnalité checklist non encore implémentée" });
+    if (restaurant === "sugumaillane") {
+      const { sugumaillaneService } = await import("./sugumaillaneService");
+      const categories = await sugumaillaneService.getAllCategories();
+      const checkedItems = await sugumaillaneService.getCheckedItemsForToday();
+      
+      const today = new Date().toLocaleString("en-CA", { timeZone: "Europe/Paris" }).split(",")[0];
+      const totalItems = categories.reduce((acc: number, cat: any) => acc + (cat.items?.length || 0), 0);
+
+      const byZone: Record<string, { category: string; items: string[] }[]> = {};
+      for (const item of checkedItems) {
+        const zoneName = item.zoneName || "AUTRE";
+        if (!byZone[zoneName]) byZone[zoneName] = [];
+        let catGroup = byZone[zoneName].find((g: any) => g.category === item.categoryName);
+        if (!catGroup) { catGroup = { category: item.categoryName, items: [] }; byZone[zoneName].push(catGroup); }
+        catGroup.items.push(item.itemName);
+      }
+
+      return JSON.stringify({
+        source: "base_de_données_réelle",
+        restaurant: "SUGU Maillane",
+        date: today,
+        totalItems,
+        checkedCount: checkedItems.length,
+        completionRate: totalItems > 0 ? Math.round((checkedItems.length / totalItems) * 100) : 0,
+        checkedByZone: byZone,
+        checkedItemsList: checkedItems.map((i: any) => ({ name: i.itemName, category: i.categoryName, zone: i.zoneName })),
+        warning: checkedItems.length === 0 ? "Aucun article coché aujourd'hui pour Maillane." : undefined
+      });
+    }
+    return JSON.stringify({ error: `Restaurant inconnu: ${restaurant}. Restaurants disponibles: suguval, sugumaillane.` });
   } catch (error: any) {
     return JSON.stringify({ error: `Erreur lecture checklist: ${error.message}` });
   }
@@ -1485,12 +1514,21 @@ async function executeSendSuguvalShoppingList(args: { restaurant?: string; to?: 
     const toEmail = args.to || "djedoumaurice@gmail.com";
     const includeStats = args.includeStats !== false;
     
-    if (restaurant === "sugumaillane") {
-      return JSON.stringify({ error: "L'envoi par email de la checklist Sugumaillane n'est pas encore implémenté. Seul Suguval est disponible pour l'instant." });
-    }
+    const isMaillane = restaurant === "sugumaillane";
+    const restaurantLabel = isMaillane ? "SUGU Maillane" : "SUGU Valentine";
     
-    const { suguvalService } = await import("./suguvalService");
-    const checkedItems = await suguvalService.getCheckedItemsForToday();
+    let checkedItems: any[];
+    let weeklyStatsGetter: (() => Promise<any>) | null = null;
+
+    if (isMaillane) {
+      const { sugumaillaneService } = await import("./sugumaillaneService");
+      checkedItems = await sugumaillaneService.getCheckedItemsForToday();
+      weeklyStatsGetter = () => sugumaillaneService.getWeeklyStats();
+    } else {
+      const { suguvalService } = await import("./suguvalService");
+      checkedItems = await suguvalService.getCheckedItemsForToday();
+      weeklyStatsGetter = () => suguvalService.getWeeklyStats();
+    }
     
     const today = new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", year: "numeric" });
     const todayISO = new Date().toLocaleString("en-CA", { timeZone: "Europe/Paris" }).split(",")[0];
@@ -1503,15 +1541,15 @@ async function executeSendSuguvalShoppingList(args: { restaurant?: string; to?: 
       byZone[zoneName][item.categoryName].push(item.itemName);
     }
 
-    let emailBody = `Salut Maurice,\n\nVoici la liste de courses relevée pour SUGU Valentine.\n\n`;
+    let emailBody = `Salut Maurice,\n\nVoici la liste de courses relevée pour ${restaurantLabel}.\n\n`;
     emailBody += `🧾 RÉSUMÉ\n`;
-    emailBody += `• Restaurant : SUGU Valentine\n`;
+    emailBody += `• Restaurant : ${restaurantLabel}\n`;
     emailBody += `• Date : ${today}\n`;
     emailBody += `• Nombre d'articles cochés : ${checkedItems.length}\n\n`;
 
     if (checkedItems.length === 0) {
       emailBody += `⚠️ Aucun article n'a été coché aujourd'hui dans la checklist.\n`;
-      emailBody += `Ouvre l'app Suguval pour cocher les articles à commander.\n\n`;
+      emailBody += `Ouvre l'app ${isMaillane ? "Sugumaillane" : "Suguval"} pour cocher les articles à commander.\n\n`;
     } else {
       emailBody += `📂 DÉTAIL PAR ZONE\n\n`;
       const ZONE_ORDER = ["CUISINE", "SUSHI BAR", "RÉSERVE SÈCHE", "HYGIÈNE & CONSOMMABLES", "BOISSONS", "LIVRAISON & EMBALLAGES"];
@@ -1531,9 +1569,9 @@ async function executeSendSuguvalShoppingList(args: { restaurant?: string; to?: 
       }
     }
 
-    if (includeStats) {
+    if (includeStats && weeklyStatsGetter) {
       try {
-        const weeklyStats = await suguvalService.getWeeklyStats();
+        const weeklyStats = await weeklyStatsGetter();
         emailBody += `📊 STATS HEBDO\n`;
         emailBody += `• Taux moyen de complétion : ${weeklyStats.summary.averageCompletion}%\n`;
         emailBody += `• Articles cochés/jour : ${weeklyStats.summary.averageCheckedItems}\n`;
@@ -1541,13 +1579,13 @@ async function executeSendSuguvalShoppingList(args: { restaurant?: string; to?: 
       } catch {}
     }
 
-    emailBody += `---\nEnvoyé par Ulysse • Système de gestion SUGU Valentine`;
+    emailBody += `---\nEnvoyé par Ulysse • Système de gestion ${restaurantLabel}`;
 
     const { emailActionService } = await import("./emailActionService");
     const results = await emailActionService.executeActions([{
       type: "send",
       to: toEmail,
-      subject: `🧾 Liste de courses SUGUVal – ${todayISO}`,
+      subject: `🧾 Liste de courses ${restaurantLabel} – ${todayISO}`,
       body: emailBody
     }], 'ulysse', 1);
 
