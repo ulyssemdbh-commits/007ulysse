@@ -896,8 +896,74 @@ router.post("/server/app/:name/stop", async (req: Request, res: Response) => {
 
 router.delete("/server/app/:name", async (req: Request, res: Response) => {
   try {
-    const result = await runServerCommand(`pm2 delete ${req.params.name} 2>&1`);
-    res.json({ output: result.output, success: result.success });
+    const appName = req.params.name;
+    const logs: string[] = [];
+
+    const pmDel = await runServerCommand(`pm2 delete ${appName} 2>/dev/null; echo "pm2_done"`);
+    logs.push(`PM2: ${pmDel.output?.trim()}`);
+
+    const nginxDel = await runServerCommand(
+      `rm -f /etc/nginx/sites-enabled/${appName} /etc/nginx/sites-available/${appName}; nginx -t 2>&1 && systemctl reload nginx; echo "nginx_done"`
+    );
+    logs.push(`Nginx: ${nginxDel.output?.trim()}`);
+
+    const rmApp = await runServerCommand(`rm -rf /var/www/apps/${appName}; echo "dir_done"`);
+    logs.push(`Dir: ${rmApp.output?.trim()}`);
+
+    let slug = appName.replace(/-dev$/, "");
+    let cloudflareResult = { removed: [] as string[] };
+    let portsFreed = false;
+
+    try {
+      const { db } = await import("../db");
+      const { sql } = await import("drizzle-orm");
+      const { cloudflareService } = await import("../services/cloudflareService");
+
+      const rows = await db.execute(
+        sql`SELECT id, deploy_slug, staging_port, production_port FROM devmax_projects WHERE deploy_slug = ${slug} LIMIT 1`
+      ).then((r: any) => r.rows || r);
+
+      if (rows.length > 0) {
+        const project = rows[0];
+        slug = project.deploy_slug || slug;
+
+        if (cloudflareService.isConfigured()) {
+          cloudflareResult = await cloudflareService.removeDnsRecords(slug);
+          logs.push(`Cloudflare: removed ${cloudflareResult.removed.join(", ") || "none"}`);
+        }
+
+        await db.execute(sql`
+          UPDATE devmax_projects 
+          SET staging_port = NULL, production_port = NULL, 
+              staging_url = NULL, production_url = NULL,
+              updated_at = NOW()
+          WHERE id = ${project.id}
+        `);
+        portsFreed = true;
+        logs.push(`Ports freed: staging=${project.staging_port || "none"} prod=${project.production_port || "none"}`);
+      } else {
+        logs.push(`No devmax_projects record found for slug "${slug}"`);
+        if (cloudflareService.isConfigured()) {
+          cloudflareResult = await cloudflareService.removeDnsRecords(slug);
+          logs.push(`Cloudflare: removed ${cloudflareResult.removed.join(", ") || "none"}`);
+        }
+      }
+    } catch (dbErr: any) {
+      logs.push(`DB/Cloudflare cleanup error: ${dbErr.message}`);
+    }
+
+    const peerName = appName.endsWith("-dev") ? appName.replace(/-dev$/, "") : `${appName}-dev`;
+    const peerCheck = await runServerCommand(`pm2 describe ${peerName} 2>/dev/null | head -1`);
+    const peerExists = peerCheck.success && peerCheck.output?.includes(peerName);
+    if (peerExists) {
+      logs.push(`Note: peer app "${peerName}" still exists on server`);
+    }
+
+    res.json({ 
+      success: true, 
+      output: logs.join("\n"),
+      details: { appName, slug, cloudflareRemoved: cloudflareResult.removed, portsFreed, peerExists, peerName: peerExists ? peerName : null }
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
