@@ -54,7 +54,11 @@ export function sanitizeString(input: string, maxLength = 10000): string {
  * Validate an ID parameter (must be positive integer)
  */
 export function validateId(value: any, paramName = 'id'): number {
-    const id = parseInt(value, 10);
+    const str = String(value).trim();
+    if (!/^\d+$/.test(str)) {
+        throw ValidationError.invalidFormat(paramName, 'positive integer');
+    }
+    const id = parseInt(str, 10);
     if (isNaN(id) || id <= 0 || id > 2147483647) {
         throw ValidationError.invalidFormat(paramName, 'positive integer');
     }
