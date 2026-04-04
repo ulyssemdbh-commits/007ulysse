@@ -213,7 +213,7 @@ async function main() {
   // ─── STEP 5: RESTART + HEALTH CHECK ────────────────────────────────────────
   log(">>", "STEP 5/6 — Restart PM2 + vérification santé...");
   try {
-    const criticalDeps = ["pdfkit", "fontkit", "restructure", "googleapis", "bcrypt"];
+    const criticalDeps = ["pdfkit", "fontkit", "restructure", "googleapis", "ssh2", "discord.js", "ioredis"];
     for (const dep of criticalDeps) {
       const check = sshCmd(`cd ${REMOTE_DIR} && node -e "try{require('${dep}');console.log('OK')}catch(e){console.log('MISSING')}" 2>/dev/null`).trim();
       if (check !== "OK") {
