@@ -5,7 +5,7 @@ import { eq, desc, lte, sql, and, gte } from "drizzle-orm";
 
 const router = Router();
 
-router.post("/api/ui-snapshots", async (req: Request, res: Response) => {
+router.post("/ui-snapshots", async (req: Request, res: Response) => {
   try {
     const { actionType, currentPage, currentTab, elementClicked, visibleComponents, formState, dialogOpen, sidebarState, scrollPosition, viewportWidth, viewportHeight, metadata } = req.body;
 
