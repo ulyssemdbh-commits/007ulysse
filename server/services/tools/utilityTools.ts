@@ -5440,6 +5440,32 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                 const deployCaller = caller || "ulysse";
                 const isStagingDeploy = isStaging || appName.endsWith("-staging") || appName.endsWith("-dev");
                 const baseAppName = appName.replace(/-dev$/, "").replace(/-staging$/, "");
+
+                const repoMatch0 = repoUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+                if (repoMatch0) {
+                    try {
+                        const preflightLogs: string[] = [];
+                        const { runSourceCodePreflight: preflightFn } = await import("../../routes/devopsMaxRoutes");
+                        if (typeof preflightFn === "function") {
+                            const ghToken = process.env.MAURICE_GITHUB_PAT || null;
+                            const preflight = await preflightFn(repoMatch0[1], repoMatch0[2].replace(/\.git$/, ""), ghToken, preflightLogs);
+                            if (preflight.blocking) {
+                                return JSON.stringify({
+                                    action: "deploy",
+                                    success: false,
+                                    message: `⛔ Preflight bloquant: ${preflight.issues.join(", ")}`,
+                                    preflight,
+                                    preflightLogs,
+                                });
+                            }
+                            if (!preflight.pass) {
+                                console.log(`[Deploy] Preflight warnings: ${preflight.issues.join(", ")}`);
+                            }
+                        }
+                    } catch (pfErr: any) {
+                        console.log(`[Deploy] Preflight check skipped: ${pfErr.message?.slice(0, 100)}`);
+                    }
+                }
                 let resolvedDevmaxProjectId: string | undefined;
                 if (!copyEnvFrom) {
                     try {
