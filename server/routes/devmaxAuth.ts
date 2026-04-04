@@ -498,12 +498,12 @@ async function ensureDevmaxTables() {
 ensureDevmaxTables();
 
 async function hashPin(pin: string): Promise<string> {
-  const bcrypt = await import("bcrypt");
+  const bcrypt = await import("bcryptjs");
   return bcrypt.hash(pin, 10);
 }
 
 async function verifyPin(pin: string, hash: string): Promise<boolean> {
-  const bcrypt = await import("bcrypt");
+  const bcrypt = await import("bcryptjs");
   if (hash.startsWith("$2")) {
     return bcrypt.compare(pin, hash);
   }
