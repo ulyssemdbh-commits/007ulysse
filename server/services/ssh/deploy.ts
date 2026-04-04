@@ -66,9 +66,11 @@ export function createDeployMethods(service: SSHService) {
   async function ensureBuildTools(appDir: string, logs: string[], stepLabel: string): Promise<void> {
     const pkgResult = await service.executeCommand(`cd ${appDir} && cat package.json 2>/dev/null`, 5000);
     let buildScript = "";
+    let allDeps: Record<string, string> = {};
     try {
       const pkg = JSON.parse(pkgResult.output || "{}");
       buildScript = pkg.scripts?.build || "";
+      allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
     } catch {}
     if (!buildScript) return;
 
@@ -82,19 +84,71 @@ export function createDeployMethods(service: SSHService) {
       { tool: "nuxt", pkg: "nuxt", match: /\bnuxt\b/ },
     ];
 
+    let scanContent = buildScript;
+    const buildFileMatch = buildScript.match(/(?:tsx|ts-node|node)\s+([^\s&|;]+\.\w+)/);
+    if (buildFileMatch) {
+      const buildFile = buildFileMatch[1];
+      const fileResult = await service.executeCommand(`cat ${appDir}/${buildFile} 2>/dev/null | head -80`, 5000);
+      if (fileResult.success && fileResult.output) {
+        scanContent += " " + fileResult.output;
+        logs.push(`${stepLabel} Scanning build file: ${buildFile}`);
+      }
+    }
+
     for (const { tool, pkg, match } of toolChecks) {
-      if (!match.test(buildScript)) continue;
+      if (!match.test(scanContent)) continue;
       const exists = await service.executeCommand(`[ -f "${appDir}/node_modules/.bin/${tool}" ] && echo "YES" || echo "NO"`, 3000);
       if (exists.output?.includes("YES")) continue;
 
       logs.push(`${stepLabel} Build tool "${tool}" missing — auto-installing...`);
-      await service.executeCommand(`cd ${appDir} && npm install --no-save ${pkg} 2>&1 | tail -3`, 60000);
-
-      const recheck = await service.executeCommand(`[ -f "${appDir}/node_modules/.bin/${tool}" ] && echo "YES" || echo "NO"`, 3000);
-      if (recheck.output?.includes("YES")) {
+      const installStrategies = [
+        `cd ${appDir} && npm install --no-save ${pkg} 2>&1 | tail -5`,
+        `cd ${appDir} && npm install --no-save --force ${pkg} 2>&1 | tail -5`,
+      ];
+      if (tool === "esbuild") {
+        const archResult = await service.executeCommand(`uname -m`, 3000);
+        const arch = archResult.output?.trim();
+        const esbuildPlatform = arch === "aarch64" ? "@esbuild/linux-arm64" : "@esbuild/linux-x64";
+        installStrategies.push(`cd ${appDir} && npm install --no-save esbuild ${esbuildPlatform} 2>&1 | tail -5`);
+      }
+      let installed = false;
+      for (const strategy of installStrategies) {
+        await service.executeCommand(strategy, 60000);
+        const recheck = await service.executeCommand(`[ -f "${appDir}/node_modules/.bin/${tool}" ] && echo "YES" || echo "NO"`, 3000);
+        if (recheck.output?.includes("YES")) {
+          installed = true;
+          break;
+        }
+      }
+      if (installed) {
         logs.push(`${stepLabel} ${tool}: installed OK`);
       } else {
-        logs.push(`${stepLabel} WARNING: ${tool} still missing after install — build may fail`);
+        logs.push(`${stepLabel} WARNING: ${tool} still missing after all install attempts — build may fail`);
+      }
+    }
+
+    if (scanContent !== buildScript) {
+      const importPattern = /from\s+['"]([^'"./][^'"]*)['"]/g;
+      const requirePattern = /require\s*\(\s*['"]([^'"./][^'"]*)['"]\s*\)/g;
+      const missingPkgs = new Set<string>();
+      for (const pat of [importPattern, requirePattern]) {
+        let m;
+        while ((m = pat.exec(scanContent)) !== null) {
+          const pkgName = m[1].startsWith("@") ? m[1].split("/").slice(0, 2).join("/") : m[1].split("/")[0];
+          if (pkgName === "node" || pkgName.startsWith("node:")) continue;
+          if (!allDeps[pkgName]) {
+            const exists = await service.executeCommand(`[ -d "${appDir}/node_modules/${pkgName}" ] && echo "YES" || echo "NO"`, 3000);
+            if (!exists.output?.includes("YES")) {
+              missingPkgs.add(pkgName);
+            }
+          }
+        }
+      }
+      if (missingPkgs.size > 0) {
+        const pkgList = Array.from(missingPkgs).join(" ");
+        logs.push(`${stepLabel} Build deps missing from node_modules: ${pkgList} — installing...`);
+        await service.executeCommand(`cd ${appDir} && npm install --no-save ${pkgList} 2>&1 | tail -5`, 120000);
+        logs.push(`${stepLabel} Build deps install attempted: ${pkgList}`);
       }
     }
   }
