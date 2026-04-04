@@ -19,7 +19,14 @@ import * as fs from "fs";
 import * as path from "path";
 import ExcelJS from "exceljs";
 import OpenAI from "openai";
-import PDFDocument from "pdfkit";
+let PDFDocument: any = null;
+async function getPDFDocument() {
+  if (!PDFDocument) {
+    const mod = await import("pdfkit");
+    PDFDocument = mod.default;
+  }
+  return PDFDocument;
+}
 
 // Use AI Integrations for Replit Core compatibility
 const openai = new OpenAI({
@@ -381,7 +388,8 @@ export class UniversalFileGenerator {
     const filePath = path.join(OUTPUT_DIR, `${fileName}.pdf`);
     const writeStream = fs.createWriteStream(filePath);
 
-    const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
+    const PDFDoc = await getPDFDocument();
+    const doc = new PDFDoc({ size: "A4", margin: 50, bufferPages: true });
     doc.pipe(writeStream);
 
     doc.fontSize(20).fillColor("#2c3e50").text(title, { align: "center" });
@@ -493,7 +501,8 @@ export class UniversalFileGenerator {
   }, fileName: string): Promise<GenerationResult> {
     const filePath = path.join(OUTPUT_DIR, `${fileName}.pdf`);
     const writeStream = fs.createWriteStream(filePath);
-    const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+    const PDFDoc2 = await getPDFDocument();
+    const doc = new PDFDoc2({ size: "A4", margin: 40, bufferPages: true });
     doc.pipe(writeStream);
 
     const { emetteur, client, numero, date, code_client, chantier, lignes, acompte, mentions_legales, total_rows } = invoiceData;
