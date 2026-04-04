@@ -1,6 +1,22 @@
-import { chromium, Browser, BrowserContext, Page } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
+
+let _playwright: any = null;
+async function getPlaywright() {
+  if (!_playwright) {
+    try {
+      _playwright = await import("playwright");
+    } catch {
+      console.warn("[BrowserService] playwright not available — browser features disabled");
+      return null;
+    }
+  }
+  return _playwright;
+}
+
+type Browser = any;
+type BrowserContext = any;
+type Page = any;
 
 export interface BrowserAction {
   type: "goto" | "waitForSelector" | "click" | "scroll" | "delay" | "type" | "screenshot" | "evaluate" | "waitForLoadState";
@@ -151,7 +167,9 @@ class BrowserService {
     if (this.browser) return;
     
     try {
-      this.browser = await chromium.launch({
+      const pw = await getPlaywright();
+      if (!pw) throw new Error("playwright not available");
+      this.browser = await pw.chromium.launch({
         headless: true,
         args: [
           "--no-sandbox",
