@@ -517,6 +517,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     const sessionCtx = body.sessionContext || (body.contextHints?.devopsContext ? "devops" : "assistant");
     const isDevMaxSession = sessionCtx === "devops" && (body.contextHints?.systemHint || "").includes("MAX");
+    const hasDevMaxToolAccess = isDevMaxSession && isExternal;
     const isSuguSession = sessionCtx.startsWith("sugu_");
     let aiContext: AIContext;
     if (isDevMaxSession) {
@@ -536,7 +537,7 @@ router.post("/", async (req: Request, res: Response) => {
     const _contextAI = getAIForContext(aiContext);
     const _contextFallbackChain = getFallbackChainForContext(aiContext);
     const openai = _contextAI.client;
-    console.log(`[V2-CHAT] User: ${userDisplayName}, isOwner: ${isOwner}, role: ${userRole}, hasFamilyAccess: ${hasFamilyAccess}, isExternal: ${isExternal}, using: ${persona}`);
+    console.log(`[V2-CHAT] User: ${userDisplayName}, isOwner: ${isOwner}, role: ${userRole}, hasFamilyAccess: ${hasFamilyAccess}, isExternal: ${isExternal}, hasDevMaxToolAccess: ${hasDevMaxToolAccess}, using: ${persona}`);
     console.log(`[V2-AI-ROUTE] Context: ${aiContext} → Provider: ${_contextAI.provider}, Model: ${_contextAI.model}, FallbackChain: [${_contextFallbackChain.map(f => f.provider).join(' → ')}]`);
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -2941,12 +2942,19 @@ Commence par design_dashboard MAINTENANT.`
         // ACTION INTENT DETECTION - Force tools when user wants action
         // Detect once and reuse for all decisions
         const actionIntent = detectActionIntent(body.message || "");
-        let toolChoiceMode = hasFamilyAccess ? shouldForceToolChoice(actionIntent) : undefined;
-        let relevantTools = hasFamilyAccess ? getRelevantTools(actionIntent, ulysseToolsV2) : undefined;
+        const canUseTools = hasFamilyAccess || hasDevMaxToolAccess;
+        let toolChoiceMode = canUseTools ? shouldForceToolChoice(actionIntent) : undefined;
+        let relevantTools = canUseTools ? getRelevantTools(actionIntent, ulysseToolsV2) : undefined;
+        
+        if (hasDevMaxToolAccess && !hasFamilyAccess) {
+          const devmaxAllowed = ['devops_github', 'devops_server', 'devmax_db', 'dgm_manage', 'devops_intelligence', 'task_queue_manage', 'work_journal_manage', 'web_search', 'memory_store', 'memory_recall', 'query_brain', 'memory_save', 'image_generate', 'analyze_file', 'generate_file', 'kanban_create_task', 'pdf_master', 'dashboard_screenshot', 'send_notification'];
+          relevantTools = (relevantTools || ulysseToolsV2).filter((t: any) => devmaxAllowed.includes(t.function.name));
+          console.log(`[V2-DevMaxTenant] 🔧 Tenant DevMax session → ${relevantTools.length} DevOps tools enabled (filtered from ${ulysseToolsV2.length})`);
+        }
         
         let currentProviderIdx = 0;
         
-        if (forceToolsList?.length && hasFamilyAccess) {
+        if (forceToolsList?.length && canUseTools) {
           const priorityTools = ulysseToolsV2.filter((t: any) => forceToolsList.includes(t.function.name));
           if (devopsCtx) {
             const devopsRelated = ['devops_github', 'devops_server', 'sensory_hub', 'devmax_db', 'dgm_manage', 'devops_intelligence', 'dashboard_screenshot', 'web_search', 'send_notification', 'memory_store', 'memory_recall', 'image_generate', 'analyze_file', 'generate_file', 'kanban_create_task', 'pdf_master', 'query_coba', 'commax_manage', 'superchat_search', 'task_queue_manage', 'work_journal_manage', 'query_brain', 'memory_save'];
@@ -2967,7 +2975,7 @@ Commence par design_dashboard MAINTENANT.`
         
         
         
-        if (devopsCtx && hasFamilyAccess) {
+        if (devopsCtx && canUseTools) {
           const devopsCodeKeywords = /(?:fichier|file|code|source|audit|structure|arborescence|dossier|folder|répertoire|directory|composant|component|module)/i;
           if (devopsCodeKeywords.test(body.message || "")) {
             const devopsTool = ulysseToolsV2.find((t: any) => t.function.name === "devops_github");
