@@ -2,7 +2,11 @@ import { db } from "../db";
 import { cobaEvents, cobaReports } from "@shared/schema";
 import { eq, and, gte, lte, desc, sql, count } from "drizzle-orm";
 import { getAIForContext } from "./core/openaiClient";
-import PDFDocument from "pdfkit";
+let _PDFKit: any = null;
+async function lazyPDFKit() {
+  if (!_PDFKit) { const m = await import("pdfkit"); _PDFKit = m.default; }
+  return _PDFKit;
+}
 import fs from "fs";
 import path from "path";
 
@@ -208,8 +212,9 @@ export async function generatePdfReport(
   const fileName = `coba-report-${tenantId}-${dateStr}.pdf`;
   const filePath = path.join(REPORTS_DIR, fileName);
 
+  const PDFDoc = await lazyPDFKit();
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDoc({ size: "A4", margin: 50 });
     const stream = fs.createWriteStream(filePath);
     doc.pipe(stream);
 
