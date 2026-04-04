@@ -19,9 +19,22 @@ async function isTokenValid(token: string): Promise<boolean> {
     const res = await fetch("https://api.github.com/user", {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
     });
-    const valid = res.ok;
-    tokenValidityCache[token] = { valid, checkedAt: Date.now() };
-    return valid;
+    if (res.ok) {
+      tokenValidityCache[token] = { valid: true, checkedAt: Date.now() };
+      return true;
+    }
+    if (res.status === 403) {
+      const rateCheck = await fetch("https://api.github.com/rate_limit", {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      });
+      if (rateCheck.ok) {
+        tokenValidityCache[token] = { valid: true, checkedAt: Date.now() };
+        return true;
+      }
+    }
+    console.warn(`[DevMaxOps] Token validation failed: status=${res.status}`);
+    tokenValidityCache[token] = { valid: false, checkedAt: Date.now() };
+    return false;
   } catch {
     tokenValidityCache[token] = { valid: false, checkedAt: Date.now() };
     return false;
@@ -52,6 +65,7 @@ async function resolveProjectGitHubToken(projectId: string): Promise<string | nu
   } catch (e: any) {
     console.warn(`[DevMaxOps] Token resolution failed for project ${projectId}:`, e.message);
   }
+  console.warn(`[DevMaxOps] No valid token found for project ${projectId} — using owner fallback`);
   if (process.env.MAURICE_GITHUB_PAT) return process.env.MAURICE_GITHUB_PAT;
   return null;
 }
