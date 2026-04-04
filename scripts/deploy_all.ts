@@ -213,7 +213,20 @@ async function main() {
   // ─── STEP 5: RESTART + HEALTH CHECK ────────────────────────────────────────
   log(">>", "STEP 5/6 — Restart PM2 + vérification santé...");
   try {
-    sshCmd(`cd ${REMOTE_DIR} && npm ls pdfkit 2>/dev/null | grep -q pdfkit || npm install pdfkit fontkit restructure --no-save 2>/dev/null`, 30_000);
+    const criticalDeps = ["pdfkit", "fontkit", "restructure"];
+    for (const dep of criticalDeps) {
+      const check = sshCmd(`cd ${REMOTE_DIR} && node -e "try{require('${dep}');console.log('OK')}catch(e){console.log('MISSING')}" 2>/dev/null`).trim();
+      if (check !== "OK") {
+        log("  ", `Module manquant: ${dep} — installation...`);
+        sshCmd(`cd ${REMOTE_DIR} && npm install ${dep} --no-save 2>/dev/null`, 30_000);
+        const recheck = sshCmd(`cd ${REMOTE_DIR} && node -e "try{require('${dep}');console.log('OK')}catch(e){console.log('MISSING')}" 2>/dev/null`).trim();
+        if (recheck !== "OK") {
+          log("⚠️", `WARN: ${dep} toujours manquant après install`);
+        } else {
+          log("OK", `${dep} installé`);
+        }
+      }
+    }
 
     sshCmd("pm2 flush ulysse 2>/dev/null; pm2 restart ulysse", 15_000);
     log("OK", "PM2 redémarré");
