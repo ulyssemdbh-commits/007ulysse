@@ -1116,13 +1116,18 @@ function DeploymentsPanel() {
   }, [toast, refetch]);
 
   const deleteApp = useCallback(async (appName: string) => {
-    if (!confirm(`Supprimer definitivement "${appName}" ? Cette action est irreversible.`)) return;
+    if (!confirm(`Supprimer "${appName}" ?\n\nCela va:\n- Supprimer le process PM2\n- Supprimer la config Nginx\n- Supprimer le dossier /var/www/apps/${appName}\n- Liberer les URLs Cloudflare (staging + prod)\n- Liberer les ports dedies`)) return;
     setDeletingApp(appName);
     try {
       const res = await fetch(`/api/devops/server/app/${appName}`, { method: "DELETE", credentials: "include" });
       const data = await res.json();
       if (data.success) {
-        toast({ title: "Supprimee", description: `${appName} a ete supprimee du serveur` });
+        const d = data.details || {};
+        const parts = [`${appName} supprimee`];
+        if (d.cloudflareRemoved?.length) parts.push(`DNS: ${d.cloudflareRemoved.join(", ")}`);
+        if (d.portsFreed) parts.push("Ports liberes");
+        if (d.peerExists) parts.push(`⚠ "${d.peerName}" encore present`);
+        toast({ title: "Supprimee", description: parts.join(" | ") });
         setTimeout(() => refetch(), 2000);
       } else {
         toast({ title: "Erreur", description: data.error || "Echec de la suppression", variant: "destructive" });
@@ -1456,13 +1461,18 @@ function HetznerServerTab() {
   );
 
   const deleteApp = useCallback(async (appName: string) => {
-    if (!confirm(`Supprimer definitivement "${appName}" du serveur ? Cette action est irreversible.`)) return;
+    if (!confirm(`Supprimer "${appName}" ?\n\nCela va:\n- Supprimer le process PM2\n- Supprimer la config Nginx\n- Supprimer le dossier /var/www/apps/${appName}\n- Liberer les URLs Cloudflare (staging + prod)\n- Liberer les ports dedies`)) return;
     setDeletingApp(appName);
     try {
       const res = await fetch(`/api/devops/server/app/${appName}`, { method: "DELETE", credentials: "include" });
       const data = await res.json();
       if (data.success) {
-        toast({ title: "Supprimee", description: `${appName} supprimee du serveur` });
+        const d = data.details || {};
+        const parts = [`${appName} supprimee`];
+        if (d.cloudflareRemoved?.length) parts.push(`DNS: ${d.cloudflareRemoved.join(", ")}`);
+        if (d.portsFreed) parts.push("Ports liberes");
+        if (d.peerExists) parts.push(`⚠ "${d.peerName}" encore present`);
+        toast({ title: "Supprimee", description: parts.join(" | ") });
         setTimeout(() => refetchApps(), 2000);
       } else {
         toast({ title: "Erreur", description: data.error || "Echec", variant: "destructive" });
