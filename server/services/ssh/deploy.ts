@@ -38,10 +38,10 @@ export function createDeployMethods(service: SSHService) {
     const isLock = hasLock.output?.includes("HAS_LOCK");
 
     const strategies = [
-      ...(isLock ? [`cd ${appDir} && npm ci --include=dev`] : []),
-      ...(isLock ? [`cd ${appDir} && npm ci --include=dev --ignore-scripts`] : []),
-      `cd ${appDir} && npm install --include=dev --no-audit --no-fund`,
-      `cd ${appDir} && npm install --include=dev --no-audit --no-fund --ignore-scripts`,
+      ...(isLock ? [`cd ${appDir} && NODE_ENV=development npm ci`] : []),
+      ...(isLock ? [`cd ${appDir} && NODE_ENV=development npm ci --ignore-scripts`] : []),
+      `cd ${appDir} && NODE_ENV=development npm install --no-audit --no-fund`,
+      `cd ${appDir} && NODE_ENV=development npm install --no-audit --no-fund --ignore-scripts`,
     ];
 
     let result: any = { success: false, output: "", error: "No install strategy attempted" };
@@ -58,6 +58,38 @@ export function createDeployMethods(service: SSHService) {
     }
 
     if (!result.success) return result;
+
+    const depCheck = await service.executeCommand(
+      `cd ${appDir} && node -e "` +
+      `const pkg=JSON.parse(require('fs').readFileSync('package.json','utf8'));` +
+      `const all={...pkg.dependencies,...pkg.devDependencies};` +
+      `const missing=Object.keys(all).filter(d=>!require('fs').existsSync('node_modules/'+d));` +
+      `if(missing.length)console.log('MISSING:'+missing.join(','));else console.log('ALL_OK')` +
+      `" 2>/dev/null || echo "CHECK_FAILED"`,
+      10000
+    );
+    const depOutput = depCheck.output?.trim() || "";
+    if (depOutput.startsWith("MISSING:")) {
+      const missingDeps = depOutput.replace("MISSING:", "").split(",").filter(Boolean);
+      logs.push(`${stepLabel} ⚠️ ${missingDeps.length} dep(s) missing after install: ${missingDeps.slice(0, 10).join(", ")}${missingDeps.length > 10 ? "..." : ""}`);
+      logs.push(`${stepLabel} Attempting targeted install of missing deps...`);
+      const batch = missingDeps.slice(0, 20).join(" ");
+      await service.executeCommand(`cd ${appDir} && npm install --no-save ${batch} 2>&1 | tail -5`, 120000);
+      const recheck = await service.executeCommand(
+        `cd ${appDir} && node -e "` +
+        `const fs=require('fs');const missing=${JSON.stringify(missingDeps)}.filter(d=>!fs.existsSync('node_modules/'+d));` +
+        `console.log(missing.length?'STILL_MISSING:'+missing.join(','):'FIXED')" 2>/dev/null`,
+        5000
+      );
+      const recheckOut = recheck.output?.trim() || "";
+      if (recheckOut.startsWith("STILL_MISSING")) {
+        logs.push(`${stepLabel} ⚠️ Some deps still missing: ${recheckOut.replace("STILL_MISSING:", "")}`);
+      } else {
+        logs.push(`${stepLabel} ✅ All missing deps installed successfully`);
+      }
+    } else if (depOutput === "ALL_OK") {
+      logs.push(`${stepLabel} Dependencies: all present in node_modules`);
+    }
 
     await ensureBuildTools(appDir, logs, stepLabel);
     return result;
@@ -97,20 +129,24 @@ export function createDeployMethods(service: SSHService) {
 
     for (const { tool, pkg, match } of toolChecks) {
       if (!match.test(scanContent)) continue;
-      const exists = await service.executeCommand(`[ -f "${appDir}/node_modules/.bin/${tool}" ] && echo "YES" || echo "NO"`, 3000);
+      const exists = await service.executeCommand(
+        `[ -f "${appDir}/node_modules/.bin/${tool}" ] && [ -d "${appDir}/node_modules/${tool}" ] && [ -f "${appDir}/node_modules/${tool}/package.json" ] && echo "YES" || echo "NO"`,
+        3000
+      );
       if (exists.output?.includes("YES")) continue;
 
       logs.push(`${stepLabel} Build tool "${tool}" missing — auto-installing...`);
-      const installStrategies = [
-        `cd ${appDir} && npm install --no-save ${pkg} 2>&1 | tail -5`,
-        `cd ${appDir} && npm install --no-save --force ${pkg} 2>&1 | tail -5`,
-      ];
+      const installStrategies: string[] = [];
       if (tool === "esbuild") {
         const archResult = await service.executeCommand(`uname -m`, 3000);
         const arch = archResult.output?.trim();
         const esbuildPlatform = arch === "aarch64" ? "@esbuild/linux-arm64" : "@esbuild/linux-x64";
         installStrategies.push(`cd ${appDir} && npm install --no-save esbuild ${esbuildPlatform} 2>&1 | tail -5`);
       }
+      installStrategies.push(
+        `cd ${appDir} && npm install --no-save ${pkg} 2>&1 | tail -5`,
+        `cd ${appDir} && npm install --no-save --force ${pkg} 2>&1 | tail -5`,
+      );
       let installed = false;
       for (const strategy of installStrategies) {
         await service.executeCommand(strategy, 60000);
@@ -154,7 +190,7 @@ export function createDeployMethods(service: SSHService) {
   }
 
   function buildEnvCmd(appDir: string, cmd: string): string {
-    return `bash -c 'cd ${appDir} && touch .env && set -a && source .env && set +a && ${cmd} 2>&1 | tail -15'`;
+    return `bash -c 'cd ${appDir} && touch .env && set -a && source .env && set +a && ${cmd} 2>&1 | tail -40'`;
   }
 
   return {
@@ -606,14 +642,33 @@ export function createDeployMethods(service: SSHService) {
       }
 
       logs.push(`[7/10] Building...`);
-      const buildResult = await service.executeCommand(
+      let buildResult = await service.executeCommand(
         buildEnvCmd(appDir, actualBuildCmd),
         180000
       );
       logs.push(...(buildResult.output || "").split("\n").filter(l => l.startsWith(">>>")));
 
+      const buildOutput = buildResult.output || "";
+      const buildHasModuleError = buildOutput.includes("ERR_MODULE_NOT_FOUND") || buildOutput.includes("Cannot find package") || buildOutput.includes("Cannot find module");
+      if (buildHasModuleError) {
+        const missingPkg = buildOutput.match(/Cannot find (?:package|module) '([^']+)'/)?.[1];
+        if (missingPkg) {
+          logs.push(`[7/10] Build failed — missing '${missingPkg}', reinstalling...`);
+          await service.executeCommand(`cd ${appDir} && npm install ${missingPkg} 2>&1 | tail -5`, 60000);
+          buildResult = await service.executeCommand(buildEnvCmd(appDir, actualBuildCmd), 180000);
+        }
+      }
+
       if (!buildResult.success) {
-        return { success: false, message: `Deployment failed at build phase:\n${buildResult.error}\n${buildResult.output}`, logs };
+        const retryOutput = buildResult.output || "";
+        if (retryOutput.includes("ERR_MODULE_NOT_FOUND") || retryOutput.includes("Cannot find")) {
+          logs.push(`[7/10] Build retry: still failing — attempting full reinstall`);
+          await service.executeCommand(`cd ${appDir} && rm -rf node_modules && NODE_ENV=development npm install 2>&1 | tail -10`, 300000);
+          buildResult = await service.executeCommand(buildEnvCmd(appDir, actualBuildCmd), 180000);
+        }
+        if (!buildResult.success) {
+          return { success: false, message: `Deployment failed at build phase:\n${buildResult.error}\n${buildResult.output}`, logs };
+        }
       }
 
       const buildOutputCheck = await service.executeCommand(
@@ -624,7 +679,8 @@ export function createDeployMethods(service: SSHService) {
         (await service.executeCommand(`cd ${appDir} && node -e "console.log(JSON.stringify(require('./package.json').scripts?.start || ''))"`, 5000)).output || '""'
       );
       if (buildOutputCheck.output?.includes("NO_DIST") && pkgStartScript.includes("dist/")) {
-        return { success: false, message: `Build completed but produced no dist/ output. The start script expects dist/ files. Check build configuration.\n${buildResult.output || ""}`, logs };
+        const finalBuildErr = buildResult.output || buildResult.error || "";
+        return { success: false, message: `Build completed but produced no dist/ output. The start script expects dist/ files. Check build configuration.\n${finalBuildErr}`, logs };
       }
       logs.push(`[7/10] Build: OK${buildOutputCheck.output?.includes("NO_DIST") ? " (no dist/ — may be direct start)" : ""}`);
 
