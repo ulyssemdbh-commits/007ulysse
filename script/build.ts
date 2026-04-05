@@ -33,6 +33,7 @@ const allowlist = [
   "uuid",          // v9 is CJS despite having type:cjs, stays bundleable
   "bcryptjs",      // pure JS bcrypt — replaces native bcrypt to avoid MODULE_NOT_FOUND on deploy
   "cheerio",       // HTML parser — pure JS, used by webfetch/scraping
+  "glob",          // File glob matching — pure JS, used by codeContextService
   "ws",
   "zod",
   "zod-validation-error",
