@@ -413,12 +413,16 @@ function handleMessage(raw: MessageEvent) {
       const msg = data.data?.message;
       if (msg?.conversationId) {
         injectMessageIntoCache(msg);
+        window.dispatchEvent(new CustomEvent("ulysse:conversation-message", {
+          detail: { conversationId: msg.conversationId, role: msg.role, origin: data.data?.origin }
+        }));
       }
     }
 
     if (data.type === "conversations.updated") {
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/v2/conversations"] });
+      window.dispatchEvent(new CustomEvent("ulysse:conversations-updated"));
       dispatchToSubscribers(data);
       return;
     }

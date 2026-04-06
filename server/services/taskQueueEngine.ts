@@ -371,7 +371,10 @@ async function executeQueueItem(item: any, userId: number): Promise<string> {
 
   const { ulysseToolsV2, executeToolCallV2 } = await import("./ulysseToolsServiceV2");
 
-  const toolDefs = ulysseToolsV2.slice(0, 40);
+  const devopsToolNames = ['devops_github', 'devops_server', 'devmax_db', 'dgm_manage', 'task_queue_manage', 'work_journal_manage', 'devops_intelligence', 'monitoring_manage', 'manage_ai_system', 'manage_feature_flags', 'query_apptoorder', 'dashboard_screenshot', 'web_search', 'read_url', 'query_brain', 'memory_save', 'analyze_file', 'generate_file'];
+  const coreTools = ulysseToolsV2.slice(0, 40);
+  const devopsTools = ulysseToolsV2.filter((t: any) => devopsToolNames.includes(t.function?.name) && !coreTools.some((c: any) => c.function?.name === t.function?.name));
+  const toolDefs = [...coreTools, ...devopsTools];
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     {

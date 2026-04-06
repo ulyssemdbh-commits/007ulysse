@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useConversations, useCreateConversation, useConversation } from "@/hooks/use-chat";
@@ -156,6 +156,44 @@ export function UlysseChatProvider({ children }: { children: React.ReactNode }) 
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
+  }, [sharedConvId, queryClient]);
+
+  const lastSyncRefreshRef = useRef(0);
+  useEffect(() => {
+    const handleConvSync = () => {
+      if (sharedConvId) {
+        const now = Date.now();
+        if (now - lastSyncRefreshRef.current > 2000) {
+          lastSyncRefreshRef.current = now;
+          queryClient.invalidateQueries({ queryKey: ["/api/conversations", sharedConvId] });
+          queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+        }
+      }
+    };
+
+    const handleConvMessage = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      const { conversationId } = detail;
+      if (conversationId && conversationId !== sharedConvId) {
+        setSharedConvId(conversationId);
+        if (conversationId) setSharedConversationId(conversationId);
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+      } else if (conversationId && conversationId === sharedConvId) {
+        const now = Date.now();
+        if (now - lastSyncRefreshRef.current > 2000) {
+          lastSyncRefreshRef.current = now;
+          queryClient.invalidateQueries({ queryKey: ["/api/conversations", sharedConvId] });
+        }
+      }
+    };
+
+    window.addEventListener("ulysse:conversations-updated", handleConvSync);
+    window.addEventListener("ulysse:conversation-message", handleConvMessage);
+    return () => {
+      window.removeEventListener("ulysse:conversations-updated", handleConvSync);
+      window.removeEventListener("ulysse:conversation-message", handleConvMessage);
+    };
   }, [sharedConvId, queryClient]);
 
   const { data: activeConversation } = useConversation(sharedConvId);
