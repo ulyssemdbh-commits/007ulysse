@@ -383,8 +383,7 @@ export function createServerMethods(service: SSHService) {
 
         for (let attempt = 1; attempt <= retries; attempt++) {
           const cloneScript = [
-            `set -e`,
-            `rm -rf ${appDir}`,
+            `rm -rf ${appDir} 2>/dev/null; rm -rf ${appDir}`,
             `mkdir -p ${appDir}`,
             `GIT_TERMINAL_PROMPT=0 git clone ${depthFlag} -b ${branch} ${url} ${appDir} 2>&1`,
           ].join(" && ");

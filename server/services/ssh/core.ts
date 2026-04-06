@@ -152,7 +152,9 @@ export function createCoreMethods() {
     async executeCommand(command: string, timeout = 30000): Promise<{ success: boolean; output: string; error?: string }> {
       if (isLocalServer) {
         try {
-          const output = execSync(command, { encoding: "utf8", timeout, maxBuffer: 5 * 1024 * 1024 }).trim();
+          const cleanEnv = { ...process.env };
+          delete cleanEnv.NODE_ENV;
+          const output = execSync(command, { encoding: "utf8", timeout, maxBuffer: 5 * 1024 * 1024, env: cleanEnv }).trim();
           return { success: true, output };
         } catch (err: any) {
           return { success: false, output: err.stdout?.toString().trim() || "", error: err.stderr?.toString().trim() || err.message };

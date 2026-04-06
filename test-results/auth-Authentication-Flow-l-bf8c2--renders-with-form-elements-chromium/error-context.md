@@ -1,0 +1,40 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - heading "Ulysse" [level=1] [ref=e8]
+      - paragraph [ref=e9]: Assistant personnel de Maurice
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: Connexion
+        - generic [ref=e13]: Connectez-vous pour accéder à Ulysse
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - text: Identifiant
+            - generic [ref=e17]:
+              - img [ref=e18]
+              - textbox "Identifiant" [ref=e21]:
+                - /placeholder: maurice
+          - generic [ref=e22]:
+            - text: Mot de passe
+            - generic [ref=e23]:
+              - img [ref=e24]
+              - textbox "Mot de passe" [ref=e27]:
+                - /placeholder: Minimum 8 caractères
+              - button [ref=e28] [cursor=pointer]:
+                - img [ref=e29]
+          - button "Se connecter" [ref=e32] [cursor=pointer]
+        - generic [ref=e37]: ou
+        - button "FaceID / TouchID" [ref=e38] [cursor=pointer]:
+          - img
+          - text: FaceID / TouchID
+    - paragraph [ref=e39]: Accès réservé aux utilisateurs autorisés
+    - button "DevMax" [ref=e40] [cursor=pointer]:
+      - img [ref=e41]
+      - text: DevMax
+```

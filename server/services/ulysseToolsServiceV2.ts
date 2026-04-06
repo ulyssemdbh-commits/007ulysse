@@ -3352,21 +3352,68 @@ function toSnakeCase(s: string): string {
   return s.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
 }
 
+const _tenantRateLimits = new Map<number, { count: number; resetAt: number }>();
+const TENANT_RATE_LIMIT = 60;
+const TENANT_RATE_WINDOW = 60000;
+
+function checkTenantRateLimit(tenantUserId: number): boolean {
+  const now = Date.now();
+  const entry = _tenantRateLimits.get(tenantUserId);
+  if (!entry || now > entry.resetAt) {
+    _tenantRateLimits.set(tenantUserId, { count: 1, resetAt: now + TENANT_RATE_WINDOW });
+    return true;
+  }
+  entry.count++;
+  if (entry.count > TENANT_RATE_LIMIT) {
+    console.warn(`[DevMax-RateLimit] 🚫 Tenant userId=${tenantUserId} exceeded ${TENANT_RATE_LIMIT} calls/min`);
+    return false;
+  }
+  return true;
+}
+
 async function executeDevmaxDb(args: any): Promise<string> {
   try {
     const { db } = await import("../db");
     const { sql } = await import("drizzle-orm");
 
+    const tc = args._tenantContext;
+    if (tc?.isTenant) {
+      if (!checkTenantRateLimit(tc.tenantUserId)) {
+        return JSON.stringify({ error: "Limite de requêtes atteinte (60/min). Attends quelques secondes avant de réessayer." });
+      }
+    }
+
     switch (args.action) {
       case "query": {
         if (!args.sql) return JSON.stringify({ error: "sql requis pour action query" });
-        const queryLower = args.sql.toLowerCase().trim();
+        let queryLower = args.sql.toLowerCase().trim();
         if (!queryLower.startsWith("select")) {
           return JSON.stringify({ error: "Seules les requêtes SELECT sont autorisées via query. Utilise insert/update/delete pour les mutations." });
         }
         const hasDevmaxTable = DEVMAX_TABLES.some(t => queryLower.includes(t));
         if (!hasDevmaxTable) {
           return JSON.stringify({ error: `Accès limité aux tables DevMax: ${DEVMAX_TABLES.join(", ")}` });
+        }
+        if (tc?.isTenant) {
+          const sensitivePatterns = /users\s|password|token|secret|api_key|github_token|stripe|billing/i;
+          if (sensitivePatterns.test(args.sql)) {
+            console.warn(`[DevMax-DB] 🚫 BLOCKED sensitive query from tenant userId=${tc.tenantUserId}: ${args.sql.slice(0, 80)}`);
+            return JSON.stringify({ error: "Requête bloquée: accès aux données sensibles interdit. Tu peux consulter les données de tes projets uniquement." });
+          }
+          const tenantId = tc.tenantId || tc.projectId;
+          if (tenantId && !queryLower.includes("tenant_id") && !queryLower.includes("project_id") && !queryLower.includes(`'${tenantId}'`)) {
+            console.warn(`[DevMax-DB] ⚠️ Tenant query without tenant_id filter from userId=${tc.tenantUserId} — auto-restricting`);
+            const tableMatch = args.sql.match(/from\s+(\w+)/i);
+            if (tableMatch) {
+              const hasWhereClause = /\bwhere\b/i.test(args.sql);
+              if (hasWhereClause) {
+                args.sql = args.sql.replace(/where\b/i, `WHERE tenant_id = '${tenantId.replace(/'/g, "''")}' AND `);
+              } else {
+                args.sql = args.sql.replace(/(from\s+\w+)/i, `$1 WHERE tenant_id = '${tenantId.replace(/'/g, "''")}'`);
+              }
+            }
+          }
+          queryLower = args.sql.toLowerCase().trim();
         }
         const limit = args.limit || 50;
         const finalSql = queryLower.includes("limit") ? args.sql : `${args.sql} LIMIT ${limit}`;
@@ -3376,22 +3423,50 @@ async function executeDevmaxDb(args: any): Promise<string> {
       }
 
       case "insert": {
-        if (!args.table || !args.data) return JSON.stringify({ error: "table et data requis" });
-        if (!DEVMAX_TABLES.includes(args.table)) return JSON.stringify({ error: `Table non autorisée: ${args.table}` });
-        const cols = Object.keys(args.data);
-        const vals = Object.values(args.data);
+        let insertTable = args.table;
+        let insertData = args.data;
+        if (!insertTable && args.params?.table) insertTable = args.params.table;
+        if (!insertData && args.params?.data) insertData = args.params.data;
+        if (!insertData && args.record) insertData = args.record;
+        if (!insertData && args.values) insertData = args.values;
+        if (typeof insertData === 'string') {
+          try { insertData = JSON.parse(insertData); } catch { /* keep as-is */ }
+        }
+        if (!insertTable || !insertData || typeof insertData !== 'object') {
+          console.error(`[DevMax-DB] INSERT rejected — table=${insertTable}, data type=${typeof insertData}, raw args keys=${Object.keys(args).filter(k => k !== '_tenantContext').join(',')}`);
+          return JSON.stringify({ error: `table (string) et data (objet JSON) requis pour insert. Reçu: table=${insertTable || 'MANQUANT'}, data=${insertData ? typeof insertData : 'MANQUANT'}. Exemple: {action:"insert", table:"devmax_project_journal", data:{project_id:"xxx", entry_type:"note", title:"Mon titre"}}` });
+        }
+        if (!DEVMAX_TABLES.includes(insertTable)) return JSON.stringify({ error: `Table non autorisée: ${insertTable}. Tables valides: ${DEVMAX_TABLES.join(', ')}` });
+        if (tc?.isTenant) {
+          const tenantId = tc.tenantId || tc.projectId;
+          if (tenantId) insertData.tenant_id = tenantId;
+          const sensitiveWriteTables = ['devmax_users', 'devmax_tenants'];
+          if (sensitiveWriteTables.includes(insertTable)) {
+            return JSON.stringify({ error: `Écriture dans ${insertTable} interdite pour les tenants.` });
+          }
+        }
+        const cols = Object.keys(insertData);
+        const vals = Object.values(insertData);
         const colNames = cols.map(c => `"${toSnakeCase(c)}"`).join(", ");
         const escapedVals = vals.map((v: any) => devmaxDbEscapeVal(v)).join(", ");
-        const insertSql = `INSERT INTO ${args.table} (${colNames}) VALUES (${escapedVals}) RETURNING *`;
+        const insertSql = `INSERT INTO ${insertTable} (${colNames}) VALUES (${escapedVals}) RETURNING *`;
         const result = await db.execute(sql.raw(insertSql));
         const rows = Array.isArray(result) ? result : (result as any).rows || [];
-        console.log(`[DevMax-DB] INSERT into ${args.table}: ${JSON.stringify(cols)}`);
-        return JSON.stringify({ action: "insert", table: args.table, inserted: rows[0] || args.data });
+        console.log(`[DevMax-DB] INSERT into ${insertTable}: ${JSON.stringify(cols)}${tc?.isTenant ? ` (tenant userId=${tc.tenantUserId})` : ''}`);
+        return JSON.stringify({ action: "insert", table: insertTable, inserted: rows[0] || insertData });
       }
 
       case "update": {
         if (!args.table || !args.data || !args.where) return JSON.stringify({ error: "table, data et where requis" });
         if (!DEVMAX_TABLES.includes(args.table)) return JSON.stringify({ error: `Table non autorisée: ${args.table}` });
+        if (tc?.isTenant) {
+          const tenantId = tc.tenantId || tc.projectId;
+          if (tenantId) args.where.tenant_id = tenantId;
+          const sensitiveWriteTables = ['devmax_users', 'devmax_tenants'];
+          if (sensitiveWriteTables.includes(args.table)) {
+            return JSON.stringify({ error: `Écriture dans ${args.table} interdite pour les tenants.` });
+          }
+        }
         const setClauses = Object.keys(args.data).map((k) => {
           return `"${toSnakeCase(k)}" = ${devmaxDbEscapeVal(args.data[k])}`;
         }).join(", ");
@@ -3401,20 +3476,28 @@ async function executeDevmaxDb(args: any): Promise<string> {
         const updateSql = `UPDATE ${args.table} SET ${setClauses} WHERE ${whereClauses} RETURNING *`;
         const result = await db.execute(sql.raw(updateSql));
         const rows = Array.isArray(result) ? result : (result as any).rows || [];
-        console.log(`[DevMax-DB] UPDATE ${args.table} SET ${Object.keys(args.data).join(",")} WHERE ${whereClauses}`);
+        console.log(`[DevMax-DB] UPDATE ${args.table} SET ${Object.keys(args.data).join(",")} WHERE ${whereClauses}${tc?.isTenant ? ` (tenant userId=${tc.tenantUserId})` : ''}`);
         return JSON.stringify({ action: "update", table: args.table, updatedCount: rows.length, rows });
       }
 
       case "delete": {
         if (!args.table || !args.where) return JSON.stringify({ error: "table et where requis" });
         if (!DEVMAX_TABLES.includes(args.table)) return JSON.stringify({ error: `Table non autorisée: ${args.table}` });
+        if (tc?.isTenant) {
+          const tenantId = tc.tenantId || tc.projectId;
+          if (tenantId) args.where.tenant_id = tenantId;
+          const sensitiveWriteTables = ['devmax_users', 'devmax_tenants'];
+          if (sensitiveWriteTables.includes(args.table)) {
+            return JSON.stringify({ error: `Suppression dans ${args.table} interdite pour les tenants.` });
+          }
+        }
         const delWhere = Object.keys(args.where).map(k => {
           return `"${toSnakeCase(k)}" = ${devmaxDbEscapeVal(args.where[k])}`;
         }).join(" AND ");
         const deleteSql = `DELETE FROM ${args.table} WHERE ${delWhere} RETURNING *`;
         const result = await db.execute(sql.raw(deleteSql));
         const rows = Array.isArray(result) ? result : (result as any).rows || [];
-        console.log(`[DevMax-DB] DELETE from ${args.table} WHERE ${delWhere} — ${rows.length} rows`);
+        console.log(`[DevMax-DB] DELETE from ${args.table} WHERE ${delWhere}${tc?.isTenant ? ` (tenant userId=${tc.tenantUserId})` : ''} — ${rows.length} rows`);
         return JSON.stringify({ action: "delete", table: args.table, deletedCount: rows.length });
       }
 

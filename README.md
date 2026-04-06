@@ -2,11 +2,13 @@
 
 ## Presentation
 
-Ulysse est un assistant IA personnel full-stack concu pour Maurice. Il combine gestion de projets, automatisation restaurant (SUGU Valentine & Sugumaillane), intelligence football et paris sportifs (Djedou Pronos), integration DevOps GitHub, assistant vocal, et un systeme multi-persona (Ulysse / Iris / Alfred).
+Ulysse est un assistant IA personnel full-stack concu pour Maurice. Il combine gestion de projets, automatisation restaurant (SUGU Valentine & Sugumaillane), intelligence football et paris sportifs (Djedou Pronos), integration DevOps GitHub, assistant vocal, et un systeme multi-persona (Ulysse / Iris / Alfred / MaxAI).
 
 Le systeme fonctionne de maniere autonome 24/7 avec des jobs planifies, une intelligence proactive, et des capacites d'auto-guerison.
 
-**Derniere mise a jour:** Mars 2026
+**Derniere mise a jour:** 30 Mars 2026
+**Tests:** 549/549 passing (38 fichiers)
+**Modele IA principal:** GPT-5.1 (gpt-5.1-2025-11-13)
 
 ---
 
@@ -17,7 +19,7 @@ Le systeme fonctionne de maniere autonome 24/7 avec des jobs planifies, une inte
 | **Frontend** | React 18, TypeScript, Tailwind CSS, shadcn/ui, Framer Motion, TanStack React Query, wouter |
 | **Backend** | Express.js, Node.js, API REST avec validation Zod |
 | **Base de donnees** | PostgreSQL via Drizzle ORM (~150 tables) |
-| **IA** | OpenAI GPT-4.1, Google Gemini 2.5, Grok/xAI, Perplexity |
+| **IA** | OpenAI GPT-5.1 (principal), GPT-4o (vision PDF), Gemini 2.5 Flash, Grok/xAI, Perplexity |
 | **PWA** | Installable, push notifications, service worker, mode offline |
 | **Voix** | WebSocket audio temps reel, TTS (OpenAI + Piper), STT (Whisper), reconnaissance vocale |
 
@@ -102,7 +104,7 @@ Deux restaurants geres en parallele : **Valentine** (13011) et **Maillane** (130
 ## DevMax — Plateforme DevOps SaaS Multi-Tenant
 
 ### Vue d'ensemble
-Plateforme DevOps independante accessible a `/devmax` avec authentification PIN, isolation de projet, et base de donnees dediee. Dashboard complet: overview, branches, commits, PRs, CI/CD, fichiers, chat IA, rollback, deploy, GitHub, et journal de projet.
+Plateforme DevOps independante accessible a `/devmax` avec authentification id and password, isolation de projet, et base de donnees dediee. Dashboard complet: overview, branches, commits, PRs, CI/CD, fichiers, chat IA, rollback, deploy, GitHub, et journal de projet.
 
 ### Admin Platform (`/devmax/123admin`)
 Panel de gestion multi-tenant SaaS avec auth separee.
@@ -145,9 +147,10 @@ Widget de chat IA embarquable dans macommande.shop, reserve aux clients professi
 
 ---
 
-## DevOps Intelligence — Systeme 5 Axes
+## DevOps MaxAI Intelligence — Systeme 5 Axes
 
-Ulysse est un **Senior Dev autonome** avec un systeme d'intelligence DevOps a 5 axes.
+Ulysse et MaxAI sont des **Senior Dev autonome** avec un systeme d'intelligence DevOps a 5 axes.
+Ulysse analyse, corrige, teste et challenge MaxAI dans son travail de senior dev autonome.
 
 ### Axe 1 — Vision & X-Ray
 - **Impact Map** : Graphe de dependances enrichi (14 domaines)
@@ -245,9 +248,15 @@ Interface chat standalone de gestion restaurant accessible a `/pro/:slug`.
 - Value Bets quotidiens (12h)
 - Audit DevOps Intelligence (12h)
 - Analyse de comportement
-- Apprentissage autonome V3 (multi-couches)
+- Apprentissage autonome V3 (multi-couches), tres important
 - Prioritisation dynamique des jobs (scores 0-100, cache 5s)
 - DevMax : URL health check, metrics collection, SSL check
+
+### Observabilite & Prometheus
+- **`GET /metrics`** : Endpoint Prometheus-compatible (text format), scrapable par toute instance Prometheus
+- 20+ metriques exposees : uptime, health status, memoire RSS/heap, requetes IA total/latence/tokens/erreurs/cout, cache hits, taux succes jobs
+- **Securite** : Restreindre via nginx IP (`allow 127.0.0.1; deny all;`) en production
+- **Memory leak safeguards** : ContextOptimizer cache cap 500 entries + eviction 60s, pcmBuffer voix cap 50MB avec trim automatique
 
 ### Auto-Guerison (SelfHealingService)
 - Surveillance des erreurs runtime et findings diagnostiques
@@ -343,7 +352,7 @@ docs/                       # Documentation
 ### Providers IA
 | Service | Usage |
 |---------|-------|
-| OpenAI | Chat (GPT-4.1), Vision (GPT-4o), Images (gpt-image-1), TTS, STT (Whisper) |
+| OpenAI | Chat (GPT-5.1), Vision (GPT-4o), Images (gpt-image-1), TTS, STT (Whisper) |
 | Google Gemini | Chat alternatif (2.5-pro/flash) |
 | xAI (Grok) | Provider de fallback |
 | Perplexity | Reponses informees par le web |
@@ -431,4 +440,4 @@ Ulysse a deux deployments independants (NON synchronises) :
 
 ## Licence
 
-Projet prive — Maurice Djedou-Bi Herve (MDBH)
+Projet prive — Maurice D (MDBH)

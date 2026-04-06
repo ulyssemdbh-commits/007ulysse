@@ -808,7 +808,7 @@ Pour deploy: fournir repoUrl + appName. Le système détecte auto si c'est stati
                 properties: {
                     action: {
                         type: "string",
-                        enum: ["status", "health", "list_apps", "app_info", "deploy", "update", "logs", "restart", "stop", "delete", "cleanup_orphans", "scale", "exec", "ssl", "ssl_status", "ssl_renew", "env_get", "env_set", "env_delete", "list_databases", "backup_db", "restore_db", "list_backups", "nginx_configs", "nginx_create", "nginx_delete", "nginx_show", "nginx_test", "nginx_reload", "nginx_logs", "nginx_audit", "nginx_catchall", "verify_url", "url_diagnose", "url_diagnose_all", "cron_list", "cron_add", "cron_delete", "install_packages", "run_tests", "analyze_deps", "debug_app", "refactor_check", "rollback_app", "migrate_db", "profile_app", "log_search", "security_scan", "backup_app", "scaffold_project", "perf_loadtest", "architecture_analyze", "db_inspect", "git_intelligence", "api_test", "bundle_analyze", "env_clone", "docs_generate", "monitoring_setup", "full_pipeline"],
+                        enum: ["status", "health", "list_apps", "app_info", "deploy", "update", "logs", "restart", "stop", "delete", "cleanup_orphans", "scale", "exec", "ssl", "ssl_status", "ssl_renew", "env_get", "env_set", "env_delete", "list_databases", "backup_db", "restore_db", "list_backups", "nginx_configs", "nginx_create", "nginx_delete", "nginx_show", "nginx_test", "nginx_reload", "nginx_logs", "nginx_audit", "nginx_catchall", "verify_url", "url_diagnose", "url_diagnose_all", "cron_list", "cron_add", "cron_delete", "install_packages", "run_tests", "analyze_deps", "debug_app", "refactor_check", "rollback_app", "migrate_db", "profile_app", "log_search", "security_scan", "backup_app", "scaffold_project", "scaffold_from_readme", "perf_loadtest", "architecture_analyze", "db_inspect", "git_intelligence", "api_test", "bundle_analyze", "env_clone", "docs_generate", "monitoring_setup", "full_pipeline", "smoke_test", "resource_usage", "app_db_query"],
                         description: "Action à exécuter sur le serveur"
                     },
                     appName: { type: "string", description: "Nom de l'app (pour deploy, update, logs, restart, stop, delete, env_*, app_info, scale)" },
@@ -856,7 +856,10 @@ Pour deploy: fournir repoUrl + appName. Le système détecte auto si c'est stati
                     sourceBranch: { type: "string", description: "Branche source (pour git_intelligence/branch_diff)" },
                     endpoints: { type: "array", items: { type: "object", properties: { method: { type: "string" }, path: { type: "string" }, body: { type: "object" }, headers: { type: "object" } }, required: ["path"] }, description: "Liste d'endpoints à tester (pour api_test, ex: [{method:'GET',path:'/api/health'}])" },
                     targetApp: { type: "string", description: "App de destination (pour env_clone)" },
-                    monitorAction: { type: "string", enum: ["status", "enable", "disable", "logs"], description: "Action monitoring (pour monitoring_setup)" }
+                    monitorAction: { type: "string", enum: ["status", "enable", "disable", "logs"], description: "Action monitoring (pour monitoring_setup)" },
+                    readmeContent: { type: "string", description: "Contenu du README.md du tenant — pour scaffold_from_readme. MaxAI analyse le README, détecte stack/features/architecture et génère le projet complet." },
+                    sqlQuery: { type: "string", description: "Requête SQL à exécuter (pour app_db_query — lecture seule par défaut)" },
+                    testUrls: { type: "array", items: { type: "string" }, description: "URLs à tester (pour smoke_test — teste HTTP status, temps de réponse, contenu)" }
                 },
                 required: ["action"]
             }
@@ -1044,7 +1047,7 @@ async function devopsAutoJournal(repoFullName: string, entryType: string, title:
     }
 }
 
-async function resolveGitHubTokenForProject(db: any, owner?: string, repo?: string, projectId?: string): Promise<string | null> {
+async function resolveGitHubTokenForProject(db: any, owner?: string, repo?: string, projectId?: string, tenantContext?: { isTenant?: boolean; tenantUserId?: number; tenantId?: string }): Promise<string | null> {
     try {
         const { sql } = await import("drizzle-orm");
         if (projectId) {
@@ -1104,6 +1107,10 @@ async function resolveGitHubTokenForProject(db: any, owner?: string, repo?: stri
         return process.env.DEVMAXTEST_GITHUB_PAT;
     }
     if (process.env.MAURICE_GITHUB_PAT) {
+        if (tenantContext?.isTenant) {
+            console.warn(`[DevOpsGitHub] 🚫 BLOCKED fallback to MAURICE_GITHUB_PAT for tenant userId=${tenantContext.tenantUserId} — tenant must configure their own GitHub token`);
+            return null;
+        }
         console.log(`[DevOpsGitHub] Token fallback to MAURICE_GITHUB_PAT for owner ${owner || 'unknown'}`);
         return process.env.MAURICE_GITHUB_PAT;
     }
@@ -1125,7 +1132,7 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
         if (args.branchName && !branch) branch = args.branchName;
         if (args.commitMessage && !message) message = args.commitMessage;
 
-        const projectToken = await resolveGitHubTokenForProject(db, owner, repo, args.projectId);
+        const projectToken = await resolveGitHubTokenForProject(db, owner, repo, args.projectId, args._tenantContext);
 
         const executeAction = async (): Promise<string> => {
         switch (action) {
@@ -5417,6 +5424,33 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
         const { sshService } = await import("../sshService");
         const { action, appName, repoUrl, branch, port, buildCmd, startCmd, envVars, domain, command, lines, createDb, dbName, dbUser, dbPassword, ssl, forceStatic, copyEnvFrom, dryRun, instances, cronExpression, cronCommand, backupFile, caller, isStaging } = args;
 
+        if (args._tenantContext?.isTenant) {
+            const tenantBlockedActions = ['exec', 'cleanup_orphans', 'nginx_delete', 'nginx_create', 'nginx_reload', 'nginx_audit', 'nginx_catchall', 'cron_add', 'cron_delete', 'install_packages', 'security_scan', 'full_pipeline'];
+            if (tenantBlockedActions.includes(action)) {
+                console.warn(`[DevOpsServer] 🚫 BLOCKED action '${action}' for tenant userId=${args._tenantContext.tenantUserId}`);
+                return JSON.stringify({ error: `Action '${action}' réservée aux administrateurs. Utilise les actions de gestion d'app (deploy, update, logs, restart, status, health, smoke_test, resource_usage, env_get, env_set).` });
+            }
+            if (appName && !['status', 'health', 'list_apps'].includes(action)) {
+                const callerTag = args._tenantContext.projectId || args._tenantContext.tenantId;
+                if (callerTag) {
+                    const { db } = await import("../../db");
+                    const { sql } = await import("drizzle-orm");
+                    const [proj] = await db.execute(sql`
+                        SELECT slug FROM devmax_projects
+                        WHERE id = ${callerTag} OR tenant_id = ${callerTag}
+                        LIMIT 5
+                    `).then((r: any) => [r.rows || r]);
+                    const allowedSlugs = (proj || []).map((p: any) => p.slug?.toLowerCase());
+                    const appLower = appName.toLowerCase();
+                    const isOwnApp = allowedSlugs.some((s: string) => appLower.includes(s) || s.includes(appLower));
+                    if (!isOwnApp && allowedSlugs.length > 0) {
+                        console.warn(`[DevOpsServer] 🚫 BLOCKED tenant access to app '${appName}' — not in tenant's projects: [${allowedSlugs.join(', ')}]`);
+                        return JSON.stringify({ error: `Tu n'as accès qu'à tes propres apps. L'app '${appName}' ne fait pas partie de tes projets.` });
+                    }
+                }
+            }
+        }
+
         switch (action) {
             case "status": {
                 const status = await sshService.serverStatus();
@@ -5565,6 +5599,10 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                 return JSON.stringify({ action: "scale", appName, instances, output });
             }
             case "exec": {
+                if (args._tenantContext?.isTenant) {
+                    console.warn(`[DevOpsServer] 🚫 BLOCKED exec for tenant userId=${args._tenantContext.tenantUserId} — tenants cannot run arbitrary commands`);
+                    return JSON.stringify({ error: "Action 'exec' non disponible pour les tenants. Utilise les actions spécifiques (deploy, update, logs, restart, status, health, smoke_test, resource_usage) pour gérer ton app." });
+                }
                 if (!command) return JSON.stringify({ error: "command requis pour exec" });
                 const dangerousPatterns = /rm\s+-rf\s+\/[^v]|mkfs|dd\s+if=|>\s*\/dev\/sd|shutdown|reboot|halt|init\s+[06]|:(){ :|fork|chmod\s+-R\s+777\s+\/|chown.*\/etc|curl.*\|\s*bash|wget.*\|\s*sh/i;
                 if (dangerousPatterns.test(command)) {
@@ -6243,6 +6281,176 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                     return JSON.stringify({ error: `Scaffold réussi mais échec du push vers ${owner}/${targetRepo}: ${patchError.message}`, suggestion: "Vérifier que le repo existe et que le token a les permissions d'écriture.", repoExists, owner, targetRepo });
                 }
                 return JSON.stringify({ action: "scaffold_project", projectName, repo: `${owner}/${targetRepo}`, repoExists, template, description: tmpl.description, filesCreated: blobs.map(b => b.path), deps: tmpl.deps, devDeps: tmpl.devDeps, repoUrl: `https://github.com/${owner}/${targetRepo}`, nextSteps: [`npm install`, tmpl.deps ? `npm install ${tmpl.deps}` : null, tmpl.devDeps ? `npm install -D ${tmpl.devDeps}` : null, `npm run dev`].filter(Boolean) });
+            }
+            case "scaffold_from_readme": {
+                const projectName = appName || args.projectName;
+                if (!projectName) return JSON.stringify({ error: "appName ou projectName requis" });
+                const readmeContent = args.readmeContent;
+                if (!readmeContent) {
+                    try {
+                        const { createRepo: ghCreateRepo2, applyPatch: ghApplyPatch2, getRepo: ghGetRepo2, getFileContent } = await import("../githubService");
+                        const readmeOwner = args.owner || "ulyssemdbh-commits";
+                        const readmeRepo = args.repoName || projectName;
+                        let readme = "";
+                        try { readme = await getFileContent(readmeOwner, readmeRepo, "README.md"); } catch {}
+                        if (!readme) try { readme = await getFileContent(readmeOwner, readmeRepo, "readme.md"); } catch {}
+                        if (!readme) return JSON.stringify({ error: "Pas de README.md trouvé dans le repo et pas de readmeContent fourni. Fournis le contenu du README via readmeContent ou assure-toi que le repo contient un README.md." });
+                        args.readmeContent = readme;
+                    } catch (e: any) {
+                        return JSON.stringify({ error: `Impossible de lire le README: ${e.message}` });
+                    }
+                }
+                const readme = args.readmeContent;
+                const lower = readme.toLowerCase();
+                let detectedStack = "fullstack";
+                let detectedDeps: string[] = [];
+                let detectedFeatures: string[] = [];
+                if (/next\.?js|nextjs/i.test(readme)) detectedStack = "nextjs";
+                else if (/nest\.?js|nestjs/i.test(readme) && /prisma/i.test(readme)) detectedStack = "nestjs-prisma";
+                else if (/nest\.?js|nestjs/i.test(readme) && /react|frontend/i.test(readme)) detectedStack = "nestjs-fullstack";
+                else if (/fastapi|flask|django|python/i.test(readme)) detectedStack = "fastapi";
+                else if (/laravel|php/i.test(readme)) detectedStack = "laravel";
+                else if (/react|vue|angular|vite/i.test(readme) && !/express|api|backend|server/i.test(readme)) detectedStack = "react-vite";
+                else if (/express|node|api|backend|server/i.test(readme) && !/react|vue|frontend/i.test(readme)) detectedStack = "express-api";
+                else if (/html|css|static|landing/i.test(readme)) detectedStack = "static-html";
+                if (/tailwind/i.test(readme)) detectedDeps.push("tailwindcss", "postcss", "autoprefixer");
+                if (/shadcn|radix/i.test(readme)) detectedDeps.push("@radix-ui/react-icons", "class-variance-authority", "clsx", "tailwind-merge");
+                if (/prisma/i.test(readme) && detectedStack !== "nestjs-prisma") detectedDeps.push("prisma", "@prisma/client");
+                if (/drizzle/i.test(readme)) detectedDeps.push("drizzle-orm", "drizzle-kit");
+                if (/postgres|postgresql|pg/i.test(readme)) detectedDeps.push("pg");
+                if (/mongo/i.test(readme)) detectedDeps.push("mongoose");
+                if (/redis/i.test(readme)) detectedDeps.push("redis", "ioredis");
+                if (/socket\.?io|websocket|realtime/i.test(readme)) detectedDeps.push("socket.io", "socket.io-client");
+                if (/stripe|payment/i.test(readme)) detectedDeps.push("stripe");
+                if (/jwt|jsonwebtoken|auth/i.test(readme)) detectedDeps.push("jsonwebtoken", "bcryptjs");
+                if (/multer|upload|file.*upload/i.test(readme)) detectedDeps.push("multer");
+                if (/swagger|openapi/i.test(readme)) detectedDeps.push("swagger-ui-express", "swagger-jsdoc");
+                if (/zod/i.test(readme)) detectedDeps.push("zod");
+                if (/axios/i.test(readme)) detectedDeps.push("axios");
+                if (/react.*router|routing/i.test(readme)) detectedDeps.push("react-router-dom");
+                if (/wouter/i.test(readme)) detectedDeps.push("wouter");
+                if (/tanstack.*query|react.*query/i.test(readme)) detectedDeps.push("@tanstack/react-query");
+                if (/docker/i.test(readme)) detectedFeatures.push("docker");
+                if (/ci.?cd|github.*action/i.test(readme)) detectedFeatures.push("ci-cd");
+                if (/test|jest|vitest|playwright/i.test(readme)) detectedFeatures.push("testing");
+                if (/i18n|internationa/i.test(readme)) detectedFeatures.push("i18n");
+                if (/pwa|service.*worker/i.test(readme)) detectedFeatures.push("pwa");
+                const pagesMatch = readme.match(/(?:pages?|écrans?|screens?|views?|routes?)\s*[:=]?\s*\n((?:\s*[-*•]\s*.+\n?)+)/gi);
+                let detectedPages: string[] = [];
+                if (pagesMatch) {
+                    for (const block of pagesMatch) {
+                        const items = block.match(/[-*•]\s*(.+)/g);
+                        if (items) detectedPages.push(...items.map(i => i.replace(/^[-*•]\s*/, "").trim()));
+                    }
+                }
+                const apiMatch = readme.match(/(?:api|endpoints?|routes?)\s*[:=]?\s*\n((?:\s*[-*•]\s*.+\n?)+)/gi);
+                let detectedApis: string[] = [];
+                if (apiMatch) {
+                    for (const block of apiMatch) {
+                        const items = block.match(/[-*•]\s*(.+)/g);
+                        if (items) detectedApis.push(...items.map(i => i.replace(/^[-*•]\s*/, "").trim()));
+                    }
+                }
+                const modelsMatch = readme.match(/(?:models?|schéma|schema|entit|tables?|database)\s*[:=]?\s*\n((?:\s*[-*•]\s*.+\n?)+)/gi);
+                let detectedModels: string[] = [];
+                if (modelsMatch) {
+                    for (const block of modelsMatch) {
+                        const items = block.match(/[-*•]\s*(.+)/g);
+                        if (items) detectedModels.push(...items.map(i => i.replace(/^[-*•]\s*/, "").trim()));
+                    }
+                }
+                return JSON.stringify({
+                    action: "scaffold_from_readme",
+                    projectName,
+                    analysis: {
+                        detectedStack,
+                        detectedDeps: [...new Set(detectedDeps)],
+                        detectedFeatures,
+                        detectedPages,
+                        detectedApis,
+                        detectedModels,
+                        readmeLength: readme.length,
+                    },
+                    instruction: `README analysé. Stack détectée: ${detectedStack}. Dépendances: ${[...new Set(detectedDeps)].join(", ") || "aucune spécifique"}.
+PROCHAINES ÉTAPES OBLIGATOIRES:
+1. Appelle scaffold_project avec template="${detectedStack}" pour créer la structure de base
+2. Pour chaque page/feature détectée, utilise devops_github(action="update_file") pour créer les fichiers correspondants
+3. ${detectedModels.length > 0 ? `Crée le schéma DB avec les modèles: ${detectedModels.join(", ")}` : "Crée le schéma DB selon les besoins du README"}
+4. ${detectedApis.length > 0 ? `Implémente les endpoints: ${detectedApis.join(", ")}` : "Implémente les endpoints API selon les besoins"}
+5. ${detectedDeps.length > 0 ? `Installe les dépendances additionnelles: ${[...new Set(detectedDeps)].join(", ")}` : ""}
+6. ${detectedFeatures.includes("docker") ? "Génère un Dockerfile et docker-compose.yml" : ""}
+7. ${detectedFeatures.includes("ci-cd") ? "Génère .github/workflows/ci.yml" : ""}
+Tu DOIS maintenant exécuter ces étapes une par une. Commence par scaffold_project.`,
+                });
+            }
+            case "smoke_test": {
+                const testAppName = appName;
+                const testUrls = args.testUrls || [];
+                const results: Array<{ url: string; status: number; responseTime: number; ok: boolean; error?: string; contentCheck?: string }> = [];
+                let urls = [...testUrls];
+                if (testAppName && urls.length === 0) {
+                    urls.push(`https://${testAppName}.ulyssepro.org`);
+                    urls.push(`https://${testAppName}.ulyssepro.org/api/health`);
+                    urls.push(`https://${testAppName}-dev.ulyssepro.org`);
+                }
+                if (urls.length === 0) return JSON.stringify({ error: "appName ou testUrls requis pour smoke_test" });
+                for (const testUrl of urls) {
+                    try {
+                        const cmd = `curl -sS -o /tmp/smoke_body.txt -w '%{http_code}|%{time_total}|%{size_download}' --connect-timeout 10 --max-time 15 '${testUrl}' 2>&1; echo "|||"; cat /tmp/smoke_body.txt 2>/dev/null | head -c 500`;
+                        const r = await sshService.executeCommand(cmd, 20000);
+                        const output = r.output || "";
+                        const parts = output.split("|||");
+                        const meta = (parts[0] || "").trim();
+                        const bodyPreview = (parts[1] || "").trim();
+                        const [httpCode, timeTotal, sizeStr] = meta.split("|");
+                        const status = parseInt(httpCode) || 0;
+                        const responseTime = parseFloat(timeTotal) || 0;
+                        let contentCheck = "ok";
+                        if (bodyPreview.includes("Cannot GET") || bodyPreview.includes("Not Found")) contentCheck = "404_page";
+                        else if (bodyPreview.includes("502 Bad Gateway")) contentCheck = "502_nginx";
+                        else if (bodyPreview.includes("Internal Server Error") || bodyPreview.includes("Error")) contentCheck = "server_error";
+                        else if (bodyPreview.includes("ECONNREFUSED")) contentCheck = "app_not_running";
+                        results.push({ url: testUrl, status, responseTime: Math.round(responseTime * 1000), ok: status >= 200 && status < 400, contentCheck });
+                    } catch (e: any) {
+                        results.push({ url: testUrl, status: 0, responseTime: 0, ok: false, error: e.message?.slice(0, 100) });
+                    }
+                }
+                const allOk = results.every(r => r.ok);
+                const failedCount = results.filter(r => !r.ok).length;
+                return JSON.stringify({ action: "smoke_test", appName: testAppName, totalTests: results.length, passed: results.length - failedCount, failed: failedCount, allOk, results, summary: allOk ? `✅ Tous les ${results.length} tests passent` : `⚠️ ${failedCount}/${results.length} tests échoués` });
+            }
+            case "resource_usage": {
+                const targetApp = appName;
+                const cmds = [
+                    `echo "=== SYSTEM ===" && free -m | awk 'NR==2{printf "RAM: %sMB/%sMB (%.1f%%)\\n",$3,$2,$3/$2*100}' && df -h / | awk 'NR==2{printf "Disk: %s/%s (%s used)\\n",$3,$2,$5}' && nproc && uptime`,
+                    targetApp
+                        ? `echo "=== APP: ${targetApp} ===" && pm2 show ${targetApp} 2>/dev/null | grep -E 'status|memory|cpu|restarts|uptime|pid' || echo "App not found in PM2"`
+                        : `echo "=== ALL APPS ===" && pm2 jlist 2>/dev/null | python3 -c "import sys,json; apps=json.load(sys.stdin); [print(f\\\"  {a['name']}: {a['pm2_env']['status']} | mem={a['monit']['memory']//1024//1024}MB | cpu={a['monit']['cpu']}% | restarts={a['pm2_env']['restart_time']} | uptime={round(($(date +%s)*1000-a['pm2_env'].get('pm_uptime',0))/3600000,1)}h\\\") for a in apps]" 2>/dev/null || pm2 list 2>/dev/null`,
+                    `echo "=== TOP PROCESSES ===" && ps aux --sort=-%mem | head -8 | awk '{printf "%-15s %5sMB %5s%% CPU  %s\\n",$11,$6/1024,$3,$11}'`,
+                    targetApp ? `echo "=== DISK USAGE ===" && du -sh /var/www/apps/${targetApp} 2>/dev/null || echo "N/A"` : `echo "=== DISK USAGE ===" && du -sh /var/www/apps/*/ 2>/dev/null | sort -rh | head -10`,
+                    `echo "=== NETWORK ===" && ss -tlnp 2>/dev/null | grep -E 'LISTEN' | head -15`,
+                ];
+                const fullCmd = cmds.join(" && ");
+                const r = await sshService.executeCommand(fullCmd, 15000);
+                return JSON.stringify({ action: "resource_usage", appName: targetApp || "all", output: r.output?.trim() || "No output", success: !r.error });
+            }
+            case "app_db_query": {
+                if (!appName) return JSON.stringify({ error: "appName requis pour app_db_query" });
+                const query = args.sqlQuery;
+                if (!query) return JSON.stringify({ error: "sqlQuery requis" });
+                const upperQuery = query.trim().toUpperCase();
+                if (upperQuery.startsWith("DROP") || upperQuery.startsWith("TRUNCATE") || upperQuery.startsWith("ALTER") || upperQuery.includes("DELETE FROM") && !upperQuery.includes("WHERE")) {
+                    return JSON.stringify({ error: "Requête destructive bloquée (DROP/TRUNCATE/ALTER/DELETE sans WHERE). Utilise une requête plus ciblée." });
+                }
+                const appDir = `/var/www/apps/${appName}`;
+                const getDbUrl = `grep -E '^DATABASE_URL=' ${appDir}/.env 2>/dev/null | head -1 | cut -d= -f2-`;
+                const dbUrlResult = await sshService.executeCommand(getDbUrl, 5000);
+                const dbUrl = (dbUrlResult.output || "").trim();
+                if (!dbUrl) return JSON.stringify({ error: `Pas de DATABASE_URL trouvé dans ${appDir}/.env. L'app n'a peut-être pas de base de données.` });
+                const escapedQuery = query.replace(/'/g, "'\\''");
+                const cmd = `PGPASSWORD=$(echo '${dbUrl}' | sed -n 's|.*://[^:]*:\\([^@]*\\)@.*|\\1|p') psql -h $(echo '${dbUrl}' | sed -n 's|.*@\\([^:/]*\\).*|\\1|p') -p $(echo '${dbUrl}' | sed -n 's|.*:\\([0-9]*\\)/.*|\\1|p') -U $(echo '${dbUrl}' | sed -n 's|.*://\\([^:]*\\):.*|\\1|p') -d $(echo '${dbUrl}' | sed -n 's|.*/\\([^?]*\\).*|\\1|p') -t -c '${escapedQuery}' 2>&1 | head -100`;
+                const r = await sshService.executeCommand(cmd, 15000);
+                return JSON.stringify({ action: "app_db_query", appName, query, output: r.output?.trim() || "No output", success: !r.error, error: r.error });
             }
             case "perf_loadtest": {
                 if (!appName) return JSON.stringify({ error: "appName requis" });

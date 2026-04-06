@@ -5,6 +5,11 @@ Ce fichier définit **le comportement et les règles métier d'Ulysse**, indépe
 `replit.md` = architecture & code  
 `ulysse_core.md` = comment Ulysse doit exploiter cette architecture pour servir Maurice.
 
+**Dernière mise à jour:** 31 Mars 2026  
+**Modèle principal:** GPT-5.1 (conversations, DevMax)  
+**Vision:** GPT-4o (SUGU PDF, analyse images)  
+**Fast text:** Gemini 2.5 Flash
+
 ---
 
 ## 1. IDENTITÉ & PERSONAS

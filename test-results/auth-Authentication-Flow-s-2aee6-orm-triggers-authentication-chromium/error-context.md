@@ -1,0 +1,48 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list [ref=e4]:
+      - status [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: Erreur
+          - generic [ref=e8]: "401: {\"error\":\"Identifiants invalides\"}"
+        - button [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+  - generic [ref=e15]:
+    - generic [ref=e16]:
+      - heading "Ulysse" [level=1] [ref=e19]
+      - paragraph [ref=e20]: Assistant personnel de Maurice
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - generic [ref=e23]: Connexion
+        - generic [ref=e24]: Connectez-vous pour accéder à Ulysse
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - text: Identifiant
+            - generic [ref=e28]:
+              - img [ref=e29]
+              - textbox "Identifiant" [ref=e32]:
+                - /placeholder: maurice
+                - text: testuser
+          - generic [ref=e33]:
+            - text: Mot de passe
+            - generic [ref=e34]:
+              - img [ref=e35]
+              - textbox "Mot de passe" [ref=e38]:
+                - /placeholder: Minimum 8 caractères
+                - text: testpass
+              - button [ref=e39] [cursor=pointer]:
+                - img [ref=e40]
+          - button "Se connecter" [ref=e43] [cursor=pointer]
+        - generic [ref=e48]: ou
+        - button "FaceID / TouchID" [ref=e49] [cursor=pointer]:
+          - img
+          - text: FaceID / TouchID
+    - paragraph [ref=e50]: Accès réservé aux utilisateurs autorisés
+    - button "DevMax" [ref=e51] [cursor=pointer]:
+      - img [ref=e52]
+      - text: DevMax
+```

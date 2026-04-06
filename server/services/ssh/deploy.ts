@@ -38,18 +38,28 @@ export function createDeployMethods(service: SSHService) {
     const isLock = hasLock.output?.includes("HAS_LOCK");
 
     const strategies = [
-      ...(isLock ? [`cd ${appDir} && NODE_ENV=development npm ci`] : []),
-      ...(isLock ? [`cd ${appDir} && NODE_ENV=development npm ci --ignore-scripts`] : []),
       `cd ${appDir} && NODE_ENV=development npm install --no-audit --no-fund`,
-      `cd ${appDir} && NODE_ENV=development npm install --no-audit --no-fund --ignore-scripts`,
+      ...(isLock ? [`cd ${appDir} && npm ci 2>&1`] : []),
+      `cd ${appDir} && npm install --no-audit --no-fund`,
+      `cd ${appDir} && NODE_ENV=development npm install --no-audit --no-fund --legacy-peer-deps`,
     ];
 
     let result: any = { success: false, output: "", error: "No install strategy attempted" };
     for (let i = 0; i < strategies.length; i++) {
       result = await service.executeCommand(`${strategies[i]} 2>&1 | tail -15`, timeoutMs);
       if (result.success) {
-        if (i > 0) logs.push(`${stepLabel} Install: OK (fallback strategy ${i + 1}/${strategies.length})`);
-        else logs.push(`${stepLabel} Install: OK`);
+        const verifyInstall = await service.executeCommand(
+          `[ -d "${appDir}/node_modules" ] && ls "${appDir}/node_modules" | wc -l || echo "0"`,
+          5000
+        );
+        const installedCount = parseInt(verifyInstall.output?.trim() || "0", 10);
+        if (installedCount < 10) {
+          logs.push(`${stepLabel} Install strategy ${i + 1} returned success but only ${installedCount} packages found — retrying...`);
+          result.success = false;
+          continue;
+        }
+        if (i > 0) logs.push(`${stepLabel} Install: OK (fallback strategy ${i + 1}/${strategies.length}, ${installedCount} packages)`);
+        else logs.push(`${stepLabel} Install: OK (${installedCount} packages)`);
         break;
       }
       if (i < strategies.length - 1) {
@@ -91,7 +101,35 @@ export function createDeployMethods(service: SSHService) {
       logs.push(`${stepLabel} Dependencies: all present in node_modules`);
     }
 
-    await ensureBuildTools(appDir, logs, stepLabel);
+    console.log(`[Deploy] Force-installing build tools in ${appDir}...`);
+    const archR = await service.executeCommand("uname -m", 3000);
+    const arch = archR.output?.trim() || "x86_64";
+    const esbuildPlatform = arch === "aarch64" ? "@esbuild/linux-arm64" : "@esbuild/linux-x64";
+    const forceCmd = `cd ${appDir} && npm install --no-save esbuild ${esbuildPlatform} tsx typescript 2>&1 | tail -10`;
+    console.log(`[Deploy] Running: ${forceCmd}`);
+    const forceResult = await service.executeCommand(forceCmd, 120000);
+    console.log(`[Deploy] Force-install result: success=${forceResult.success}, output=${(forceResult.output || "").substring(0, 200)}`);
+    logs.push(`${stepLabel} Force-install build tools: ${forceResult.success ? "done" : "FAILED: " + (forceResult.error || "")}`);
+
+    const verifyTools = await service.executeCommand(
+      `cd ${appDir} && for t in esbuild tsx tsc; do [ -f node_modules/.bin/$t ] && echo "$t=OK" || echo "$t=MISSING"; done`,
+      5000
+    );
+    const toolStatus = (verifyTools.output || "").trim();
+    console.log(`[Deploy] Build tools verification: ${toolStatus}`);
+    logs.push(`${stepLabel} Build tools: ${toolStatus}`);
+
+    if (toolStatus.includes("MISSING")) {
+      console.log(`[Deploy] WARNING: Some build tools still missing after force-install!`);
+      logs.push(`${stepLabel} ⚠️ Retrying individual installs...`);
+      if (toolStatus.includes("esbuild=MISSING")) {
+        const r = await service.executeCommand(`cd ${appDir} && npm install --no-save esbuild 2>&1 | tail -5`, 60000);
+        console.log(`[Deploy] esbuild retry: ${r.output?.trim()}`);
+        const r2 = await service.executeCommand(`cd ${appDir} && npm install --no-save ${esbuildPlatform} 2>&1 | tail -5`, 60000);
+        console.log(`[Deploy] ${esbuildPlatform} retry: ${r2.output?.trim()}`);
+      }
+    }
+
     return result;
   }
 
@@ -129,11 +167,35 @@ export function createDeployMethods(service: SSHService) {
 
     for (const { tool, pkg, match } of toolChecks) {
       if (!match.test(scanContent)) continue;
+
+      let needsInstall = false;
       const exists = await service.executeCommand(
         `[ -f "${appDir}/node_modules/.bin/${tool}" ] && [ -d "${appDir}/node_modules/${tool}" ] && [ -f "${appDir}/node_modules/${tool}/package.json" ] && echo "YES" || echo "NO"`,
         3000
       );
-      if (exists.output?.includes("YES")) continue;
+      if (exists.output?.includes("YES")) {
+        if (tool === "esbuild") {
+          const testScript = `try{require("esbuild").buildSync({stdin:{contents:"1"},write:false});console.log("ESBUILD_OK")}catch(e){console.log("ESBUILD_BROKEN:"+e.message)}`;
+          await service.writeRemoteFile(`${appDir}/_esbuild_test.js`, testScript);
+          const canRun = await service.executeCommand(
+            `cd ${appDir} && node _esbuild_test.js 2>&1; rm -f _esbuild_test.js`,
+            10000
+          );
+          if (!canRun.output?.includes("ESBUILD_OK")) {
+            logs.push(`${stepLabel} esbuild package exists but binary is broken — reinstalling with platform binary...`);
+            await service.executeCommand(`cd ${appDir} && rm -rf node_modules/esbuild node_modules/@esbuild`, 5000);
+            needsInstall = true;
+          } else {
+            continue;
+          }
+        } else {
+          continue;
+        }
+      } else {
+        needsInstall = true;
+      }
+
+      if (!needsInstall) continue;
 
       logs.push(`${stepLabel} Build tool "${tool}" missing — auto-installing...`);
       const installStrategies: string[] = [];
@@ -310,26 +372,58 @@ export function createDeployMethods(service: SSHService) {
       }
 
       if (resolvedEnvSource) {
-        const sourceDir = resolvedEnvSource === "ulysse" ? "/var/www/ulysse" : `/var/www/apps/${resolvedEnvSource}`;
-        const sourceEnvResult = await service.executeCommand(`cat ${sourceDir}/.env 2>/dev/null || echo "NO_ENV_FILE"`, 5000);
-        if (sourceEnvResult.success && sourceEnvResult.output.trim() !== "NO_ENV_FILE") {
-          const copiedVars: Record<string, string> = {};
-          for (const line of sourceEnvResult.output.split("\n")) {
-            const match = line.match(/^([^#=]+)=(.*)$/);
-            if (match) {
-              const key = match[1].trim();
-              if (key === "PORT") continue;
-              copiedVars[key] = match[2];
+        const copiedVars: Record<string, string> = {};
+        const skipKeys = new Set(["PORT", "DATABASE_URL", "DB_URL", "POSTGRES_URL", "PM2_HOME", "PM2_INTERACTOR_PROCESSING", "HOME", "USER", "PATH", "SHELL", "TERM", "LANG", "LOGNAME", "HOSTNAME", "MAIL", "PWD", "OLDPWD", "SHLVL", "_", "NODE_CHANNEL_FD", "NODE_CHANNEL_SERIALIZATION_MODE", "NODE_APP_INSTANCE"]);
+
+        const pidResult = await service.executeCommand(`pm2 pid ${resolvedEnvSource} 2>/dev/null`, 5000);
+        const pid = pidResult.output?.trim();
+        if (pid && pid !== "0" && pid !== "") {
+          const procEnvResult = await service.executeCommand(
+            `cat /proc/${pid}/environ 2>/dev/null | tr '\\0' '\\n' | grep -E '^[A-Z_]+=.+' | grep -vE '^(PM2_|HOME=|USER=|PATH=|SHELL=|TERM=|LANG=|LC_|LOGNAME|XDG_|DISPLAY|SSH_|SHLVL|LESSOPEN|LESSCLOSE|DBUS|OLDPWD|_=|PWD=|HOSTNAME=|MAIL=|SUDO|LS_|COLORTERM|S_COLORS|MANPATH|NOTIFY|INVOCATION|JOURNAL|NVM|nvm)'`,
+            10000
+          );
+          if (procEnvResult.success && procEnvResult.output) {
+            for (const line of procEnvResult.output.split("\n")) {
+              const eq = line.indexOf("=");
+              if (eq === -1) continue;
+              const key = line.substring(0, eq).trim();
+              const val = line.substring(eq + 1);
+              if (key && !skipKeys.has(key) && val && !val.startsWith("your_")) {
+                copiedVars[key] = val;
+              }
             }
           }
-          const copiedCount = Object.keys(copiedVars).length;
+          if (Object.keys(copiedVars).length > 0) {
+            console.log(`[Deploy] Got ${Object.keys(copiedVars).length} env vars from PM2 process "${resolvedEnvSource}" (pid ${pid})`);
+          }
+        }
+
+        if (Object.keys(copiedVars).length === 0) {
+          const sourceDir = resolvedEnvSource === "ulysse" ? "/var/www/ulysse" : `/var/www/apps/${resolvedEnvSource}`;
+          const sourceEnvResult = await service.executeCommand(`cat ${sourceDir}/.env 2>/dev/null || echo "NO_ENV_FILE"`, 5000);
+          if (sourceEnvResult.success && sourceEnvResult.output.trim() !== "NO_ENV_FILE") {
+            for (const line of sourceEnvResult.output.split("\n")) {
+              const match = line.match(/^([^#=]+)=(.*)$/);
+              if (match) {
+                const key = match[1].trim();
+                const val = match[2];
+                if (!skipKeys.has(key) && val && !val.startsWith("your_")) {
+                  copiedVars[key] = val;
+                }
+              }
+            }
+          }
+        }
+
+        const copiedCount = Object.keys(copiedVars).length;
+        if (copiedCount > 0) {
           for (const [k, v] of Object.entries(copiedVars)) {
             if (!envVars[k]) envVars[k] = v;
           }
           logs.push(`[0/8] Env: copied ${copiedCount} variable(s) from "${resolvedEnvSource}" (PORT excluded)`);
           console.log(`[Deploy] Copied ${copiedCount} env vars from ${resolvedEnvSource} → ${appName}`);
         } else {
-          logs.push(`[0/8] Env: ⚠️ no .env file found in "${resolvedEnvSource}"`);
+          logs.push(`[0/8] Env: ⚠️ no valid env vars found from "${resolvedEnvSource}"`);
         }
       }
 
@@ -631,15 +725,15 @@ export function createDeployMethods(service: SSHService) {
 
       const ecosystemContent = pm2EcosystemConfig(appName, appDir, allEnvVars);
 
-      logs.push(`[5/10] Writing .env and ecosystem.config.cjs...`);
-      await service.writeRemoteFile(`${appDir}/.env`, envExportLine);
-      await service.writeRemoteFile(`${appDir}/ecosystem.config.cjs`, ecosystemContent);
-
-      logs.push(`[6/10] Installing dependencies...`);
-      const installResult = await robustNpmInstall(appDir, logs, "[6/10]");
+      logs.push(`[5/10] Installing dependencies (before .env to avoid NODE_ENV conflicts)...`);
+      const installResult = await robustNpmInstall(appDir, logs, "[5/10]");
       if (!installResult.success) {
         return { success: false, message: `Install failed:\n${installResult.error || installResult.output}`, logs };
       }
+
+      logs.push(`[6/10] Writing .env and ecosystem.config.cjs...`);
+      await service.writeRemoteFile(`${appDir}/.env`, envExportLine);
+      await service.writeRemoteFile(`${appDir}/ecosystem.config.cjs`, ecosystemContent);
 
       logs.push(`[7/10] Building...`);
       let buildResult = await service.executeCommand(

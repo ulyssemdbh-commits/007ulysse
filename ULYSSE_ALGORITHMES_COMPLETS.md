@@ -6,12 +6,12 @@ Il sert de **triple référence** :
 - **Pour le développeur (Replit Agent)** : guide technique pour modifier/étendre les algorithmes
 - **Pour Ulysse lui-même** : auto-référence permettant à l'IA de comprendre ses propres mécanismes, diagnostiquer ses comportements, et proposer des améliorations de manière autonome
 
-**Dernière mise à jour:** 2026-03-21
+**Dernière mise à jour:** 31 Mars 2026
 
 **Services documentés:**
 1. **Action-First Orchestrator V4** - Architecture unifiée avec contrôle d'accès strict par persona
 2. **UnifiedMarkerExecutor** - Exécution centralisée de tous les marqueurs avec permissions
-3. **Ulysse Tools V2** - Outils OpenAI Function Calling avec exécution immédiate (84 handlers via ActionHub)
+3. **Ulysse Tools V2** - Outils OpenAI Function Calling avec exécution immédiate (90 handlers via ActionHub)
 4. Capability Service - Gestion des 249+ capacités
 5. Action Verification Service - Scoring Efficacité/Cohérence/Précision
 6. Self-Awareness/Diagnostics - Auto-diagnostic système
@@ -31,6 +31,9 @@ Il sert de **triple référence** :
 20. **MaxAI Anti-Read-Loop** - Détection boucle lecture-seulement + injection d'écriture forcée (V6)
 21. **DevMax SaaS** - Plateforme DevOps multi-tenant avec 8/9 features SaaS implémentées (V6)
 22. **ChatCOBA** - Assistant IA embarqué pour clients pro macommande.shop, isolation stricte par tenant, 11 outils COBA (V6)
+23. **Smart Sync** - Push GitHub optimisé par comparaison SHA blob (V7, économie ~80% API calls)
+24. **Prometheus Metrics** - Endpoint `/metrics` avec 20+ métriques (latence, coûts IA, mémoire, erreurs)
+25. **2FA Discord+Email** - Authentification 2FA via Discord (primaire) + email fallback (AgentMail)
 
 ---
 

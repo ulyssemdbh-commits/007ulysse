@@ -419,7 +419,14 @@ export const communicationToolDefs: ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "devmax_db",
-            description: "Accès DB complet et dédié pour DevMax/MaxAI. Tables: devmax_projects, devmax_sessions, devmax_activity_log, dgm_sessions, dgm_tasks, dgm_pipeline_runs, devmax_chat_history, devmax_project_journal. MaxAI a un accès 24/7 à sa DB. devmax_chat_history stocke TOUS les messages chat (role, content, project_id, thread_id, tool_calls, metadata). devmax_project_journal stocke le journal d'édition de chaque projet (entry_type: code_edit/deploy/config/review/plan/note, title, description, files_changed). MaxAI DOIT consulter l'historique chat et le journal avant de planifier. Actions: query (SELECT), insert, update, delete, stats, project_summary.",
+            description: `Accès DB complet et dédié pour DevMax/MaxAI. Tables: devmax_projects, devmax_sessions, devmax_activity_log, dgm_sessions, dgm_tasks, dgm_pipeline_runs, devmax_chat_history, devmax_project_journal. MaxAI a un accès 24/7 à sa DB.
+EXEMPLES D'APPELS :
+• INSERT journal: {action:"insert", table:"devmax_project_journal", data:{project_id:"xxx", entry_type:"note", title:"Mon titre", description:"Description"}}
+• INSERT activity: {action:"insert", table:"devmax_activity_log", data:{session_id:"xxx", action:"read_file", target:"README.md", details:{content:"..."}}}
+• QUERY: {action:"query", sql:"SELECT * FROM devmax_project_journal WHERE project_id='xxx' ORDER BY created_at DESC LIMIT 10"}
+• STATS: {action:"stats"}
+• PROJECT_SUMMARY: {action:"project_summary", projectId:"xxx"}
+IMPORTANT: Pour insert, TOUJOURS fournir table (string) ET data (objet JSON avec les colonnes). Les colonnes NOT NULL sont: project_id + entry_type + title (journal), session_id + action (activity_log).`,
             parameters: {
                 type: "object",
                 properties: {
