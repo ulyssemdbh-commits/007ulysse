@@ -166,6 +166,7 @@ async function pushRepo(owner: string, repo: string, branch: string, allFiles: s
   const treeEntries = allFiles
     .filter(f => progress.blobs[f])
     .map(f => ({ path: f, mode: "100644" as const, type: "blob" as const, sha: progress.blobs[f] }));
+  console.log(`  Tree entries: ${treeEntries.length}`);
 
   const tree = await ghFetch(`${repoUrl}/git/trees`, "POST", {
     base_tree: baseTreeSha,

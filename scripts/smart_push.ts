@@ -154,7 +154,7 @@ async function pushRepo(owner: string, repo: string, branch: string, allFiles: s
   const commitData = await ghFetch(`${repoUrl}/git/commits/${latestCommitSha}`);
   const baseTreeSha = commitData.tree.sha;
   
-  const treeEntries = allFiles
+  const treeEntries = modified
     .filter(f => blobs[f])
     .map(f => ({ path: f, mode: "100644" as const, type: "blob" as const, sha: blobs[f] }));
   
