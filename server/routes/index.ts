@@ -1,0 +1,9 @@
+export { default as projectsRouter } from "./projects";
+export { default as tasksRouter } from "./tasks";
+export { default as notesRouter } from "./notes";
+export { default as ambianceRouter } from "./ambiance";
+export { default as usersRouter } from "./users";
+export { default as authRoutes } from "./auth";
+export { default as voiceRoutes } from "./voice";
+export { default as monitoringRouter } from "./monitoring";
+export { default as uiSnapshotRoutes } from "./uiSnapshotRoutes";

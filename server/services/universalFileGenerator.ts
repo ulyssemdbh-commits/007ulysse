@@ -17,7 +17,11 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import ExcelJS from "exceljs";
+let _ExcelJS: any = null;
+async function getExcelJS() {
+  if (!_ExcelJS) { try { _ExcelJS = (await import("exceljs")).default; } catch { console.warn("[UniversalFileGen] exceljs not available"); } }
+  return _ExcelJS;
+}
 import OpenAI from "openai";
 let PDFDocument: any = null;
 async function getPDFDocument() {

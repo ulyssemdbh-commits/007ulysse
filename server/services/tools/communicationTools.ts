@@ -358,13 +358,13 @@ export const communicationToolDefs: ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "dgm_manage",
-            description: "DGM V2 — Dev God Mode ultra-performant. Actions: create_tasks, start_task, complete_task, test_task, fail_task, status | decompose_objective (décomposition IA + groupes parallèles) | run_pipeline (pipeline individuel avec métriques) | run_parallel_pipeline (exécution parallèle de tâches indépendantes) | get_independent_tasks (tâches prêtes pour parallélisation) | pipeline_report (rapport V2 avec timing par stage) | next_task | clear_cache | circuit_status. V2: cache fichiers, circuit breaker, retry avec feedback, fetch parallèle, batch DB writes.",
+            description: "DGM V2 — Dev God Mode ultra-performant. Actions: create_tasks, start_task, complete_task, test_task, fail_task, status | decompose_objective (décomposition IA + groupes parallèles) | run_pipeline (pipeline individuel avec métriques) | run_parallel_pipeline (exécution parallèle de tâches indépendantes) | get_independent_tasks (tâches prêtes pour parallélisation) | rollback (rollback concret: revert PR + redeploy app) | pipeline_report (rapport V2 avec timing par stage) | next_task | clear_cache | circuit_status. V2: notifications Discord auto, rollback concret, cache fichiers, circuit breaker, retry avec feedback, fetch parallèle, batch DB writes.",
             parameters: {
                 type: "object",
                 properties: {
                     action: {
                         type: "string",
-                        enum: ["create_tasks", "start_task", "complete_task", "test_task", "fail_task", "status", "decompose_objective", "run_pipeline", "run_parallel_pipeline", "get_independent_tasks", "pipeline_report", "next_task", "clear_cache", "circuit_status"],
+                        enum: ["create_tasks", "start_task", "complete_task", "test_task", "fail_task", "status", "decompose_objective", "run_pipeline", "run_parallel_pipeline", "get_independent_tasks", "rollback", "pipeline_report", "next_task", "clear_cache", "circuit_status"],
                         description: "Action DGM V2"
                     },
                     objective: { type: "string", description: "Pour decompose_objective: l'objectif haut niveau à décomposer en tâches" },
@@ -408,6 +408,7 @@ export const communicationToolDefs: ChatCompletionTool[] = [
                     testResult: { type: "string", description: "Résultat du test (pour test_task)" },
                     codeChanges: { type: "array", items: { type: "string" }, description: "Fichiers modifiés" },
                     error: { type: "string", description: "Message d'erreur (pour fail_task)" },
+                    reason: { type: "string", description: "Raison du rollback (pour rollback)" },
                     sessionId: { type: "number", description: "Pour pipeline_report: ID de session spécifique" },
                     repo_context: { type: "string", description: "Contexte repo (owner/repo)" }
                 },

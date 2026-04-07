@@ -19,8 +19,16 @@
 import * as fs from "fs";
 import * as path from "path";
 import { createRequire } from "module";
-import ExcelJS from "exceljs";
-import mammoth from "mammoth";
+let _ExcelJS: any = null;
+async function getExcelJS() {
+  if (!_ExcelJS) { try { _ExcelJS = (await import("exceljs")).default; } catch { console.warn("[FileAnalyzer] exceljs not available"); } }
+  return _ExcelJS;
+}
+let _mammoth: any = null;
+async function getMammoth() {
+  if (!_mammoth) { try { _mammoth = (await import("mammoth")).default || await import("mammoth"); } catch { console.warn("[FileAnalyzer] mammoth not available"); } }
+  return _mammoth;
+}
 import OpenAI from "openai";
 import { visionHub } from "./sensory/VisionHub";
 import { brainHub } from "./sensory/BrainHub";
@@ -37,30 +45,40 @@ const ALLOWED_DIRECTORIES = [
   "sugu"
 ];
 
+const OWNER_CODE_DIRECTORIES = [
+  "server",
+  "client",
+  "shared",
+  "src",
+  "lib",
+  "test",
+  "tests",
+  "__tests__",
+  "scripts",
+  "config",
+  "public",
+];
+
 /**
  * Security check: Validate file path is in allowed directory
  * Uses realpath to prevent symlink attacks
  */
-function isPathAllowed(filePath: string): boolean {
+function isPathAllowed(filePath: string, isOwner: boolean = false): boolean {
   try {
-    // Resolve absolute path (follows symlinks)
     let resolvedPath: string;
     try {
       resolvedPath = fs.realpathSync(filePath);
     } catch {
-      // File doesn't exist yet or can't be resolved
       resolvedPath = path.resolve(filePath);
     }
     
     const cwd = process.cwd();
     
-    // Block path traversal attempts
     if (filePath.includes("..")) {
       console.warn(`[Security] Blocked path traversal: ${filePath}`);
       return false;
     }
     
-    // Check if resolved path is under allowed directories
     for (const allowed of ALLOWED_DIRECTORIES) {
       const allowedAbs = path.resolve(cwd, allowed);
       if (resolvedPath.startsWith(allowedAbs + path.sep) || resolvedPath === allowedAbs) {
@@ -68,16 +86,30 @@ function isPathAllowed(filePath: string): boolean {
       }
     }
     
-    // Also allow /tmp (system temp) but verify it's actually under /tmp
+    if (isOwner) {
+      for (const codeDir of OWNER_CODE_DIRECTORIES) {
+        const codeDirAbs = path.resolve(cwd, codeDir);
+        if (resolvedPath.startsWith(codeDirAbs + path.sep) || resolvedPath === codeDirAbs) {
+          return true;
+        }
+      }
+      if (resolvedPath.startsWith(cwd + path.sep) && !resolvedPath.includes("node_modules") && !resolvedPath.includes(".git")) {
+        const ext = path.extname(resolvedPath).toLowerCase();
+        const codeExts = new Set([".ts", ".tsx", ".js", ".jsx", ".json", ".css", ".html", ".md", ".yaml", ".yml", ".env.example", ".sql", ".sh", ".py"]);
+        if (codeExts.has(ext)) {
+          return true;
+        }
+      }
+    }
+    
     if (resolvedPath.startsWith("/tmp/") && !resolvedPath.includes("..")) {
-      // Verify the resolved path is still under /tmp
       const realTmp = fs.realpathSync("/tmp");
       if (resolvedPath.startsWith(realTmp + "/")) {
         return true;
       }
     }
     
-    console.warn(`[Security] Path not in allowed directories: ${resolvedPath}`);
+    console.warn(`[Security] Path not in allowed directories: ${resolvedPath}${isOwner ? " (owner)" : ""}`);
     return false;
   } catch (e) {
     console.error(`[Security] Path validation error: ${e}`);
@@ -137,12 +169,11 @@ export class UniversalFileAnalyzer {
   /**
    * Analyze any file with AI-powered intelligence
    */
-  async analyzeFile(filePath: string, analysisType?: string): Promise<FileAnalysisResult> {
+  async analyzeFile(filePath: string, analysisType?: string, isOwner: boolean = false): Promise<FileAnalysisResult> {
     const fileName = path.basename(filePath);
     const ext = path.extname(filePath).toLowerCase();
 
-    // Security: Validate file path
-    if (!isPathAllowed(filePath)) {
+    if (!isPathAllowed(filePath, isOwner)) {
       console.warn(`[UniversalFileAnalyzer] Security: Blocked access to ${filePath}`);
       return {
         success: false,
@@ -291,8 +322,8 @@ export class UniversalFileAnalyzer {
   /**
    * Specialized invoice analysis with validation
    */
-  async analyzeInvoice(filePath: string): Promise<InvoiceAnalysis> {
-    const result = await this.analyzeFile(filePath, "invoice");
+  async analyzeInvoice(filePath: string, isOwner: boolean = false): Promise<InvoiceAnalysis> {
+    const result = await this.analyzeFile(filePath, "invoice", isOwner);
     
     if (!result.success) {
       throw new Error(result.error || "Échec de l'analyse");

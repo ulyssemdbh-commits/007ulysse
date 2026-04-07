@@ -725,20 +725,21 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
         type: "function",
         function: {
             name: "devops_github",
-            description: "Gère les repos GitHub de Maurice via le DevOps Bridge. Actions: list_repos, repo_info, create_repo, list_branches, delete_branch, list_commits, list_prs, create_branch, create_pr, merge_pr, get_file, update_file, delete_file, apply_patch, smart_sync, browse_files, search_code, analyze_repo, list_workflows, list_workflow_runs, trigger_workflow, rerun_workflow, cancel_workflow, get_deploy_urls, set_deploy_urls, pages_status, enable_pages, update_pages, disable_pages, pages_build, dry_run_patch, devops_pipeline, crawl_preview, analyze_preview. smart_sync: Push optimisé — compare les SHA git blob local vs remote, ne pousse QUE les fichiers modifiés. UTILISER PRÉFÉRENTIELLEMENT à apply_patch pour les syncs multi-fichiers (économise bande passante et API calls). Format: owner, repo, branch, files=[{path, content}], message. crawl_preview: crawle/monitore en temps réel le site déployé d'un repo. analyze_preview: analyse VisionHub du design. analyze_repo: Analyse complète d'un repo — lit tous les fichiers code, extrait exports/imports/fonctions/classes, cartographie l'architecture, génère un résumé IA. Params optionnels: path (cibler un dossier), depth ('light'|'standard'|'deep'), focus (filtre par mot-clé dans les paths). UTILISER EN PRIORITÉ quand on demande de 'connaître' ou 'analyser' un repo. IMPORTANT — apply_patch/smart_sync OBLIGATOIRE: owner='ulyssemdbh-commits', repo='NomDuRepo', branch='la-branche', message='description du commit', files=[{path:'chemin/fichier.js', content:'CONTENU COMPLET DU FICHIER'}]. TOUJOURS fournir owner+repo+files. Si branch omis, utilise la branche par défaut du repo.",
+            description: "Gère les repos GitHub de Maurice via le DevOps Bridge. Actions: list_repos, repo_info, create_repo, list_branches, delete_branch, list_commits, list_prs, create_branch, create_pr, merge_pr, get_file, create_file, update_file, delete_file, rename_file, move_file, apply_patch, smart_sync, browse_files, search_code, compare_branches, get_commit_diff, get_pr_files, review_pr, submit_review, blame, analyze_repo, list_workflows, list_workflow_runs, trigger_workflow, rerun_workflow, cancel_workflow, get_deploy_urls, set_deploy_urls, pages_status, enable_pages, update_pages, disable_pages, pages_build, dry_run_patch, devops_pipeline, crawl_preview, analyze_preview. create_file: Crée un NOUVEAU fichier (alias de update_file — utilise cette action pour créer des fichiers). rename_file/move_file: Renomme ou déplace un fichier (params: path=source, newPath=destination). compare_branches: Compare deux branches (params: base, head). get_commit_diff: Voir le diff d'un commit (params: sha). smart_sync: Push optimisé — compare les SHA git blob local vs remote, ne pousse QUE les fichiers modifiés. UTILISER PRÉFÉRENTIELLEMENT à apply_patch pour les syncs multi-fichiers (économise bande passante et API calls). Format: owner, repo, branch, files=[{path, content}], message. crawl_preview: crawle/monitore en temps réel le site déployé d'un repo. analyze_preview: analyse VisionHub du design. analyze_repo: Analyse complète d'un repo — lit tous les fichiers code, extrait exports/imports/fonctions/classes, cartographie l'architecture, génère un résumé IA. Params optionnels: path (cibler un dossier), depth ('light'|'standard'|'deep'), focus (filtre par mot-clé dans les paths). UTILISER EN PRIORITÉ quand on demande de 'connaître' ou 'analyser' un repo. IMPORTANT — apply_patch/smart_sync OBLIGATOIRE: owner='ulyssemdbh-commits', repo='NomDuRepo', branch='la-branche', message='description du commit', files=[{path:'chemin/fichier.js', content:'CONTENU COMPLET DU FICHIER'}]. TOUJOURS fournir owner+repo+files. Si branch omis, utilise la branche par défaut du repo. RETRY AUTOMATIQUE: Les erreurs 422 (SHA mismatch) sont réessayées automatiquement 1 fois.",
             parameters: {
                 type: "object",
                 properties: {
                     action: {
                         type: "string",
-                        enum: ["list_repos", "repo_info", "create_repo", "delete_repo", "list_branches", "delete_branch", "list_commits", "list_prs", "create_branch", "create_pr", "merge_pr", "get_file", "update_file", "delete_file", "apply_patch", "smart_sync", "browse_files", "search_code", "analyze_repo", "list_workflows", "list_workflow_runs", "trigger_workflow", "rerun_workflow", "cancel_workflow", "get_deploy_urls", "set_deploy_urls", "pages_status", "enable_pages", "update_pages", "disable_pages", "pages_build", "dry_run_patch", "devops_pipeline", "crawl_preview", "analyze_preview", "design_dashboard", "list_issues", "get_issue", "create_issue", "update_issue", "add_issue_comment", "list_releases", "create_release", "list_tags", "create_tag", "compare_branches", "blame", "get_commit_diff", "review_pr", "submit_review", "list_org_repos"],
+                        enum: ["list_repos", "repo_info", "create_repo", "delete_repo", "list_branches", "delete_branch", "list_commits", "list_prs", "create_branch", "create_pr", "merge_pr", "get_file", "create_file", "update_file", "delete_file", "rename_file", "move_file", "apply_patch", "smart_sync", "browse_files", "search_code", "analyze_repo", "check_syntax", "list_workflows", "list_workflow_runs", "trigger_workflow", "rerun_workflow", "cancel_workflow", "get_deploy_urls", "set_deploy_urls", "pages_status", "enable_pages", "update_pages", "disable_pages", "pages_build", "dry_run_patch", "devops_pipeline", "crawl_preview", "analyze_preview", "design_dashboard", "list_issues", "get_issue", "create_issue", "update_issue", "add_issue_comment", "list_releases", "create_release", "list_tags", "create_tag", "compare_branches", "blame", "get_commit_diff", "get_pr_files", "review_pr", "submit_review", "list_org_repos"],
                         description: "Action à exécuter"
                     },
                     owner: { type: "string", description: "Propriétaire du repo (ex: Ulysseproject, ulyssemdbh-commits)" },
                     repo: { type: "string", description: "Nom du repo (ex: ulysseprod)" },
                     branch: { type: "string", description: "Nom de la branche" },
                     fromBranch: { type: "string", description: "Branche source (pour create_branch, défaut: main)" },
-                    path: { type: "string", description: "Chemin du fichier (pour get_file, update_file)" },
+                    path: { type: "string", description: "Chemin du fichier (pour get_file, update_file, rename_file)" },
+                    newPath: { type: "string", description: "Nouveau chemin de destination (pour rename_file/move_file)" },
                     content: { type: "string", description: "Contenu du fichier (pour update_file)" },
                     message: { type: "string", description: "Message de commit" },
                     title: { type: "string", description: "Titre de la PR ou du nouveau repo" },
@@ -1042,6 +1043,37 @@ async function devopsAutoJournal(repoFullName: string, entryType: string, title:
             VALUES ('${project.id}', '${entryType}', '${title.replace(/'/g, "''")}', ${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'}, ${filesArr ? `'${filesArr}'::text[]` : 'NULL'}, ${metadata ? `'${JSON.stringify(metadata).replace(/'/g, "''")}'::jsonb` : 'NULL'})
         `));
         console.log(`[DevOps-Journal] ${entryType}: ${title} → project ${project.id}`);
+
+        try {
+            const { cumulativeLearningEngine } = await import("../cumulativeLearningEngine");
+            const isError = entryType === "error" || entryType === "bug" || entryType === "revert";
+            const isSuccess = entryType === "deploy" || entryType === "code_edit" || entryType === "merge";
+            await cumulativeLearningEngine.recordTaskOutcome({
+                agent: "maxai",
+                projectId: project.id,
+                taskType: entryType,
+                taskDescription: title,
+                outcome: isError ? "failure" : isSuccess ? "success" : "partial",
+                filesChanged: filesChanged || [],
+                errorEncountered: isError ? (description || title) : undefined,
+                errorResolution: metadata?.resolution || undefined,
+                metadata: metadata || {},
+            });
+            if (isSuccess && filesChanged && filesChanged.length > 0) {
+                await cumulativeLearningEngine.recordInsight({
+                    agent: "maxai",
+                    category: "devops",
+                    subcategory: entryType,
+                    insightType: "success_pattern",
+                    title: `${entryType}: ${title.slice(0, 100)}`,
+                    content: description || title,
+                    sourceProject: repoFullName,
+                    sourceFiles: filesChanged,
+                    confidence: 60,
+                    impactScore: 50,
+                });
+            }
+        } catch {}
     } catch (e: any) {
         console.log(`[DevOps-Journal] Skip: ${e.message}`);
     }
@@ -1268,6 +1300,7 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                 }
                 return JSON.stringify(file);
             }
+            case "create_file":
             case "update_file": {
                 if (!owner || !repo || !path || !content) return JSON.stringify({ error: "owner, repo, path et content requis" });
                 let targetBranch = branch;
@@ -1347,9 +1380,24 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                     });
                 }
 
-                const result = await githubService.createOrUpdateFile(owner, repo, path, content, message || `Update ${path}`, targetBranch);
+                let result: any;
+                try {
+                    result = await githubService.createOrUpdateFile(owner, repo, path, content, message || `Update ${path}`, targetBranch);
+                } catch (updateErr: any) {
+                    const errMsg = updateErr.message || "";
+                    if (errMsg.includes("422") || errMsg.includes("sha") || errMsg.includes("does not match")) {
+                        await new Promise(r => setTimeout(r, 1000));
+                        try {
+                            result = await githubService.createOrUpdateFile(owner, repo, path, content, message || `Update ${path}`, targetBranch);
+                        } catch (retryErr: any) {
+                            return JSON.stringify({ error: `Échec update_file après retry (SHA mismatch): ${retryErr.message}`, hint: "Le fichier a été modifié entre-temps. Récupère la dernière version avec get_file puis réessaie." });
+                        }
+                    } else {
+                        throw updateErr;
+                    }
+                }
                 const riskEmoji = analysis.riskLevel === "dangerous" ? "🔴" : analysis.riskLevel === "risky" ? "🟠" : analysis.riskLevel === "caution" ? "🟡" : "🟢";
-                devopsDiscordNotify("update_file", `**${path}**\n${owner}/${repo} sur \`${targetBranch}\`\n${riskEmoji} Risque: ${analysis.riskScore}/100`, analysis.riskScore >= 55 ? "warning" : "success", [
+                devopsDiscordNotify(action === "create_file" ? "create_file" : "update_file", `**${path}**\n${owner}/${repo} sur \`${targetBranch}\`\n${riskEmoji} Risque: ${analysis.riskScore}/100`, analysis.riskScore >= 55 ? "warning" : "success", [
                     { name: "Risque", value: `${analysis.riskScore}/100`, inline: true },
                     { name: "Branche", value: targetBranch, inline: true }
                 ]);
@@ -1419,6 +1467,40 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                 if (!owner || !repo || !branch) return JSON.stringify({ error: "owner, repo et branch requis" });
                 await githubService.deleteBranch(owner, repo, branch);
                 return JSON.stringify({ success: true, message: `Branche ${branch} supprimée` });
+            }
+            case "rename_file":
+            case "move_file": {
+                if (!owner || !repo || !path) return JSON.stringify({ error: "owner, repo et path (source) requis" });
+                const newPath = args.newPath || args.new_path || args.destination || args.to;
+                if (!newPath) return JSON.stringify({ error: "newPath (destination) requis" });
+                let renameBranch = branch;
+                try {
+                    const repoInfo = await githubService.getRepo(owner, repo);
+                    if (!renameBranch) renameBranch = (repoInfo as any).default_branch || "main";
+                } catch { if (!renameBranch) renameBranch = "main"; }
+                let fileContent: string;
+                try {
+                    const existing = await githubService.getFileContent(owner, repo, path, renameBranch);
+                    if (!(existing as any)?.content) return JSON.stringify({ error: `Fichier source '${path}' introuvable ou vide` });
+                    fileContent = Buffer.from((existing as any).content, "base64").toString("utf-8");
+                } catch (e: any) {
+                    return JSON.stringify({ error: `Impossible de lire le fichier source '${path}': ${e.message}` });
+                }
+                try {
+                    await githubService.createOrUpdateFile(owner, repo, newPath, fileContent, message || `Rename ${path} → ${newPath}`, renameBranch);
+                } catch (e: any) {
+                    return JSON.stringify({ error: `Impossible de créer '${newPath}': ${e.message}` });
+                }
+                try {
+                    await githubService.deleteFile(owner, repo, path, message || `Delete old file ${path} (renamed to ${newPath})`, renameBranch);
+                } catch (e: any) {
+                    return JSON.stringify({ success: true, warning: `Fichier copié vers '${newPath}' mais l'ancien '${path}' n'a pas pu être supprimé: ${e.message}` });
+                }
+                devopsDiscordNotify("rename_file", `**${path}** → **${newPath}**\n${owner}/${repo} sur \`${renameBranch}\``, "success", [
+                    { name: "Source", value: path, inline: true },
+                    { name: "Destination", value: newPath, inline: true }
+                ]);
+                return JSON.stringify({ success: true, from: path, to: newPath, branch: renameBranch, message: `Fichier renommé: ${path} → ${newPath}` });
             }
             case "search_code": {
                 if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
@@ -1521,7 +1603,22 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                     });
                 }
 
-                const result = await githubService.applyPatch(owner, repo, patchBranch, files, message);
+                let result: any;
+                try {
+                    result = await githubService.applyPatch(owner, repo, patchBranch, files, message);
+                } catch (patchErr: any) {
+                    const errMsg = patchErr.message || "";
+                    if (errMsg.includes("422") || errMsg.includes("sha") || errMsg.includes("does not match")) {
+                        await new Promise(r => setTimeout(r, 1500));
+                        try {
+                            result = await githubService.applyPatch(owner, repo, patchBranch, files, message);
+                        } catch (retryErr: any) {
+                            return JSON.stringify({ error: `Échec apply_patch après retry (SHA mismatch): ${retryErr.message}`, hint: "Les fichiers ont été modifiés entre-temps. Attends quelques secondes et réessaie." });
+                        }
+                    } else {
+                        throw patchErr;
+                    }
+                }
                 const riskEmoji = analysis.riskLevel === "dangerous" ? "🔴" : analysis.riskLevel === "risky" ? "🟠" : analysis.riskLevel === "caution" ? "🟡" : "🟢";
                 devopsDiscordNotify("Patch appliqué", `**${message}**\n${owner}/${repo} sur \`${patchBranch}\`\n${riskEmoji} Risk: ${analysis.riskScore}/100 (${analysis.riskLevel})`, analysis.riskScore >= 55 ? "warning" : "success", [
                     { name: "Fichiers", value: `${files.length} fichier(s)`, inline: true },
@@ -2863,6 +2960,120 @@ Résume: 1) But du projet, 2) Architecture (patterns, stack), 3) Fichiers clés 
                 } catch (err: any) {
                     return JSON.stringify({ error: `analyze_repo failed: ${err.message}`, hint: "Vérifie owner/repo et les permissions." });
                 }
+            }
+            case "check_syntax": {
+                if (!owner || !repo) return JSON.stringify({ error: "owner et repo requis" });
+                const syntaxPaths: string[] = args.files?.map((f: any) => f.path || f) || (filePath ? [filePath] : []);
+                if (syntaxPaths.length === 0) return JSON.stringify({ error: "Spécifie path ou files[{path}] pour les fichiers à vérifier" });
+
+                const syntaxBranch = branch || "main";
+                const syntaxResults: any[] = [];
+
+                const checkBatch = syntaxPaths.slice(0, 20);
+                await Promise.all(checkBatch.map(async (fp: string) => {
+                    try {
+                        const fileData = await githubService.getFileContent(owner, repo, fp, syntaxBranch);
+                        if (!(fileData as any).content) {
+                            syntaxResults.push({ path: fp, status: "error", error: "Fichier vide ou inaccessible" });
+                            return;
+                        }
+                        const content = Buffer.from((fileData as any).content, "base64").toString("utf-8");
+                        const lines = content.split("\n");
+                        const issues: { line: number; type: string; message: string; severity: string }[] = [];
+
+                        const ext = fp.split(".").pop()?.toLowerCase() || "";
+                        const isTsJs = ["ts", "tsx", "js", "jsx"].includes(ext);
+
+                        if (isTsJs) {
+                            let braceCount = 0, parenCount = 0, bracketCount = 0;
+                            const importSources: string[] = [];
+                            const declaredVars = new Set<string>();
+                            const usedIdentifiers = new Set<string>();
+                            let inBlockComment = false;
+
+                            for (let i = 0; i < lines.length; i++) {
+                                const line = lines[i];
+                                const trimmed = line.trim();
+                                const lineNum = i + 1;
+
+                                if (inBlockComment) {
+                                    if (trimmed.includes("*/")) inBlockComment = false;
+                                    continue;
+                                }
+                                if (trimmed.startsWith("/*")) {
+                                    if (!trimmed.includes("*/")) inBlockComment = true;
+                                    continue;
+                                }
+                                if (trimmed.startsWith("//")) continue;
+
+                                for (const ch of line) {
+                                    if (ch === '{') braceCount++;
+                                    else if (ch === '}') braceCount--;
+                                    else if (ch === '(') parenCount++;
+                                    else if (ch === ')') parenCount--;
+                                    else if (ch === '[') bracketCount++;
+                                    else if (ch === ']') bracketCount--;
+                                }
+
+                                if (braceCount < 0) issues.push({ line: lineNum, type: "bracket_mismatch", message: "Accolade fermante en trop", severity: "error" });
+                                if (parenCount < 0) issues.push({ line: lineNum, type: "paren_mismatch", message: "Parenthèse fermante en trop", severity: "error" });
+
+                                const importMatch = trimmed.match(/^import\s+.*?from\s+['"](.*?)['"]/);
+                                if (importMatch) importSources.push(importMatch[1]);
+
+                                const varMatch = trimmed.match(/^(?:export\s+)?(?:const|let|var|function|class|interface|type|enum)\s+(\w+)/);
+                                if (varMatch) declaredVars.add(varMatch[1]);
+
+                                if (trimmed.match(/console\.(log|warn|error|debug)\s*\(/)) {
+                                    issues.push({ line: lineNum, type: "console_statement", message: `console.${trimmed.match(/console\.(\w+)/)?.[1]} trouvé`, severity: "warning" });
+                                }
+
+                                if (trimmed.match(/\bany\b/) && ext === "ts" || ext === "tsx") {
+                                    if (trimmed.match(/:\s*any\b/) || trimmed.match(/<any>/)) {
+                                        issues.push({ line: lineNum, type: "any_type", message: "Utilisation de type 'any'", severity: "info" });
+                                    }
+                                }
+
+                                if (trimmed.match(/TODO|FIXME|HACK|XXX/i)) {
+                                    const tag = trimmed.match(/(TODO|FIXME|HACK|XXX)/i)?.[1];
+                                    issues.push({ line: lineNum, type: "todo", message: `${tag} trouvé: ${trimmed.slice(0, 80)}`, severity: "info" });
+                                }
+                            }
+
+                            if (braceCount !== 0) issues.push({ line: lines.length, type: "bracket_mismatch", message: `Accolades non équilibrées: ${braceCount > 0 ? braceCount + " ouvertes en trop" : Math.abs(braceCount) + " fermées en trop"}`, severity: "error" });
+                            if (parenCount !== 0) issues.push({ line: lines.length, type: "paren_mismatch", message: `Parenthèses non équilibrées: ${parenCount > 0 ? parenCount + " ouvertes en trop" : Math.abs(parenCount) + " fermées en trop"}`, severity: "error" });
+                            if (bracketCount !== 0) issues.push({ line: lines.length, type: "bracket_mismatch", message: `Crochets non équilibrés: ${bracketCount > 0 ? bracketCount + " ouverts en trop" : Math.abs(bracketCount) + " fermés en trop"}`, severity: "error" });
+
+                            const localImports = importSources.filter(s => s.startsWith(".") || s.startsWith("@/") || s.startsWith("@shared"));
+                            const externalImports = importSources.filter(s => !s.startsWith(".") && !s.startsWith("@"));
+
+                            syntaxResults.push({
+                                path: fp,
+                                status: issues.filter(i => i.severity === "error").length > 0 ? "errors_found" : "ok",
+                                lines: lines.length,
+                                errors: issues.filter(i => i.severity === "error"),
+                                warnings: issues.filter(i => i.severity === "warning"),
+                                info: issues.filter(i => i.severity === "info"),
+                                imports: { local: localImports, external: externalImports, total: importSources.length },
+                                declarations: [...declaredVars].slice(0, 30),
+                            });
+                        } else {
+                            syntaxResults.push({ path: fp, status: "ok", lines: lines.length, note: `Extension .${ext} — vérification basique uniquement` });
+                        }
+                    } catch (err: any) {
+                        syntaxResults.push({ path: fp, status: "error", error: err.message });
+                    }
+                }));
+
+                const errors = syntaxResults.filter(r => r.status === "errors_found" || r.status === "error");
+                return JSON.stringify({
+                    action: "check_syntax",
+                    repo: `${owner}/${repo}`,
+                    branch: syntaxBranch,
+                    filesChecked: syntaxResults.length,
+                    filesWithErrors: errors.length,
+                    results: syntaxResults,
+                });
             }
             case "list_org_repos": {
                 const org = args.org || owner;

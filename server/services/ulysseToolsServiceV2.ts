@@ -1283,9 +1283,9 @@ export async function executeToolCallV2Internal(toolName: string, args: Record<s
 
     // Universal file analysis tools
     case "analyze_file":
-      return await executeAnalyzeFile(args);
+      return await executeAnalyzeFile(args, userId);
     case "analyze_invoice":
-      return await executeAnalyzeInvoice(args);
+      return await executeAnalyzeInvoice(args, userId);
     
     // Universal file generation tools
     case "generate_file":
@@ -3286,6 +3286,39 @@ async function executeDgmManage(args: any, userId?: number): Promise<string> {
         });
       }
 
+      case "rollback": {
+        if (!args.taskId) return JSON.stringify({ error: "taskId requis" });
+        if (!args.reason) return JSON.stringify({ error: "reason requis" });
+
+        const [task] = await db.select().from(dgmTasks).where(eq(dgmTasks.id, args.taskId));
+        if (!task) return JSON.stringify({ error: "Tâche introuvable" });
+        const [session] = await db.select().from(dgmSessions).where(eq(dgmSessions.id, task.sessionId));
+        if (!session) return JSON.stringify({ error: "Session introuvable" });
+
+        const repoParts = (session.repoContext || "").split("/");
+        const config = {
+          owner: args.owner || repoParts[0] || "ulyssemdbh-commits",
+          repo: args.repo || repoParts[1] || "",
+          branch: args.branch || "main",
+          autoMerge: false,
+          autoDeploy: false,
+          appName: args.appName || undefined,
+          requireApproval: [],
+        };
+
+        const { dgmPipelineOrchestrator } = await import("./dgmPipelineOrchestrator");
+        const result = await dgmPipelineOrchestrator.runRollback(session.id, args.taskId, config, args.reason);
+
+        return JSON.stringify({
+          action: "rollback",
+          taskId: args.taskId,
+          success: result.success,
+          data: result.data,
+          error: result.error,
+          durationMs: result.durationMs,
+        });
+      }
+
       case "clear_cache": {
         const { dgmPipelineOrchestrator } = await import("./dgmPipelineOrchestrator");
         dgmPipelineOrchestrator.clearFileCache();
@@ -4335,7 +4368,56 @@ async function resolveFilePathForAnalysis(filePath: string): Promise<string> {
   const localAlt = pathMod.join(process.cwd(), filePath);
   if (fs.existsSync(localAlt)) return localAlt;
   
-  const isObjectStoragePath = filePath.includes("replit-objstore") || filePath.includes(".private/") || filePath.includes("sugu-valentine") || filePath.includes("sugu-maillane");
+  const IS_REPLIT = !!(process.env.REPL_ID || process.env.REPLIT_CONNECTORS_HOSTNAME);
+  const LOCAL_STORAGE_ROOT = process.env.LOCAL_STORAGE_PATH || "/opt/ulysse/storage";
+
+  const isSuguPath = filePath.includes("sugu-valentine") || filePath.includes("sugu-maillane") || filePath.includes("suguval") || filePath.includes("sugumaillane") || filePath.includes("sugu_valentine") || filePath.includes("sugu_maillane");
+  
+  if (isSuguPath) {
+    console.log(`[FileAnalysis] Detected SUGU path: ${filePath} — resolving via DB lookup`);
+    const basename = pathMod.basename(filePath);
+    try {
+      const { db: fileDb } = await import("../db");
+      const { suguFiles, suguMaillaneFiles } = await import("@shared/schema");
+      const { or, ilike } = await import("drizzle-orm");
+      
+      const matches = await fileDb.select({ storagePath: suguFiles.storagePath, originalName: suguFiles.originalName })
+        .from(suguFiles)
+        .where(or(ilike(suguFiles.originalName, `%${basename}%`), ilike(suguFiles.fileName, `%${basename}%`)))
+        .limit(1);
+      
+      const matchesM = matches.length === 0 ? await fileDb.select({ storagePath: suguMaillaneFiles.storagePath, originalName: suguMaillaneFiles.originalName })
+        .from(suguMaillaneFiles)
+        .where(or(ilike(suguMaillaneFiles.originalName, `%${basename}%`), ilike(suguMaillaneFiles.fileName, `%${basename}%`)))
+        .limit(1) : [];
+      
+      const found = matches[0] || matchesM[0];
+      if (found) {
+        console.log(`[FileAnalysis] DB match: ${found.originalName} → ${found.storagePath}`);
+        if (!IS_REPLIT) {
+          const localPath = pathMod.join(LOCAL_STORAGE_ROOT, found.storagePath);
+          if (fs.existsSync(localPath)) {
+            console.log(`[FileAnalysis] Resolved from local storage: ${localPath}`);
+            return localPath;
+          }
+        }
+        const downloaded = await downloadFromObjectStorage(found.storagePath);
+        if (downloaded) return downloaded;
+      }
+    } catch (dbErr: unknown) {
+      console.warn(`[FileAnalysis] SUGU DB lookup failed:`, dbErr instanceof Error ? dbErr.message : String(dbErr));
+    }
+  }
+
+  if (!IS_REPLIT && isSuguPath) {
+    const localPath = pathMod.join(LOCAL_STORAGE_ROOT, filePath);
+    if (fs.existsSync(localPath)) {
+      console.log(`[FileAnalysis] Found on local storage: ${localPath}`);
+      return localPath;
+    }
+  }
+
+  const isObjectStoragePath = filePath.includes("replit-objstore") || filePath.includes(".private/") || isSuguPath;
   if (isObjectStoragePath) {
     const downloaded = await downloadFromObjectStorage(filePath);
     if (downloaded) return downloaded;
@@ -4363,6 +4445,13 @@ async function resolveFilePathForAnalysis(filePath: string): Promise<string> {
       
       if (matches.length > 0) {
         console.log(`[FileAnalysis] Found in sugu_files: ${matches[0].originalName} → ${matches[0].storagePath}`);
+        if (!IS_REPLIT) {
+          const localResolved = pathMod.join(LOCAL_STORAGE_ROOT, matches[0].storagePath);
+          if (fs.existsSync(localResolved)) {
+            console.log(`[FileAnalysis] Resolved from local storage: ${localResolved}`);
+            return localResolved;
+          }
+        }
         const downloaded = await downloadFromObjectStorage(matches[0].storagePath);
         if (downloaded) return downloaded;
       }
@@ -4379,6 +4468,13 @@ async function resolveFilePathForAnalysis(filePath: string): Promise<string> {
       
       if (matchesM.length > 0) {
         console.log(`[FileAnalysis] Found in sugu_maillane_files: ${matchesM[0].originalName} → ${matchesM[0].storagePath}`);
+        if (!IS_REPLIT) {
+          const localResolvedM = pathMod.join(LOCAL_STORAGE_ROOT, matchesM[0].storagePath);
+          if (fs.existsSync(localResolvedM)) {
+            console.log(`[FileAnalysis] Resolved from local storage: ${localResolvedM}`);
+            return localResolvedM;
+          }
+        }
         const downloaded = await downloadFromObjectStorage(matchesM[0].storagePath);
         if (downloaded) return downloaded;
       }
@@ -4392,12 +4488,13 @@ async function resolveFilePathForAnalysis(filePath: string): Promise<string> {
   return filePath;
 }
 
-async function executeAnalyzeFile(args: { file_path: string; analysis_type?: string }): Promise<string> {
+async function executeAnalyzeFile(args: { file_path: string; analysis_type?: string }, userId?: number): Promise<string> {
   try {
     const { universalFileAnalyzer } = await import("./universalFileAnalyzer");
     
     const resolvedPath = await resolveFilePathForAnalysis(args.file_path);
-    const result = await universalFileAnalyzer.analyzeFile(resolvedPath, args.analysis_type);
+    const isOwner = userId === 1;
+    const result = await universalFileAnalyzer.analyzeFile(resolvedPath, args.analysis_type, isOwner);
     
     if (!result.success) {
       return JSON.stringify({ 
@@ -4424,12 +4521,13 @@ async function executeAnalyzeFile(args: { file_path: string; analysis_type?: str
   }
 }
 
-async function executeAnalyzeInvoice(args: { file_path: string }): Promise<string> {
+async function executeAnalyzeInvoice(args: { file_path: string }, userId?: number): Promise<string> {
   try {
     const { universalFileAnalyzer } = await import("./universalFileAnalyzer");
     
     const resolvedPath = await resolveFilePathForAnalysis(args.file_path);
-    const invoice = await universalFileAnalyzer.analyzeInvoice(resolvedPath);
+    const isOwner = userId === 1;
+    const invoice = await universalFileAnalyzer.analyzeInvoice(resolvedPath, isOwner);
     
     console.log(`[InvoiceAnalysis] ${invoice.fournisseur} - ${invoice.numeroFacture}: ${invoice.lignes.length} lignes, validated: ${invoice.validated}`);
     

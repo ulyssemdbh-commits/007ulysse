@@ -370,6 +370,7 @@ async function executeQueueItem(item: any, userId: number): Promise<string> {
   }
 
   const { ulysseToolsV2, executeToolCallV2 } = await import("./ulysseToolsServiceV2");
+  const { cumulativeLearningEngine } = await import("./cumulativeLearningEngine");
 
   const devopsToolNames = ['devops_github', 'devops_server', 'devmax_db', 'dgm_manage', 'task_queue_manage', 'work_journal_manage', 'devops_intelligence', 'monitoring_manage', 'manage_ai_system', 'manage_feature_flags', 'query_apptoorder', 'dashboard_screenshot', 'web_search', 'read_url', 'query_brain', 'memory_save', 'analyze_file', 'generate_file'];
   const coreTools = ulysseToolsV2.slice(0, 40);
@@ -405,7 +406,8 @@ Tâche à exécuter: "${item.title}"${item.description ? `\nDétails: ${item.des
       tools: toolDefs,
       tool_choice: "auto",
       max_tokens: 4000,
-    });
+      parallel_tool_calls: true,
+    } as any);
 
     const msg = response.choices[0]?.message;
 
@@ -417,26 +419,32 @@ Tâche à exécuter: "${item.title}"${item.description ? `\nDétails: ${item.des
         tool_calls: msg.tool_calls,
       });
 
-      for (const tc of msg.tool_calls) {
+      if (msg.tool_calls.length > 1) {
+        console.log(`[TaskQueue] ⚡ PARALLEL execution of ${msg.tool_calls.length} tool calls (round ${round})`);
+      }
+
+      const executeOneTask = async (tc: any) => {
+        const tcStart = Date.now();
         try {
           const args = JSON.parse(tc.function.arguments);
           console.log(`[TaskQueue] Autonomous tool call (round ${round}): ${tc.function.name}`);
           const result = await executeToolCallV2(tc.function.name, args, userId);
-          toolResults.push(`[${tc.function.name}] ${result.slice(0, 1000)}`);
-          workingMessages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: result.slice(0, 3000),
-          });
+          cumulativeLearningEngine.recordToolCall({ agent: "ulysse", toolName: tc.function.name, success: true, durationMs: Date.now() - tcStart }).catch(() => {});
+          return { id: tc.id, name: tc.function.name, result: result.slice(0, 3000), summary: `[${tc.function.name}] ${result.slice(0, 1000)}`, success: true };
         } catch (e: any) {
           const errMsg = `Error: ${e.message}`;
-          toolResults.push(`[${tc.function.name}] ${errMsg}`);
-          workingMessages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: errMsg,
-          });
+          cumulativeLearningEngine.recordToolCall({ agent: "ulysse", toolName: tc.function.name, success: false, durationMs: Date.now() - tcStart, error: e.message }).catch(() => {});
+          return { id: tc.id, name: tc.function.name, result: errMsg, summary: `[${tc.function.name}] ${errMsg}`, success: false };
         }
+      };
+
+      const parallelResults = msg.tool_calls.length > 1
+        ? await Promise.all(msg.tool_calls.map(executeOneTask))
+        : [await executeOneTask(msg.tool_calls[0])];
+
+      for (const pr of parallelResults) {
+        toolResults.push(pr.summary);
+        workingMessages.push({ role: "tool", tool_call_id: pr.id, content: pr.result });
       }
       lastContent = toolResults.join("\n");
       continue;

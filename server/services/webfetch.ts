@@ -1,39 +1,45 @@
 import * as cheerio from "cheerio";
 import OpenAI from "openai";
-import Firecrawl from "@mendable/firecrawl-js";
-import { ApifyClient } from "apify-client";
 import { crawlWithBrowser, detectSPAIndicators, type BrowserCrawlResult } from "./scraper/browser";
 import { crawlWithScreenshot, type ScreenshotResult } from "./scraper/screenshot";
 
 let openaiClient: OpenAI | null = null;
-let firecrawlClient: Firecrawl | null = null;
-let apifyClient: ApifyClient | null = null;
+let firecrawlClient: any = null;
+let apifyClient: any = null;
 
-// Initialize Firecrawl client
-function getFirecrawl(): Firecrawl | null {
-  if (!process.env.FIRECRAWL_API_KEY) {
-    return null;
-  }
+async function getFirecrawl(): Promise<any> {
+  if (!process.env.FIRECRAWL_API_KEY) return null;
   if (!firecrawlClient) {
-    firecrawlClient = new Firecrawl({ apiKey: process.env.FIRECRAWL_API_KEY });
+    try {
+      const mod = await import("@mendable/firecrawl-js");
+      const Firecrawl = mod.default || mod;
+      firecrawlClient = new Firecrawl({ apiKey: process.env.FIRECRAWL_API_KEY });
+    } catch {
+      console.warn("[WebFetch] firecrawl-js not available, skipping");
+      return null;
+    }
   }
   return firecrawlClient;
 }
 
-// Initialize Apify client
-function getApify(): ApifyClient | null {
-  if (!process.env.APIFY_API_TOKEN) {
-    return null;
-  }
+async function getApify(): Promise<any> {
+  if (!process.env.APIFY_API_TOKEN) return null;
   if (!apifyClient) {
-    apifyClient = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+    try {
+      const mod = await import("apify-client");
+      const ApifyClient = mod.ApifyClient || mod.default;
+      apifyClient = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+    } catch {
+      console.warn("[WebFetch] apify-client not available, skipping");
+      return null;
+    }
   }
   return apifyClient;
 }
 
 // Apify - Cloud scraping platform with pre-built actors
 export async function fetchViaApify(url: string): Promise<{ title: string; content: string } | null> {
-  const client = getApify();
+  const client = await getApify();
   if (!client) {
     console.log("[WebCrawl] Apify API token not available");
     return null;
@@ -74,7 +80,7 @@ export async function fetchViaApify(url: string): Promise<{ title: string; conte
 
 // Firecrawl - Powerful JavaScript rendering API (replaces Playwright in production)
 export async function fetchViaFirecrawl(url: string): Promise<{ title: string; content: string } | null> {
-  const client = getFirecrawl();
+  const client = await getFirecrawl();
   if (!client) {
     console.log("[WebCrawl] Firecrawl API key not available");
     return null;

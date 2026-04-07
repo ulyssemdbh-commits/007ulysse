@@ -255,6 +255,197 @@ export function createDeployMethods(service: SSHService) {
     return `bash -c 'cd ${appDir} && touch .env && set -a && source .env && set +a && ${cmd} 2>&1 | tail -40'`;
   }
 
+  async function spaAutoDiagnoseAndRepair(appDir: string, appName: string, logs: string[]): Promise<{ repaired: boolean; issues: string[] }> {
+    const issues: string[] = [];
+    let repaired = false;
+
+    const probe = await service.executeCommand(
+      [
+        `[ -f "${appDir}/index.html" ] && echo "HAS_INDEX" || echo "NO_INDEX"`,
+        `[ -f "${appDir}/src/main.tsx" ] || [ -f "${appDir}/src/main.ts" ] || [ -f "${appDir}/src/index.tsx" ] || [ -f "${appDir}/src/index.ts" ] && echo "HAS_ENTRY" || echo "NO_ENTRY"`,
+        `[ -f "${appDir}/vite.config.ts" ] || [ -f "${appDir}/vite.config.js" ] && echo "HAS_VITE_CFG" || echo "NO_VITE_CFG"`,
+        `[ -f "${appDir}/tsconfig.json" ] && echo "HAS_TSCONFIG" || echo "NO_TSCONFIG"`,
+        `cat "${appDir}/package.json" 2>/dev/null || echo "{}"`,
+      ].join(" && echo '---' && "),
+      8000
+    );
+    const out = probe.output || "";
+    const hasIndex = out.includes("HAS_INDEX");
+    const hasEntry = out.includes("HAS_ENTRY");
+    const hasViteCfg = out.includes("HAS_VITE_CFG");
+    const hasTsconfig = out.includes("HAS_TSCONFIG");
+
+    let pkgJson: any = {};
+    try {
+      const pkgRaw = out.split("---").pop() || "{}";
+      pkgJson = JSON.parse(pkgRaw.trim());
+    } catch {}
+    const deps = { ...pkgJson.dependencies, ...pkgJson.devDependencies };
+
+    if (!hasEntry) {
+      issues.push("missing-entry-point");
+      const appFile = await service.executeCommand(`[ -f "${appDir}/src/App.tsx" ] && echo "App.tsx" || ([ -f "${appDir}/src/App.jsx" ] && echo "App.jsx" || echo "NONE")`, 3000);
+      const appFileName = appFile.output?.trim() || "NONE";
+      if (appFileName !== "NONE") {
+        const ext = appFileName.endsWith(".tsx") ? "tsx" : "jsx";
+        const mainContent = ext === "tsx"
+          ? `import { createRoot } from 'react-dom/client';\nimport App from './App';\n\nconst root = createRoot(document.getElementById('root')!);\nroot.render(<App />);\n`
+          : `import { createRoot } from 'react-dom/client';\nimport App from './App';\n\nconst root = createRoot(document.getElementById('root'));\nroot.render(<App />);\n`;
+        await service.writeRemoteFile(`${appDir}/src/main.${ext}`, mainContent);
+        logs.push(`[AUTO-REPAIR] Created missing src/main.${ext} (imports ${appFileName})`);
+        repaired = true;
+      }
+    }
+
+    if (!hasViteCfg && (deps["vite"] || deps["react"] || deps["vue"])) {
+      issues.push("missing-vite-config");
+      const isReact = !!deps["react"];
+      const isVue = !!deps["vue"];
+      let viteContent = `import { defineConfig } from 'vite';\n`;
+      if (isReact) {
+        viteContent += `import react from '@vitejs/plugin-react';\nexport default defineConfig({ plugins: [react()], build: { outDir: 'dist' } });\n`;
+      } else if (isVue) {
+        viteContent += `import vue from '@vitejs/plugin-vue';\nexport default defineConfig({ plugins: [vue()], build: { outDir: 'dist' } });\n`;
+      } else {
+        viteContent += `export default defineConfig({ build: { outDir: 'dist' } });\n`;
+      }
+      await service.writeRemoteFile(`${appDir}/vite.config.ts`, viteContent);
+      logs.push(`[AUTO-REPAIR] Created missing vite.config.ts`);
+      repaired = true;
+    }
+
+    if (!hasTsconfig && (deps["typescript"] || out.includes(".tsx") || out.includes(".ts"))) {
+      issues.push("missing-tsconfig");
+      const tsconfigContent = JSON.stringify({
+        compilerOptions: { target: "ES2020", module: "ESNext", lib: ["ES2020", "DOM", "DOM.Iterable"], jsx: "react-jsx", strict: false, moduleResolution: "node", resolveJsonModule: true, isolatedModules: true, esModuleInterop: true, skipLibCheck: true },
+        include: ["src"]
+      }, null, 2);
+      await service.writeRemoteFile(`${appDir}/tsconfig.json`, tsconfigContent);
+      logs.push(`[AUTO-REPAIR] Created missing tsconfig.json`);
+      repaired = true;
+    }
+
+    if (hasIndex) {
+      const htmlContent = await service.executeCommand(`cat "${appDir}/index.html"`, 5000);
+      const html = htmlContent.output || "";
+      const srcMatch = html.match(/src=["']([^"']+\.(?:tsx|ts|jsx))["']/);
+      if (srcMatch) {
+        const referencedFile = srcMatch[1].replace(/^\.?\//, "");
+        const fileExists = await service.executeCommand(`[ -f "${appDir}/${referencedFile}" ] && echo "EXISTS" || echo "MISSING"`, 3000);
+        if (fileExists.output?.includes("MISSING")) {
+          issues.push(`index.html references ${referencedFile} but file does not exist`);
+          const candidateEntry = await service.executeCommand(
+            `ls ${appDir}/src/main.tsx ${appDir}/src/main.ts ${appDir}/src/main.jsx ${appDir}/src/index.tsx ${appDir}/src/index.ts ${appDir}/src/index.jsx 2>/dev/null | head -1`,
+            3000
+          );
+          const actualEntry = candidateEntry.output?.trim()?.replace(appDir + "/", "");
+          if (actualEntry) {
+            const fixedHtml = html.replace(srcMatch[0], `src="./${actualEntry}"`);
+            await service.writeRemoteFile(`${appDir}/index.html`, fixedHtml);
+            logs.push(`[AUTO-REPAIR] Fixed index.html entry point: ${referencedFile} → ./${actualEntry}`);
+            repaired = true;
+          }
+        }
+      }
+    } else if (!hasIndex) {
+      issues.push("missing-index-html");
+      const entryFile = await service.executeCommand(
+        `ls ${appDir}/src/main.tsx ${appDir}/src/main.ts ${appDir}/src/main.jsx ${appDir}/src/index.tsx ${appDir}/src/index.ts 2>/dev/null | head -1`,
+        3000
+      );
+      const entry = entryFile.output?.trim()?.replace(appDir + "/", "") || "src/main.tsx";
+      const newHtml = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>${appName}</title>\n</head>\n<body>\n  <div id="root"></div>\n  <script type="module" src="./${entry}"></script>\n</body>\n</html>`;
+      await service.writeRemoteFile(`${appDir}/index.html`, newHtml);
+      logs.push(`[AUTO-REPAIR] Created missing index.html (entry: ${entry})`);
+      repaired = true;
+    }
+
+    const depsToCheck: { name: string; devOnly?: boolean }[] = [];
+    if (deps["react"] && !deps["react-dom"]) depsToCheck.push({ name: "react-dom" });
+    if ((deps["react"] || deps["vue"]) && !deps["vite"]) depsToCheck.push({ name: "vite", devOnly: true });
+    if (deps["react"] && !deps["@vitejs/plugin-react"]) depsToCheck.push({ name: "@vitejs/plugin-react", devOnly: true });
+    if (deps["vue"] && !deps["@vitejs/plugin-vue"]) depsToCheck.push({ name: "@vitejs/plugin-vue", devOnly: true });
+    if (!deps["typescript"] && (out.includes(".tsx") || out.includes(".ts"))) depsToCheck.push({ name: "typescript", devOnly: true });
+    if (deps["@types/react"] === undefined && deps["react"]) depsToCheck.push({ name: "@types/react", devOnly: true });
+    if (deps["@types/react-dom"] === undefined && deps["react-dom"]) depsToCheck.push({ name: "@types/react-dom", devOnly: true });
+
+    if (depsToCheck.length > 0) {
+      issues.push(`missing-deps: ${depsToCheck.map(d => d.name).join(", ")}`);
+      const devDeps = depsToCheck.filter(d => d.devOnly).map(d => d.name);
+      const prodDeps = depsToCheck.filter(d => !d.devOnly).map(d => d.name);
+      if (prodDeps.length > 0) {
+        await service.executeCommand(`cd ${appDir} && npm install --save ${prodDeps.join(" ")} 2>&1 | tail -5`, 60000);
+      }
+      if (devDeps.length > 0) {
+        await service.executeCommand(`cd ${appDir} && npm install --save-dev ${devDeps.join(" ")} 2>&1 | tail -5`, 60000);
+      }
+      logs.push(`[AUTO-REPAIR] Installed missing deps: ${depsToCheck.map(d => d.name).join(", ")}`);
+      repaired = true;
+    }
+
+    const oldDeps: string[] = [];
+    const viteVer = deps["vite"];
+    if (viteVer && /^\^?[12]\./.test(viteVer)) oldDeps.push("vite@^5.0.0");
+    const reactVer = deps["react"];
+    if (reactVer && /^\^?1[567]\./.test(reactVer)) oldDeps.push("react@^18.2.0", "react-dom@^18.2.0");
+
+    if (oldDeps.length > 0) {
+      issues.push(`outdated-critical-deps: ${oldDeps.join(", ")}`);
+      await service.executeCommand(`cd ${appDir} && npm install --save ${oldDeps.join(" ")} 2>&1 | tail -5`, 60000);
+      logs.push(`[AUTO-REPAIR] Upgraded outdated deps: ${oldDeps.join(", ")}`);
+      repaired = true;
+    }
+
+    if (issues.length > 0) {
+      logs.push(`[AUTO-DIAGNOSE] Issues found: ${issues.join("; ")}`);
+    } else {
+      logs.push(`[AUTO-DIAGNOSE] No structural issues detected`);
+    }
+
+    return { repaired, issues };
+  }
+
+  async function postDeployContentCheck(appDir: string, nginxDomain: string, serveDirFinal: string, logs: string[]): Promise<{ healthy: boolean; issue?: string }> {
+    const indexCheck = await service.executeCommand(
+      `[ -f "${serveDirFinal}/index.html" ] && cat "${serveDirFinal}/index.html" | head -20 || echo "NO_INDEX"`,
+      5000
+    );
+    const indexContent = indexCheck.output || "";
+
+    if (indexContent.includes("NO_INDEX")) {
+      logs.push(`[POST-CHECK] ⚠️ No index.html in serve directory ${serveDirFinal}`);
+      return { healthy: false, issue: "no-index-html" };
+    }
+
+    if (indexContent.match(/src=["'][^"']*\.tsx["']/)) {
+      logs.push(`[POST-CHECK] ⚠️ index.html references .tsx files directly — site is NOT built, serving raw source!`);
+      return { healthy: false, issue: "serving-raw-source" };
+    }
+
+    if (indexContent.match(/src=["'][^"']*\.ts["']/) && !indexContent.match(/src=["'][^"']*\.js["']/)) {
+      logs.push(`[POST-CHECK] ⚠️ index.html references .ts files without .js — likely unbuit`);
+      return { healthy: false, issue: "serving-raw-source" };
+    }
+
+    const healthCheck = await service.executeCommand(
+      `curl -s -o /dev/null -w "%{http_code}" -H "Host: ${nginxDomain}" http://127.0.0.1/ 2>/dev/null || echo "000"`,
+      10000
+    );
+    const httpCode = healthCheck.output?.trim() || "000";
+
+    if (httpCode === "502" || httpCode === "000") {
+      logs.push(`[POST-CHECK] ⚠️ HTTP ${httpCode} — site not responding`);
+      const nginxErr = await service.executeCommand(`tail -5 /var/log/nginx/${nginxDomain.replace(/\./g, "-")}.error.log 2>/dev/null || tail -5 /var/log/nginx/error.log 2>/dev/null`, 5000);
+      if (nginxErr.output?.trim()) {
+        logs.push(`[POST-CHECK] Nginx error: ${nginxErr.output.trim().split("\n").pop()}`);
+      }
+      return { healthy: false, issue: `http-${httpCode}` };
+    }
+
+    logs.push(`[POST-CHECK] ✅ Site healthy — HTTP ${httpCode}`);
+    return { healthy: true };
+  }
+
   return {
     async deployApp(params: {
       repoUrl: string;
@@ -514,18 +705,17 @@ export function createDeployMethods(service: SSHService) {
         const nginxDomain = resolveAppDomain(appName, domain);
         const distDir = `${appDir}/dist`;
 
+        logs.push(`[3/8] Running auto-diagnose & repair...`);
+        const diagResult = await spaAutoDiagnoseAndRepair(appDir, appName, logs);
+        if (diagResult.repaired) {
+          logs.push(`[3/8] Auto-repair applied ${diagResult.issues.length} fix(es) before build`);
+        }
+
         const spaPreCheck = await service.executeCommand(
-          `[ -f "${appDir}/index.html" ] && echo "HAS_INDEX" || echo "NO_INDEX"; [ -f "${appDir}/tsconfig.node.json" ] && echo "HAS_TSNODE" || echo "NO_TSNODE"; grep -l "references" "${appDir}/tsconfig.json" 2>/dev/null && echo "HAS_REFS" || echo "NO_REFS"`,
+          `[ -f "${appDir}/tsconfig.node.json" ] && echo "HAS_TSNODE" || echo "NO_TSNODE"; grep -l "references" "${appDir}/tsconfig.json" 2>/dev/null && echo "HAS_REFS" || echo "NO_REFS"`,
           5000
         );
         const spaOut = spaPreCheck.output || "";
-        if (spaOut.includes("NO_INDEX")) {
-          const mainEntry = await service.executeCommand(`ls ${appDir}/src/main.tsx ${appDir}/src/main.ts ${appDir}/src/index.tsx ${appDir}/src/index.ts 2>/dev/null | head -1`, 5000);
-          const entryFile = mainEntry.output?.trim()?.replace(appDir, "") || "/src/main.tsx";
-          const fallbackHtml = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>${appName}</title>\n</head>\n<body>\n  <div id="root"></div>\n  <script type="module" src="${entryFile}"></script>\n</body>\n</html>`;
-          await service.writeRemoteFile(`${appDir}/index.html`, fallbackHtml);
-          logs.push(`[3b/8] Created missing index.html (entry: ${entryFile})`);
-        }
         if (spaOut.includes("NO_TSNODE") && spaOut.includes("HAS_REFS")) {
           const tsconfigNode = `{\n  "compilerOptions": {\n    "composite": true,\n    "module": "ESNext",\n    "moduleResolution": "Node",\n    "allowSyntheticDefaultImports": true\n  },\n  "include": ["vite.config.ts"]\n}`;
           await service.writeRemoteFile(`${appDir}/tsconfig.node.json`, tsconfigNode);
@@ -571,10 +761,22 @@ export function createDeployMethods(service: SSHService) {
         const buildOutput = buildResult.output || "";
         const buildFailed = !buildResult.success || buildOutput.includes("Missing script") || buildOutput.includes("not found") || buildOutput.includes("Cannot find module") || buildOutput.includes("Could not resolve entry") || buildOutput.includes("ERR!");
 
-        if (buildFailed && hasBuildScript) {
-          logs.push(`[5/8] Build script failed, retrying with npx vite build...`);
-          await service.executeCommand(`cd ${appDir} && npm install --save-dev vite @vitejs/plugin-react typescript 2>&1 | tail -3`, 60000);
-          buildResult = await service.executeCommand(buildEnvCmd(appDir, "npx vite build"), 120000);
+        if (buildFailed) {
+          logs.push(`[5/8] Build failed — running auto-diagnose & repair cycle...`);
+          const repairResult = await spaAutoDiagnoseAndRepair(appDir, appName, logs);
+          if (repairResult.repaired) {
+            logs.push(`[5/8] Auto-repair applied — reinstalling & retrying build...`);
+            await service.executeCommand(`cd ${appDir} && rm -rf node_modules && NODE_ENV=development npm install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -5`, 180000);
+            await service.executeCommand(`cd ${appDir} && npm install --save-dev vite @vitejs/plugin-react typescript 2>&1 | tail -3`, 60000);
+          }
+          buildResult = await service.executeCommand(buildEnvCmd(appDir, hasBuildScript ? "npm run build" : "npx vite build"), 120000);
+
+          const retryOutput = buildResult.output || "";
+          const retryFailed = !buildResult.success || retryOutput.includes("ERR!") || retryOutput.includes("Could not resolve");
+          if (retryFailed) {
+            logs.push(`[5/8] Build still failing — final attempt with npx vite build...`);
+            buildResult = await service.executeCommand(buildEnvCmd(appDir, "npx vite build"), 120000);
+          }
         }
 
         const finalBuildOutput = buildResult.output || "";
@@ -606,6 +808,28 @@ export function createDeployMethods(service: SSHService) {
 
         await service.executeCommand(`pm2 delete ${appName} 2>/dev/null; true`, 5000);
         logs.push(`[7/8] PM2: cleaned up (not needed for SPA)`);
+
+        const contentCheck = await postDeployContentCheck(appDir, nginxDomain, serveDirFinal, logs);
+        if (!contentCheck.healthy && contentCheck.issue === "serving-raw-source") {
+          logs.push(`[7b/8] Site is serving raw source code — triggering emergency rebuild...`);
+          const emergencyDiag = await spaAutoDiagnoseAndRepair(appDir, appName, logs);
+          if (emergencyDiag.repaired) {
+            await service.executeCommand(`cd ${appDir} && rm -rf node_modules && NODE_ENV=development npm install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -5`, 180000);
+          }
+          const emergencyBuild = await service.executeCommand(buildEnvCmd(appDir, "npx vite build"), 120000);
+          if (emergencyBuild.success) {
+            const distCheck = await service.executeCommand(`[ -d "${distDir}" ] && echo "DIST_OK" || echo "NO_DIST"`, 5000);
+            if (distCheck.output?.includes("DIST_OK")) {
+              serveDirFinal = distDir;
+              const fixNginx = staticNginxBlock(nginxDomain, serveDirFinal, spaConfigName);
+              await service.writeRemoteFile(`/etc/nginx/sites-available/${spaConfigName}`, fixNginx);
+              await service.executeCommand(`nginx -t 2>&1 && systemctl reload nginx`, 10000);
+              logs.push(`[7b/8] Emergency rebuild successful — now serving dist/`);
+            }
+          } else {
+            logs.push(`[7b/8] Emergency rebuild failed: ${(emergencyBuild.output || "").slice(-200)}`);
+          }
+        }
 
         const healthCheck = await service.executeCommand(
           `curl -s -o /dev/null -w "%{http_code}" -H "Host: ${nginxDomain}" http://127.0.0.1/ 2>/dev/null || echo "000"`,
