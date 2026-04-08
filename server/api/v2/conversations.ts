@@ -2398,12 +2398,14 @@ Ce n'est JAMAIS une invitation à modifier, simplifier, ou refactorer du code.
 # 4. EXÉCUTION (comment tu travailles)
 ###########################################################
 - Chaque réponse est TERMINALE. Pas de "je vais faire", "prochaine étape", "à suivre".
-- Tu appelles les outils MAINTENANT — jusqu'à 12 rounds chaînés si nécessaire.
+- Tu appelles les outils MAINTENANT — jusqu'à 50 rounds chaînés si nécessaire.
 - Tu n'as "fait" quelque chose QUE si un outil a retourné {"success":true}.
 - Si une action échoue → ANALYSE l'erreur, essaie une alternative. Ne répète pas bêtement.
 - Chaîne intelligemment: diagnostic → correction → vérification → rapport.
 - Appelle les outils en PARALLÈLE quand ils sont indépendants (ex: browse_files sur 3 dossiers).
 - Structure ta réponse: contexte → actions → résultats → synthèse.
+- BUDGET DE ROUNDS: Tu as 50 rounds max. Utilise-les intelligemment — max 5 rounds pour le diagnostic, le reste pour l'exécution.
+- EFFICACITÉ: Ne lis JAMAIS un fichier que tu comptes réécrire entièrement. Écris directement.
 
 ###########################################################
 # 5. ANTI-HALLUCINATION (règle #1 absolue)
@@ -2424,6 +2426,13 @@ Workflow OBLIGATOIRE pour modifier du code:
 3. ÉCRIS le code COMPLET — jamais de "// ... reste du code", jamais de troncature.
 4. APPLIQUE via update_file ou apply_patch → vérifie {"success":true}.
 5. JOURNAL: devmax_db insert dans devmax_project_journal.
+
+⚡ SMART_SYNC OBLIGATOIRE POUR MULTI-FICHIERS:
+Quand tu dois créer ou modifier 3+ fichiers, utilise TOUJOURS smart_sync au lieu de create_file/update_file en boucle.
+smart_sync envoie TOUS les fichiers en UN SEUL appel → 1 round au lieu de 15.
+Format: devops_github action="smart_sync", owner="ulyssemdbh-commits", repo="...", branch="main", message="description", files=[{path:"...", content:"..."}, ...]
+EXEMPLE: Pour créer un projet complet (package.json + vite.config.ts + index.html + src/main.tsx + src/App.tsx + src/game/...) → UN SEUL smart_sync avec tous les fichiers.
+NE JAMAIS faire create_file × 15. C'est du gaspillage de rounds.
 
 Règles de qualité:
 - Code production-ready. Pas de TODO, pas de placeholder, pas de mock.
@@ -3291,7 +3300,7 @@ Commence par design_dashboard MAINTENANT.`
           });
           
           let toolRound = 0;
-          const maxToolRounds = devopsCtx ? 12 : 6;
+          const maxToolRounds = devopsCtx ? 50 : 6;
           let consecutiveReadOnlyRounds = 0;
           let totalWriteRoundsInSession = 0;
           let frontendFilesWritten = 0;
@@ -3346,11 +3355,12 @@ Commence par design_dashboard MAINTENANT.`
             const userMsgLower = (body.message || "").toLowerCase();
             const isAnalysisRequest = /analys|audit|explore|inspecte|connais|examine|résumé|summary|review|regarde|check|vérifie|montre|explique|describe|status|état|rapport|report|scan|diagnostic/.test(userMsgLower);
             if (devopsCtx && consecutiveReadOnlyRounds >= 3 && !isAnalysisRequest) {
+              const urgencyLevel = consecutiveReadOnlyRounds >= 5 ? "🚨 CRITIQUE" : "⚠️";
               workingMessages.push({
                 role: "system",
-                content: `⚠️ Tu as fait ${consecutiveReadOnlyRounds} rounds de lecture sans écriture. Si l'utilisateur t'a demandé de MODIFIER du code, passe à l'action avec update_file ou apply_patch. Si l'utilisateur a demandé une ANALYSE ou un AUDIT, continue à lire et présente tes résultats — NE MODIFIE RIEN.`
+                content: `${urgencyLevel} Tu as fait ${consecutiveReadOnlyRounds} rounds de lecture sans écriture. Si l'utilisateur t'a demandé de MODIFIER/CRÉER du code, PASSE À L'ACTION MAINTENANT. Utilise smart_sync pour envoyer TOUS les fichiers en un seul appel. Ne gaspille plus de rounds en diagnostic — tu as assez d'info pour agir. Si l'utilisateur a demandé une ANALYSE ou un AUDIT, continue à lire et présente tes résultats — NE MODIFIE RIEN.`
               });
-              console.log(`[V2-Tools] ⚠️ Read-only streak (${consecutiveReadOnlyRounds} rounds) — soft nudge (analysis: ${isAnalysisRequest})`);
+              console.log(`[V2-Tools] ${urgencyLevel} Read-only streak (${consecutiveReadOnlyRounds} rounds) — nudge (analysis: ${isAnalysisRequest})`);
             }
 
             if (devopsCtx && frontendFilesWritten >= 3 && totalWriteRoundsInSession === toolRound) {
