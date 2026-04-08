@@ -7,22 +7,23 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
     try {
       const registrations = await navigator.serviceWorker.getRegistrations();
       for (const reg of registrations) {
-        if (reg.active?.scriptURL?.endsWith("/sw.js")) {
+        const url = reg.active?.scriptURL || "";
+        if (url.endsWith("/sw-v3.js") || url.endsWith("/sw-v2.js")) {
           await reg.unregister();
-          console.log("[PWA] Unregistered old sw.js");
+          console.log("[PWA] Unregistered old SW:", url);
         }
       }
 
       const cacheKeys = await caches.keys();
       for (const key of cacheKeys) {
-        if (key.includes("ulysse-") && !key.includes("v3")) {
+        if (key.includes("ulysse-") && !key.includes("v4")) {
           await caches.delete(key);
           console.log("[PWA] Deleted old cache:", key);
         }
       }
 
-      const registration = await navigator.serviceWorker.register("/sw-v3.js");
-      console.log("[PWA] Service Worker v3 registered:", registration.scope);
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      console.log("[PWA] Service Worker v4 registered:", registration.scope);
 
       registration.addEventListener("updatefound", () => {
         const newWorker = registration.installing;
