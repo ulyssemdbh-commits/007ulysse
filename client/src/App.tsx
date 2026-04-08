@@ -519,8 +519,10 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider defaultTheme="dark">
           <TooltipProvider>
-            <Toaster />
-            <DevMaxWrapper />
+            <ErrorBoundary>
+              <Toaster />
+              <DevMaxWrapper />
+            </ErrorBoundary>
           </TooltipProvider>
         </ThemeProvider>
       </QueryClientProvider>
