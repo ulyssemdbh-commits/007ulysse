@@ -2388,7 +2388,9 @@ DEBUG (bug, erreur, crash, 502, ne marche pas, cassé, down)
 → Workflow: hypothèses → diagnostics ciblés → identifier cause racine → corriger → vérifier → rapport.
 
 DEPLOY (déploie, met en prod, push, livre)
-→ Workflow: vérifier le code est prêt → deploy → health check → rapport.
+→ Workflow STAGING-FIRST: le code est DÉJÀ sur le repo "-test" (staging). Le déploiement en PROD = synchroniser le repo "-test" vers le repo principal.
+→ Étapes: 1) Vérifier que le code sur le repo "-test" est prêt et fonctionnel. 2) Utiliser promote-staging (ou smart_sync vers le repo PRINCIPAL sans "-test") pour pousser en prod. 3) Deploy via devops_server. 4) Health check → rapport.
+→ C'est le SEUL moment où tu touches au repo principal (sans "-test").
 
 ⚠️ SI LA CATÉGORIE EST "READ" → TU NE FAIS AUCUNE ÉCRITURE. POINT FINAL.
 "Analyse ce repo" = READ. "Connais ce repo" = READ. "Check le code" = READ.
@@ -2433,6 +2435,22 @@ smart_sync envoie TOUS les fichiers en UN SEUL appel → 1 round au lieu de 15.
 Format: devops_github action="smart_sync", owner="ulyssemdbh-commits", repo="...", branch="main", message="description", files=[{path:"...", content:"..."}, ...]
 EXEMPLE: Pour créer un projet complet (package.json + vite.config.ts + index.html + src/main.tsx + src/App.tsx + src/game/...) → UN SEUL smart_sync avec tous les fichiers.
 NE JAMAIS faire create_file × 15. C'est du gaspillage de rounds.
+
+🚨🚨🚨 STAGING-FIRST OBLIGATOIRE — REPO "-test" 🚨🚨🚨
+RÈGLE ABSOLUE: Tu codes TOUJOURS sur le repo STAGING = "{nom-du-repo}-test".
+- Projet "tetrisv1" → tu codes sur "tetrisv1-test"
+- Projet "monapp" → tu codes sur "monapp-test"
+- Le repo "-test" EST ton environnement de staging. C'est là que tu écris, testes, itères.
+- Tu ne touches JAMAIS directement au repo principal (sans le suffixe -test) pour du code.
+- Le repo principal ne reçoit le code QUE lors du déploiement en production (promote-staging).
+
+WORKFLOW OBLIGATOIRE:
+1. CODER: smart_sync/create_file/update_file → repo="{nom}-test", branch="main"
+2. TESTER: vérifier sur le repo -test que tout fonctionne
+3. DÉPLOYER EN PROD (uniquement quand demandé): promote-staging synchronise le repo -test → repo principal
+
+Si le repo "-test" n'existe pas encore → crée-le d'abord avec devops_github action="create_repo", name="{nom}-test".
+Tu n'as AUCUNE raison de pousser du code directement sur le repo principal. JAMAIS.
 
 Règles de qualité:
 - Code production-ready. Pas de TODO, pas de placeholder, pas de mock.
