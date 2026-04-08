@@ -36,6 +36,7 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
   - COBA = client-facing version of Alfred for restaurant tenants on macommande.shop.
 - **Anti-Hallucination System**: Employs strict rules (e.g., forcing `browse_files` before code changes), multi-source verification, and verified memory entries.
 - **Anti-Read-Loop System**: Detects and corrects AI agents performing consecutive read-only operations without progressing to code modification.
+- **Staging-First Policy**: MaxAI codes ALWAYS on `{repo}-test` (staging repo). The main repo only receives code during production deployment via `promote-staging`. Backend `DevOps-StagingGuard` auto-redirects write actions (create_file, update_file, smart_sync, apply_patch) to the `-test` repo when it exists. Escape hatch: commit messages containing `[Staging→Prod]`, `[PROD]`, or `[promote]` bypass the guard for production deploys.
 
 ### Commax — Community Management
 - **Purpose**: Full community management platform propulsé par Ulysse. Conçu for mono-utilisateur with future multi-tenant architecture.
@@ -57,6 +58,7 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 - A multi-tenant SaaS DevOps dashboard for project management with PIN-based authentication and project isolation.
 - **Tenant Architecture**: Enforces project ownership via `tenant_id` or fingerprint.
 - **Deployment System**: Staging/production pipeline, URL auto-generation, Cloudflare DNS automation, and CI/CD via GitHub webhooks. **Test Protocol**: Automated PRE-deploy (lint, typecheck, unit tests) and POST-deploy (PM2, HTTP, nginx, SSL, error logs) tests run before/after every staging and production deployment. Tests can also be triggered on-demand via `/run-tests-protocol` API or from DevMax/DevOps chat (`run_tests` with `command: "protocol"`).
+- **Deploy Isolation**: `enforceAppIsolation()` in `deploy.ts` blocks any non-Ulysse caller from touching `/var/www/ulysse/`. DevMax projects always deploy to `/var/www/apps/<name>`. `deleteApp` also blocks deletion of protected apps (ulysse, mdbhdev, deploy-webhook). Dist backup/restore on build failure prevents broken builds from destroying production assets.
 - **SPA Auto-Diagnose & Repair** (`deploy.ts`): Before and after SPA builds, automatically detects and fixes: missing entry points (main.tsx), missing vite.config.ts, missing tsconfig.json, outdated deps (React 17→18, Vite 2→5), missing peer deps, broken index.html references. Post-deploy content check detects if raw source is being served instead of built dist/ and triggers emergency rebuild.
 - **LivePreviewPanel Error Handling**: Iframe preview shows loading state, detects load failures (502, X-Frame-Options blocks), displays clear error message with "Open in new tab" and "Retry" buttons instead of blank/forbidden icon.
 - **DGM (Dev God Mode) V2 Enhancements** (`dgmPipelineOrchestrator.ts`): 15 actions including rollback. REPO_APP_MAP covers all repos (ulysseproject→ulysse, 007ulysse, 007ulysse-dev, horlogemax, mdbhdev). Concrete rollback via `runRollback()` (revert PR + redeploy app). Discord notifications auto on every pipeline completion/failure. Governance lastUpdated: 2026-04-07.
@@ -91,8 +93,12 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 
 ### DevOps Librairie-Test & Fichiers-Test
 - **Librairie tab** (prod): Read-only file browser.
-- **Librairie-Test tab** (staging): Full file browser on the `staging` branch. Editable by Ulysse — view, edit, commit, and create files.
-- **Fichiers-Test**: Available in both DevOpsMax and DevOpsIris for staging branch operations.
+- **Librairie-Test tab** (staging): Full file browser supporting two staging strategies:
+  1. **Branch staging**: Traditional `staging` branch in the main repo.
+  2. **Test repo** (`{repo}-test`): Separate `-test` repo used as staging when no `staging` branch exists. Code lives in the test repo's default branch, then gets synced to the main repo for production via `/promote-staging`.
+- **Auto-detection**: `/staging-info` endpoint detects which strategy applies. Routes `/tree/staging`, `/contents/*?ref=staging`, and `PUT /contents/*` with `branch=staging` automatically redirect to the `-test` repo when appropriate.
+- **Promote staging**: `POST /promote-staging` handles both strategies — branch merge (PR staging→main) or test-repo sync (file-by-file copy from `-test` to main repo).
+- **Fichiers-Test**: Available in both DevOpsMax and DevOpsIris for staging operations.
 
 ### SUGU — Restaurant Supply Management
 - Daily grocery list management with categories, zones, checked items, comments, future items scheduling, and automated daily email. Weekly consolidation.
