@@ -450,6 +450,28 @@ router.get("/repo", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/staging-info", async (req: Request, res: Response) => {
+  try {
+    const repo = await getProjectRepo(req, res);
+    if (!repo) return;
+    const branches = await withRepoToken(repo.githubToken, () => githubService.listBranches(repo.owner, repo.name));
+    const hasStagingBranch = branches.some((b: any) => b.name === "staging");
+    if (hasStagingBranch) {
+      return res.json({ hasStagingBranch: true, useTestRepo: false, stagingRepo: null, stagingBranch: "staging" });
+    }
+    const testRepoName = `${repo.name}-test`;
+    try {
+      const testRepo = await withRepoToken(repo.githubToken, () => githubService.getRepo(repo.owner, testRepoName));
+      if (testRepo) {
+        return res.json({ hasStagingBranch: false, useTestRepo: true, stagingRepo: `${repo.owner}/${testRepoName}`, stagingBranch: testRepo.default_branch || "main" });
+      }
+    } catch {}
+    res.json({ hasStagingBranch: false, useTestRepo: false, stagingRepo: null, stagingBranch: null });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get("/branches", async (req: Request, res: Response) => {
   try {
     const repo = await getProjectRepo(req, res);
@@ -521,9 +543,29 @@ router.get("/tree/:branch", async (req: Request, res: Response) => {
   try {
     const repo = await getProjectRepo(req, res);
     if (!repo) return;
+    const branch = req.params.branch;
+    let targetOwner = repo.owner;
+    let targetName = repo.name;
+    let targetBranch = branch;
+
+    if (branch === "staging") {
+      const branches = await withRepoToken(repo.githubToken, () => githubService.listBranches(repo.owner, repo.name));
+      const hasStagingBranch = branches.some((b: any) => b.name === "staging");
+      if (!hasStagingBranch) {
+        const testRepoName = `${repo.name}-test`;
+        try {
+          const testRepo = await withRepoToken(repo.githubToken, () => githubService.getRepo(repo.owner, testRepoName));
+          if (testRepo) {
+            targetName = testRepoName;
+            targetBranch = testRepo.default_branch || "main";
+          }
+        } catch {}
+      }
+    }
+
     const tree = await withRepoToken(repo.githubToken, async () => {
-      const branchData = await githubService.getBranch(repo.owner, repo.name, req.params.branch);
-      return githubService.getTree(repo.owner, repo.name, branchData.commit.sha);
+      const branchData = await githubService.getBranch(targetOwner, targetName, targetBranch);
+      return githubService.getTree(targetOwner, targetName, branchData.commit.sha);
     });
     res.json(tree);
   } catch (error: any) {
@@ -537,8 +579,26 @@ router.get("/contents/*", async (req: Request, res: Response) => {
     if (!repo) return;
     const filePath = req.params[0];
     const { ref } = req.query;
+    let targetName = repo.name;
+    let targetRef = ref as string;
+
+    if (ref === "staging") {
+      const branches = await withRepoToken(repo.githubToken, () => githubService.listBranches(repo.owner, repo.name));
+      const hasStagingBranch = branches.some((b: any) => b.name === "staging");
+      if (!hasStagingBranch) {
+        const testRepoName = `${repo.name}-test`;
+        try {
+          const testRepo = await withRepoToken(repo.githubToken, () => githubService.getRepo(repo.owner, testRepoName));
+          if (testRepo) {
+            targetName = testRepoName;
+            targetRef = testRepo.default_branch || "main";
+          }
+        } catch {}
+      }
+    }
+
     const content = await withRepoToken(repo.githubToken, () =>
-      githubService.getFileContent(repo.owner, repo.name, filePath, ref as string)
+      githubService.getFileContent(repo.owner, targetName, filePath, targetRef)
     );
     res.json(content);
   } catch (error: any) {
@@ -553,14 +613,31 @@ router.put("/contents/*", async (req: Request, res: Response) => {
     const filePath = req.params[0];
     const { content, message, branch, sha, isBase64 } = req.body;
 
-    const targetBranch = branch || "main";
+    let targetBranch = branch || "main";
+    let targetRepoName = repo.name;
+
+    if (branch === "staging") {
+      const branches = await withRepoToken(repo.githubToken, () => githubService.listBranches(repo.owner, repo.name));
+      const hasStagingBranch = branches.some((b: any) => b.name === "staging");
+      if (!hasStagingBranch) {
+        const testRepoName = `${repo.name}-test`;
+        try {
+          const testRepo = await withRepoToken(repo.githubToken, () => githubService.getRepo(repo.owner, testRepoName));
+          if (testRepo) {
+            targetRepoName = testRepoName;
+            targetBranch = testRepo.default_branch || "main";
+          }
+        } catch {}
+      }
+    }
+
     if (content) {
       const { devopsIntelligenceEngine } = await import("../services/devopsIntelligenceEngine");
       const decodedContent = isBase64 ? Buffer.from(content, "base64").toString("utf-8") : content;
       let originalContent: string | undefined;
       try {
         const existing = await withRepoToken(repo.githubToken, () =>
-          githubService.getFileContent(repo.owner, repo.name, filePath, targetBranch)
+          githubService.getFileContent(repo.owner, targetRepoName, filePath, targetBranch)
         );
         if ((existing as any)?.content) {
           originalContent = Buffer.from((existing as any).content, "base64").toString("utf-8");
@@ -613,11 +690,11 @@ router.put("/contents/*", async (req: Request, res: Response) => {
 
     const result = await withRepoToken(repo.githubToken, async () => {
       if (isBase64) {
-        return githubService.createOrUpdateFileRaw(repo.owner, repo.name, filePath, content, message, branch, sha);
+        return githubService.createOrUpdateFileRaw(repo.owner, targetRepoName, filePath, content, message, targetBranch, sha);
       }
-      return githubService.createOrUpdateFile(repo.owner, repo.name, filePath, content, message, branch, sha);
+      return githubService.createOrUpdateFile(repo.owner, targetRepoName, filePath, content, message, targetBranch, sha);
     });
-    await logDevmaxActivity(req, "update_file", filePath, { branch });
+    await logDevmaxActivity(req, "update_file", filePath, { branch: targetBranch, repo: targetRepoName });
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -805,6 +882,90 @@ router.put("/pulls/:pull_number/merge", async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/promote-staging", async (req: Request, res: Response) => {
+  try {
+    const repo = await getProjectRepo(req, res);
+    if (!repo) return;
+
+    const branches = await withRepoToken(repo.githubToken, () => githubService.listBranches(repo.owner, repo.name));
+    const hasStagingBranch = branches.some((b: any) => b.name === "staging");
+
+    if (hasStagingBranch) {
+      const pr = await withRepoToken(repo.githubToken, () =>
+        githubService.createPullRequest(
+          repo.owner, repo.name,
+          `[Deploy] Staging → Prod (${new Date().toLocaleDateString("fr-FR")})`,
+          "Déploiement depuis staging.",
+          "staging", "main"
+        )
+      );
+      const prNumber = (pr as any).number;
+      await withRepoToken(repo.githubToken, () =>
+        githubService.mergePullRequest(repo.owner, repo.name, prNumber, "merge")
+      );
+      await logDevmaxActivity(req, "promote_staging", "branch_merge", { prNumber });
+      return res.json({ success: true, method: "branch_merge", prNumber });
+    }
+
+    const testRepoName = `${repo.name}-test`;
+    let testRepo: any;
+    try {
+      testRepo = await withRepoToken(repo.githubToken, () => githubService.getRepo(repo.owner, testRepoName));
+    } catch {
+      return res.status(404).json({ error: "Ni branche staging ni repo -test trouvé" });
+    }
+
+    const testBranch = testRepo.default_branch || "main";
+    const testTree = await withRepoToken(repo.githubToken, () => githubService.getTree(repo.owner, testRepoName, testBranch));
+    const files: { path: string; content: string }[] = [];
+
+    for (const item of (testTree as any).tree || []) {
+      if (item.type !== "blob") continue;
+      try {
+        const fileData = await withRepoToken(repo.githubToken, () =>
+          githubService.getFileContent(repo.owner, testRepoName, item.path, testBranch)
+        );
+        files.push({ path: item.path, content: (fileData as any).content || "" });
+      } catch {}
+    }
+
+    let mainBranch = "main";
+    try {
+      const mainRepo = await withRepoToken(repo.githubToken, () => githubService.getRepo(repo.owner, repo.name));
+      mainBranch = (mainRepo as any).default_branch || "main";
+    } catch {}
+
+    let synced = 0;
+    for (const file of files) {
+      try {
+        let existingSha: string | undefined;
+        try {
+          const existing = await withRepoToken(repo.githubToken, () =>
+            githubService.getFileContent(repo.owner, repo.name, file.path, mainBranch)
+          );
+          existingSha = (existing as any).sha;
+        } catch {}
+        await withRepoToken(repo.githubToken, () =>
+          githubService.createOrUpdateFileRaw(
+            repo.owner, repo.name, file.path, file.content,
+            `[Staging→Prod] Sync ${file.path}`, mainBranch, existingSha
+          )
+        );
+        synced++;
+      } catch {}
+    }
+
+    await logDevmaxActivity(req, "promote_staging", "test_repo_sync", { testRepo: testRepoName, filesSynced: synced });
+    res.json({ success: true, method: "test_repo_sync", testRepo: testRepoName, filesSynced: synced, totalFiles: files.length });
+  } catch (error: any) {
+    const msg = error.message || "";
+    if (msg.includes("422") || msg.toLowerCase().includes("no commits") || msg.toLowerCase().includes("already")) {
+      return res.json({ success: true, method: "already_up_to_date", message: "Staging est déjà à jour avec la prod." });
+    }
+    res.status(500).json({ error: msg });
   }
 });
 
