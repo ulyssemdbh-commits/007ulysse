@@ -29,6 +29,18 @@ import {
   useDevmaxAuth,
   ChatMessage,
 } from "./types";
+import { MarkdownContent } from "./AuthScreens";
+
+const QUICK_COMMANDS: { icon: string; label: string; cmd: string; tab?: string; color: string }[] = [
+  { icon: "🔍", label: "Status repo", cmd: "Donne-moi le status complet du repo: branches actives, derniers commits, PRs ouvertes, workflows CI/CD, et santé générale.", color: "emerald" },
+  { icon: "🚀", label: "Deploy staging", cmd: "Déploie la branche main en staging. Lance le pipeline complet: preflight → backup → build → test → security → deploy → health check. Vérifie que l'URL staging est opérationnelle après.", color: "blue" },
+  { icon: "⬆️", label: "Promote prod", cmd: "Promote le staging vers la production. Fais un backup avant, puis vérifie que l'URL production est opérationnelle après avec url_diagnose_all.", color: "purple" },
+  { icon: "🔄", label: "Rollback", cmd: "Liste les snapshots de déploiement disponibles et propose un rollback si nécessaire.", color: "amber" },
+  { icon: "🛡️", label: "Security scan", cmd: "Lance un scan de sécurité complet: secrets exposés, vulnérabilités des dépendances, headers HTTP, certificat SSL, patterns dangereux dans le code.", color: "red" },
+  { icon: "📊", label: "Perf audit", cmd: "Analyse les performances de l'app: profile_app (CPU/mem/heap/TTFB), bundle_analyze (tailles, gzip, deps inutiles), et architecture_analyze (complexité, couplage, circular deps).", color: "cyan" },
+  { icon: "🔧", label: "Fix URLs", cmd: "Lance url_diagnose_all pour diagnostiquer et corriger automatiquement TOUTES les URLs du projet (staging + production). Corrige les 502, 404, Nginx, PM2, SSL.", color: "orange" },
+  { icon: "📝", label: "Full audit", cmd: "Audit profond complet du projet: browse_files, analyse architecture, security_scan, db_inspect, performance profile, CI/CD status, et synthèse avec recommandations.", color: "violet" },
+];
 
 const TAB_SUGGESTIONS: Record<string, { label: string; cmd: string }[]> = {
   overview: [

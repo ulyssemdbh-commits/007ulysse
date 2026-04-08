@@ -150,6 +150,10 @@ export function createAppMethods(service: SSHService) {
     },
 
     async deleteApp(appName: string): Promise<string> {
+      const PROTECTED_DELETE = ["ulysse", "mdbhdev", "deploy-webhook"];
+      if (PROTECTED_DELETE.includes(appName?.toLowerCase()?.trim())) {
+        return `BLOCKED: "${appName}" is a protected app and cannot be deleted.`;
+      }
       const result = await service.executeCommand(
         `pm2 delete ${appName} 2>/dev/null; rm -f /etc/nginx/sites-enabled/${appName} /etc/nginx/sites-available/${appName}; nginx -t 2>&1 && systemctl reload nginx; rm -rf /var/www/apps/${appName}; echo "App ${appName} deleted"`,
         15000

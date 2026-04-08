@@ -170,7 +170,6 @@ export default function DevOps() {
   const [hetznerDeploying, setHetznerDeploying] = useState(false);
   const [hetznerDeployLog, setHetznerDeployLog] = useState<string | null>(null);
   const [commitPage, setCommitPage] = useState(1);
-  const [fileSearchQuery, setFileSearchQuery] = useState("");
   const [rollbackBranch, setRollbackBranch] = useState("");
   const [rollbackConfirmSha, setRollbackConfirmSha] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);

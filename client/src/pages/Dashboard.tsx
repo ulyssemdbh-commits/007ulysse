@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useConversations, useCreateConversation } from "@/hooks/use-chat";
+import { useConversations, useConversation, useCreateConversation } from "@/hooks/use-chat";
 import { useVoice } from "@/hooks/use-voice";
 import { useDashboardVoice } from "@/hooks/useDashboardVoice";
 import { useDashboardSettings } from "@/hooks/useDashboardSettings";
@@ -50,6 +50,7 @@ export default function Dashboard() {
     const saved = localStorage.getItem("ulysse-active-conversation");
     return saved ? parseInt(saved, 10) : null;
   });
+  const { data: activeConvData } = useConversation(activeConversationId);
   const [input, setInput] = useState("");
   const [burgerMenuOpen, setBurgerMenuOpen] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
@@ -394,7 +395,7 @@ export default function Dashboard() {
   }, [isListening, isSpeaking, stopListening, stopSpeaking, startListening]);
 
   const activeConversation = conversations?.find(c => c.id === activeConversationId);
-  const lastMessages = activeConversation?.messages || [];
+  const lastMessages = activeConvData?.messages || [];
   const isActive = isStreaming || isSpeaking || isListening;
 
   useEffect(() => {

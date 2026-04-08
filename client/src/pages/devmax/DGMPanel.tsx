@@ -264,7 +264,7 @@ export function DGMPanel() {
   );
 }
 
-function PreviewPanel() {
+export function PreviewPanel() {
   const { activeProject } = useDevmaxAuth();
   const pid = activeProject?.id || "";
   const slug = activeProject?.deploy_slug || activeProject?.name?.toLowerCase().replace(/[^a-z0-9]/g, "-") || "";
@@ -361,7 +361,7 @@ function PreviewPanel() {
   );
 }
 
-function JournalPanel() {
+export function JournalPanel() {
   const { activeProject } = useDevmaxAuth();
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -465,7 +465,7 @@ function JournalPanel() {
   );
 }
 
-const QUICK_COMMANDS: { icon: string; label: string; cmd: string; tab?: string; color: string }[] = [
+export const QUICK_COMMANDS: { icon: string; label: string; cmd: string; tab?: string; color: string }[] = [
   { icon: "🔍", label: "Status repo", cmd: "Donne-moi le status complet du repo: branches actives, derniers commits, PRs ouvertes, workflows CI/CD, et santé générale.", color: "emerald" },
   { icon: "🚀", label: "Deploy staging", cmd: "Déploie la branche main en staging. Lance le pipeline complet: preflight → backup → build → test → security → deploy → health check. Vérifie que l'URL staging est opérationnelle après.", color: "blue" },
   { icon: "⬆️", label: "Promote prod", cmd: "Promote le staging vers la production. Fais un backup avant, puis vérifie que l'URL production est opérationnelle après avec url_diagnose_all.", color: "purple" },

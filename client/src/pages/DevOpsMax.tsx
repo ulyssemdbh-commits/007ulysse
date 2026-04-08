@@ -63,7 +63,7 @@ import { LivePreviewPanel, GitHubConnectionPanel, ConnectedReposSection } from "
 import { DeployPanel, DeployRollbackSection, CICDPanel } from "./devmax/DeployPanels";
 import { FileBrowserPanel, StagingFileBrowserPanel } from "./devmax/FileBrowserPanels";
 import { CostsDashboardPanel, GitHubEventsPanel, HealthChecksPanel, SecretsManagerPanel, DeployHistoryPanel, RollbackPanel } from "./devmax/MiscPanels";
-import { DGMPanel } from "./devmax/DGMPanel";
+import { DGMPanel, PreviewPanel, JournalPanel } from "./devmax/DGMPanel";
 import { DevOpsChatPanel } from "./devmax/ChatPanel";
 import { OverviewPanel, EnvVarsPanel, NotificationsPanel, CustomDomainsPanel, LogsPanel } from "./devmax/SettingsPanels";
 import { MetricsPanel, PlanBillingPanel } from "./devmax/MonitoringPanels";

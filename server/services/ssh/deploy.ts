@@ -1,6 +1,29 @@
 import type { SSHService } from "./core";
 import { staticNginxBlock, proxyNginxBlock, pm2EcosystemConfig, sslCertForDomain, normalizeNginxName, nginxCleanupCmd, resolveAppDomain } from "./helpers";
 
+const PROTECTED_PATHS = ["/var/www/ulysse"];
+const APPS_ROOT = "/var/www/apps";
+
+function isProtectedPath(dir: string): boolean {
+  const normalized = dir.replace(/\/+$/, "");
+  return PROTECTED_PATHS.some(p => normalized === p || normalized.startsWith(p + "/"));
+}
+
+function enforceAppIsolation(appName: string, caller?: string): { allowed: boolean; appDir: string; reason?: string } {
+  const name = appName?.toLowerCase()?.trim();
+  if (!name || name === "undefined" || name === "null") {
+    return { allowed: false, appDir: "", reason: `Invalid app name: "${appName}"` };
+  }
+  if (name === "ulysse" && caller !== "ulysse") {
+    return { allowed: false, appDir: "/var/www/ulysse", reason: `BLOCKED: Only Ulysse can deploy to /var/www/ulysse. DevMax projects must use /var/www/apps/<name>.` };
+  }
+  const appDir = name === "ulysse" ? "/var/www/ulysse" : `${APPS_ROOT}/${name}`;
+  if (isProtectedPath(appDir) && caller !== "ulysse") {
+    return { allowed: false, appDir, reason: `BLOCKED: ${appDir} is a protected path. DevMax cannot modify it.` };
+  }
+  return { allowed: true, appDir };
+}
+
 export function createDeployMethods(service: SSHService) {
   const LOCK_TIMEOUT_MIN = 15;
 
@@ -468,10 +491,11 @@ export function createDeployMethods(service: SSHService) {
     }): Promise<{ success: boolean; message: string; url?: string; port?: number; httpCode?: string; logs?: string[] }> {
       const { repoUrl, appName: rawAppName, branch = "main", buildCmd, startCmd, envVars = {}, domain, createDb, dbName, dbUser, dbPassword, ssl, caller = "ulysse", copyEnvFrom, devmaxProjectId } = params;
       const appName = rawAppName?.toLowerCase()?.trim();
-      if (!appName || appName === "undefined" || appName === "null") {
-        return { success: false, message: `Invalid app name: "${rawAppName}". A valid app name is required.` };
+      const isolation = enforceAppIsolation(appName || "", caller);
+      if (!isolation.allowed) {
+        return { success: false, message: isolation.reason || "Blocked by isolation policy" };
       }
-      const appDir = `/var/www/apps/${appName}`;
+      const appDir = isolation.appDir;
       const logs: string[] = [];
 
       const lockAcquired = await acquireDeployLock(appName, logs);
@@ -748,6 +772,12 @@ export function createDeployMethods(service: SSHService) {
           logs.push(`[4b/8] Auto-installed missing deps: ${missingCoreDeps.join(", ")}`);
         }
 
+        const spaDistBackup = `/tmp/dist-backup-${appName}-spa-${Date.now()}`;
+        await service.executeCommand(
+          `[ -d "${appDir}/dist" ] && cp -a "${appDir}/dist" "${spaDistBackup}" && echo "BACKUP_OK" || echo "NO_DIST"`,
+          30000
+        );
+
         const hasBuildScript = !!pkgScripts.build;
         let buildResult: any;
         if (hasBuildScript) {
@@ -782,7 +812,14 @@ export function createDeployMethods(service: SSHService) {
         const finalBuildOutput = buildResult.output || "";
         const finalBuildFailed = !buildResult.success || finalBuildOutput.includes("ERR!") || finalBuildOutput.includes("error TS");
         logs.push(`[5/8] Build: ${!finalBuildFailed ? "OK" : buildResult.error || finalBuildOutput.slice(-200) || "failed"}`);
-        if (finalBuildFailed) return { success: false, message: `Build failed:\n${finalBuildOutput.slice(-500)}`, logs };
+        if (finalBuildFailed) {
+          logs.push(`[5/8] Restoring dist from backup...`);
+          await service.executeCommand(
+            `[ -d "${spaDistBackup}" ] && rm -rf "${appDir}/dist" && cp -a "${spaDistBackup}" "${appDir}/dist" && echo "RESTORED" || echo "NO_BACKUP"`,
+            30000
+          );
+          return { success: false, message: `Build failed (dist restored from backup):\n${finalBuildOutput.slice(-500)}`, logs };
+        }
 
         const buildOutputCheck = await service.executeCommand(
           `[ -d "${distDir}" ] && echo "DIST_OK" || ([ -d "${appDir}/build" ] && echo "BUILD_OK" || echo "NO_OUTPUT")`, 5000
@@ -959,6 +996,13 @@ export function createDeployMethods(service: SSHService) {
       await service.writeRemoteFile(`${appDir}/.env`, envExportLine);
       await service.writeRemoteFile(`${appDir}/ecosystem.config.cjs`, ecosystemContent);
 
+      const distBackupDir = `/tmp/dist-backup-${appName}-${Date.now()}`;
+      await service.executeCommand(
+        `[ -d "${appDir}/dist" ] && cp -a "${appDir}/dist" "${distBackupDir}" && echo "BACKUP_OK" || echo "NO_DIST_TO_BACKUP"`,
+        30000
+      );
+      logs.push(`[6b/10] Dist backup: ${distBackupDir}`);
+
       logs.push(`[7/10] Building...`);
       let buildResult = await service.executeCommand(
         buildEnvCmd(appDir, actualBuildCmd),
@@ -985,7 +1029,13 @@ export function createDeployMethods(service: SSHService) {
           buildResult = await service.executeCommand(buildEnvCmd(appDir, actualBuildCmd), 180000);
         }
         if (!buildResult.success) {
-          return { success: false, message: `Deployment failed at build phase:\n${buildResult.error}\n${buildResult.output}`, logs };
+          logs.push(`[7/10] Build FAILED — restoring dist from backup...`);
+          const restoreResult = await service.executeCommand(
+            `[ -d "${distBackupDir}" ] && rm -rf "${appDir}/dist" && cp -a "${distBackupDir}" "${appDir}/dist" && echo "RESTORED" || echo "NO_BACKUP"`,
+            30000
+          );
+          logs.push(`[7/10] Dist restore: ${restoreResult.output?.trim()}`);
+          return { success: false, message: `Deployment failed at build phase (dist restored from backup):\n${buildResult.error}\n${buildResult.output}`, logs };
         }
       }
 
@@ -1553,9 +1603,13 @@ export function createDeployMethods(service: SSHService) {
       };
     },
 
-    async updateApp(appName: string, branch = "main"): Promise<{ success: boolean; message: string; logs: string[] }> {
+    async updateApp(appName: string, branch = "main", caller: "max" | "ulysse" | "iris" = "ulysse"): Promise<{ success: boolean; message: string; logs: string[] }> {
       const logs: string[] = [];
-      const appDir = appName === "ulysse" ? "/var/www/ulysse" : `/var/www/apps/${appName}`;
+      const isolation = enforceAppIsolation(appName, caller);
+      if (!isolation.allowed) {
+        return { success: false, message: isolation.reason || "Blocked by isolation policy", logs };
+      }
+      const appDir = isolation.appDir;
 
       const checkDir = await service.executeCommand(`[ -d "${appDir}/.git" ] && echo "GIT_OK" || echo "NO_GIT"`, 5000);
       if (!checkDir.success || checkDir.output.trim() !== "GIT_OK") {
