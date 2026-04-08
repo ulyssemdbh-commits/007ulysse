@@ -121,11 +121,11 @@ function DevmaxDashboard() {
   const hasRepo = !!activeProject?.repo_owner && !!activeProject?.repo_name;
 
   return (
-    <div className="min-h-screen bg-background pt-safe" data-testid="devops-max-page">
+    <div className="min-h-screen bg-[#060b14] text-emerald-50 pt-safe" data-testid="devops-max-page">
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-cyan-500/5 to-blue-500/5" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/8 rounded-full blur-3xl" />
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-cyan-500/8 rounded-full blur-3xl" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#10b98108_1px,transparent_1px),linear-gradient(to_bottom,#10b98108_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-500/6 rounded-full blur-[128px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/6 rounded-full blur-[128px]" />
 
         <div className="relative max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -218,7 +218,7 @@ function DevmaxDashboard() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
-                <TabsList className="inline-flex w-max sm:w-full sm:flex-wrap justify-start rounded-xl bg-muted/50 p-1">
+                <TabsList className="inline-flex w-max sm:w-full sm:flex-wrap justify-start rounded-xl bg-black/40 border border-emerald-500/20 p-1">
                   <TabsTrigger value="overview" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-overview">
                     <Activity className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Vue d'ensemble</span><span className="sm:hidden">Aperçu</span>
                   </TabsTrigger>

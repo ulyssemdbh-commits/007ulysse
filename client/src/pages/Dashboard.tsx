@@ -428,41 +428,11 @@ export default function Dashboard() {
   }, [input, isStreaming, isSpeaking, panels.showHistory, sttSupported, toggleListening, stopSpeaking, handleSend, createConversation]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden relative">
+    <div className="min-h-screen bg-[#0a0e1a] text-cyan-50 flex flex-col overflow-x-hidden relative">
       <div className="fixed inset-0 pointer-events-none z-0">
-        {profileGradient ? (
-          <motion.div
-            className="absolute inset-0 transition-all duration-1000"
-            style={{ background: profileGradient }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1.5 }}
-          />
-        ) : (
-          <>
-            <motion.div 
-              className={cn(
-                "absolute inset-0 bg-gradient-to-b transition-all duration-1000",
-                ambiance.time.gradientFrom,
-                ambiance.time.gradientVia,
-                ambiance.time.gradientTo
-              )}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 2 }}
-            />
-            <motion.div 
-              className={cn(
-                "absolute inset-0 bg-gradient-to-br transition-all duration-500",
-                ambiance.mood.gradientFrom,
-                ambiance.mood.gradientVia,
-                ambiance.mood.gradientTo
-              )}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1 }}
-            />
-          </>
-        )}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#00d4ff08_1px,transparent_1px),linear-gradient(to_bottom,#00d4ff08_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/8 rounded-full blur-[128px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/8 rounded-full blur-[128px]" />
       </div>
 
       <DashboardHeader
@@ -504,7 +474,7 @@ export default function Dashboard() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="bg-secondary/30 backdrop-blur-sm px-2 md:px-4 py-1.5 flex items-center justify-center gap-3 md:gap-4 text-xs md:text-sm"
+            className="bg-black/40 backdrop-blur-sm border-b border-cyan-500/20 px-2 md:px-4 py-1.5 flex items-center justify-center gap-3 md:gap-4 text-xs md:text-sm"
           >
             {isListening && (
               <motion.div
@@ -583,7 +553,7 @@ export default function Dashboard() {
           <motion.div 
             className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] md:w-[350px] h-[200px] md:h-[350px] rounded-full"
             style={{
-              background: `radial-gradient(circle, ${moodColors.glow}20 0%, ${moodColors.glow}08 40%, transparent 70%)`,
+              background: `radial-gradient(circle, #00d4ff20 0%, #00d4ff08 40%, transparent 70%)`,
               filter: 'blur(60px)'
             }}
           />
@@ -611,7 +581,7 @@ export default function Dashboard() {
             className="text-center mb-4 md:mb-6 z-10"
             animate={{ opacity: isActive ? 1 : 0.7 }}
           >
-            <h2 className="text-lg md:text-2xl font-semibold text-foreground mb-2 flex items-center justify-center gap-2">
+            <h2 className="text-lg md:text-2xl font-semibold text-cyan-100 mb-2 flex items-center justify-center gap-2 drop-shadow-[0_0_8px_rgba(0,212,255,0.3)]">
               {isSpeaking ? `${personaName} parle` : isListening ? "Je vous écoute" : isStreaming ? (
                 <>
                   <span>{personaName} réfléchit</span>

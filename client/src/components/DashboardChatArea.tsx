@@ -65,7 +65,11 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
 
   return (
     <>
-      <Card className="w-full lg:flex-1 min-w-0 max-w-full glass-card border-white/10 mb-4 md:mb-6 z-10 overflow-hidden">
+      <Card className="w-full lg:flex-1 min-w-0 max-w-full border border-cyan-500/30 bg-black/40 backdrop-blur-md mb-4 md:mb-6 z-10 overflow-hidden shadow-[0_0_30px_rgba(0,212,255,0.05)] relative">
+        <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-cyan-400 rounded-tl-xl" />
+        <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-cyan-400 rounded-tr-xl" />
+        <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-cyan-400 rounded-bl-xl" />
+        <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-cyan-400 rounded-br-xl" />
         <div className="h-[400px] md:h-[500px] overflow-y-auto scroll-smooth" ref={scrollRef}>
           <div className="p-4 md:p-5 space-y-3 w-full" style={{ maxWidth: '100%', boxSizing: 'border-box' }}>
             {lastMessages.length === 0 && !streamingContent && (
@@ -192,8 +196,8 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
               el.style.height = Math.min(el.scrollHeight, 160) + "px";
             }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-            placeholder={isListening ? "Parlez..." : preThinkResult?.isReading ? `${personaName} lit...` : "Ecrivez votre message..."}
-            className="flex-1 min-h-[48px] max-h-[160px] glass-input border-white/10 rounded-2xl text-base px-5 py-3 resize-none overflow-y-auto"
+            placeholder={isListening ? "Parlez..." : preThinkResult?.isReading ? `${personaName} lit...` : "Parle à Ulysse..."}
+            className="flex-1 min-h-[48px] max-h-[160px] bg-black/50 border border-cyan-500/30 text-cyan-100 placeholder:text-cyan-800 rounded-2xl text-base px-5 py-3 resize-none overflow-y-auto outline-none focus:border-cyan-400 font-mono tracking-wide"
             disabled={isStreaming}
             onFocus={() => { if (isListening) stopListening(); }}
             rows={1}

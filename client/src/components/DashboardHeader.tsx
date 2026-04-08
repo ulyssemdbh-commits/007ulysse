@@ -65,7 +65,8 @@ export function DashboardHeader(props: DashboardHeaderProps) {
   } = props;
 
   return (
-    <header className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/10 glass-panel sticky top-0 z-50 ios-header-safe">
+    <header className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border border-cyan-500/30 bg-black/40 backdrop-blur-md sticky top-0 z-50 ios-header-safe relative overflow-hidden">
+      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-50" />
       <div className="flex items-center gap-3">
         <div
           className={cn(
@@ -137,7 +138,7 @@ export function DashboardHeader(props: DashboardHeaderProps) {
           {isInCall ? <PhoneOff className="w-4 h-4 pointer-events-none" /> : <Phone className="w-4 h-4 pointer-events-none" />}
         </div>
 
-        <div className="w-px h-6 bg-border mx-1" />
+        <div className="w-px h-6 bg-cyan-900/50 mx-1" />
 
         <div className="hidden lg:flex items-center gap-1">
           <VoiceSettingsPanel />
