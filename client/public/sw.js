@@ -1,6 +1,6 @@
-const CACHE_NAME = "ulysse-v3";
-const STATIC_CACHE = "ulysse-static-v3";
-const DYNAMIC_CACHE = "ulysse-dynamic-v3";
+const CACHE_NAME = "ulysse-v4";
+const STATIC_CACHE = "ulysse-static-v4";
+const DYNAMIC_CACHE = "ulysse-dynamic-v4";
 
 const STATIC_ASSETS = [
   "/",
@@ -14,7 +14,7 @@ const API_CACHE_ROUTES = [
 ];
 
 self.addEventListener("install", (event) => {
-  console.log("[SW] Installing service worker");
+  console.log("[SW] Installing service worker v4");
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
@@ -26,7 +26,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  console.log("[SW] Activating service worker");
+  console.log("[SW] Activating service worker v4");
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
@@ -46,7 +46,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   
-  // Dynamic manifest based on client URL for iOS PWA
   if (url.pathname === "/manifest.json") {
     event.respondWith(
       clients.matchAll({ type: "window" }).then((windowClients) => {
@@ -76,7 +75,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   
-  if (url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$/)) {
+  if (url.pathname.startsWith("/assets/") && url.pathname.match(/\.(js|css)$/)) {
+    event.respondWith(networkFirstWithCache(event.request));
+    return;
+  }
+  
+  if (url.pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|woff2?)$/)) {
     event.respondWith(cacheFirstWithNetwork(event.request));
     return;
   }
