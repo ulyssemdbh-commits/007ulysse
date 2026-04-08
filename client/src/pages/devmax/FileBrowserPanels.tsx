@@ -204,18 +204,23 @@ export function StagingFileBrowserPanel() {
   const [deployStatus, setDeployStatus] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const { data: branches } = useQuery<Branch[]>({
-    queryKey: [API, "branches", "staging-check", pid],
-    queryFn: () => devmaxFetch(`${API}/branches`, undefined, pid).then(r => r.json()).then(d => Array.isArray(d) ? d : []),
+  const { data: stagingInfo, isLoading: stagingInfoLoading } = useQuery<{
+    hasStagingBranch: boolean;
+    useTestRepo: boolean;
+    stagingRepo: string | null;
+    stagingBranch: string | null;
+  }>({
+    queryKey: [API, "staging-info", pid],
+    queryFn: () => devmaxFetch(`${API}/staging-info`, undefined, pid).then(r => r.json()),
     enabled: !!pid,
   });
 
-  const hasStagingBranch = useMemo(() => branches?.some(b => b.name === "staging") || false, [branches]);
+  const hasStagingAccess = stagingInfo?.hasStagingBranch || stagingInfo?.useTestRepo || false;
 
   const { data: tree, isLoading } = useQuery<{ tree: TreeItem[] }>({
     queryKey: [API, "tree", "staging", pid],
     queryFn: () => devmaxFetch(`${API}/tree/staging`, undefined, pid).then(r => r.json()).then(d => d?.tree ? d : { tree: [] }),
-    enabled: !!pid && hasStagingBranch,
+    enabled: !!pid && hasStagingAccess,
   });
 
   const items = useMemo(() => {
@@ -275,49 +280,20 @@ export function StagingFileBrowserPanel() {
 
   const deployToProd = useCallback(async () => {
     setDeploying(true);
-    setDeployStatus("Vérification staging...");
+    setDeployStatus("Promotion staging → prod...");
     try {
-      const commitsRes = await devmaxFetch(`${API}/commits?branch=staging&per_page=1`, undefined, pid);
-      const commits = await commitsRes.json();
-      if (!Array.isArray(commits) || !commits.length) {
-        toast({ title: "Erreur", description: "Aucun commit sur staging", variant: "destructive" });
-        setDeploying(false);
-        setDeployStatus(null);
-        return;
+      const result = await devmaxApiRequest("POST", `${API}/promote-staging`, {}, pid);
+
+      if (result?.method === "already_up_to_date") {
+        toast({ title: "Info", description: result.message || "Staging est déjà à jour avec la prod." });
+      } else if (result?.method === "branch_merge") {
+        toast({ title: "Déploiement réussi !", description: `PR #${result.prNumber} mergée` });
+      } else if (result?.method === "test_repo_sync") {
+        toast({ title: "Déploiement réussi !", description: `${result.filesSynced}/${result.totalFiles} fichiers synchronisés depuis ${result.testRepo}` });
+      } else {
+        toast({ title: "Déploiement terminé" });
       }
 
-      setDeployStatus("Création PR staging → prod...");
-      let prNumber: number | null = null;
-      try {
-        const prRes = await devmaxApiRequest("POST", `${API}/pulls`, {
-          title: `[Deploy] Staging → Prod (${new Date().toLocaleDateString("fr-FR")})`,
-          body: `Déploiement depuis staging.\nCommit: ${commits[0].sha?.slice(0, 7)}`,
-          head: "staging",
-          base: "main",
-        }, pid);
-        prNumber = prRes?.number;
-      } catch (prErr: any) {
-        const msg = prErr?.message || "";
-        if (msg.includes("422") || msg.toLowerCase().includes("no commits") || msg.toLowerCase().includes("already")) {
-          toast({ title: "Info", description: "Staging est déjà à jour avec la prod." });
-          setDeploying(false);
-          setDeployStatus(null);
-          return;
-        }
-        throw prErr;
-      }
-
-      if (!prNumber) {
-        toast({ title: "Info", description: "Rien à déployer." });
-        setDeploying(false);
-        setDeployStatus(null);
-        return;
-      }
-
-      setDeployStatus(`Merge PR #${prNumber}...`);
-      await devmaxApiRequest("PUT", `${API}/pulls/${prNumber}/merge`, { merge_method: "merge" }, pid);
-
-      toast({ title: "Déploiement réussi !", description: `PR #${prNumber} mergée` });
       setDeployStatus("Terminé !");
       devmaxQueryClient.invalidateQueries({ queryKey: [API, "tree"] });
       devmaxQueryClient.invalidateQueries({ queryKey: [API, "commits"] });
@@ -329,19 +305,19 @@ export function StagingFileBrowserPanel() {
     setDeploying(false);
   }, [pid, toast]);
 
-  if (!branches) {
+  if (stagingInfoLoading) {
     return (
       <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-amber-400" /></div>
     );
   }
 
-  if (!hasStagingBranch) {
+  if (!hasStagingAccess) {
     return (
       <Card className="border-dashed border-2">
         <CardContent className="p-8 text-center">
           <FlaskConical className="w-8 h-8 mx-auto text-muted-foreground/30 mb-2" />
-          <p className="text-sm text-muted-foreground mb-1">Pas de branche <code className="bg-muted px-1 rounded">staging</code></p>
-          <p className="text-xs text-muted-foreground">Créez-la depuis l'onglet Branches.</p>
+          <p className="text-sm text-muted-foreground mb-1">Pas de branche <code className="bg-muted px-1 rounded">staging</code> ni de repo <code className="bg-muted px-1 rounded">-test</code></p>
+          <p className="text-xs text-muted-foreground">Créez une branche staging ou déployez en staging pour créer le repo test.</p>
         </CardContent>
       </Card>
     );
@@ -387,7 +363,7 @@ export function StagingFileBrowserPanel() {
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600">
-          <FlaskConical className="w-3 h-3 mr-1" /> staging
+          <FlaskConical className="w-3 h-3 mr-1" /> {stagingInfo?.useTestRepo ? `staging (${stagingInfo.stagingRepo})` : "staging"}
         </Badge>
         {currentPath.length > 0 && (
           <Button size="sm" variant="ghost" className="rounded-xl" onClick={() => setCurrentPath(p => p.slice(0, -1))} data-testid="button-staging-nav-up">
