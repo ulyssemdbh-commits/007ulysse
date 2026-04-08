@@ -260,17 +260,19 @@ export const utilityToolDefs: ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "manage_sugu_files",
-            description: "Gère les fichiers archivés Suguval : lister, rechercher et envoyer par email les documents (factures, relevés, photos). Utilise send_by_email pour envoyer des fichiers directement à l'utilisateur par email.",
+            description: "Gère TOUS les documents archivés SUGU Valentine (achats, frais généraux, banque, RH, emprunts). IMPORTANT: utilise read_invoice_content pour OUVRIR et LIRE le contenu réel des PDFs — chercher des articles/produits/montants dans les factures (ex: prix du Coca dans les factures Metro, montant EDF, détail fiches de paie). Si l'utilisateur demande un prix, un produit ou un détail qui se trouve DANS une facture, utilise cette action. Sans supplier, cherche dans TOUS les documents.",
             parameters: {
                 type: "object",
                 properties: {
-                    action: { type: "string", enum: ["list", "search", "summary", "send_by_email"], description: "Action: list (tout lister), search (chercher par nom/fournisseur), summary (vue d'ensemble), send_by_email (trouver des fichiers et les envoyer par email)" },
-                    category: { type: "string", enum: ["achats", "frais_generaux", "banque", "rh", "emprunt"], description: "Filtrer par catégorie" },
-                    search: { type: "string", description: "Recherche par nom de fichier ou nom de fournisseur (ex: 'Scoot n start', 'Metro', 'EDF')" },
-                    month: { type: "number", description: "Mois à filtrer (1-12, ex: 12 pour décembre)" },
-                    year: { type: "number", description: "Année à filtrer (ex: 2025)" },
-                    to_email: { type: "string", description: "Adresse email destinataire pour l'action send_by_email" },
-                    limit: { type: "number", description: "Nombre max de résultats (défaut 30)" }
+                    action: { type: "string", enum: ["list", "search", "summary", "send_by_email", "read_invoice_content"], description: "list: lister fichiers, search: chercher par nom/fournisseur, summary: vue d'ensemble, send_by_email: envoyer par mail, read_invoice_content: OUVRIR les PDFs et chercher du texte/articles DANS le contenu (le plus puissant)" },
+                    category: { type: "string", enum: ["achats", "frais_generaux", "banque", "rh", "emprunt"], description: "Filtrer par catégorie de document. Omis = toutes catégories" },
+                    search: { type: "string", description: "Pour search: nom fichier/fournisseur. Pour read_invoice_content: terme à chercher DANS le contenu des PDFs (ex: 'coca', 'bière', 'electricité', 'salaire brut')" },
+                    supplier: { type: "string", description: "Pour read_invoice_content: filtrer les PDFs par fournisseur avant lecture (ex: 'metro', 'edf'). Si omis, scanne tous les PDFs de la catégorie/période" },
+                    file_id: { type: "number", description: "ID spécifique d'un fichier à lire (pour lire un document précis)" },
+                    month: { type: "number", description: "Mois à filtrer (1-12)" },
+                    year: { type: "number", description: "Année à filtrer (ex: 2026)" },
+                    to_email: { type: "string", description: "Adresse email destinataire pour send_by_email" },
+                    limit: { type: "number", description: "Nombre max de PDFs à scanner (défaut 30, max 10 pour read_invoice_content)" }
                 },
                 required: ["action"]
             }
@@ -1165,6 +1167,21 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
         if (args.commitMessage && !message) message = args.commitMessage;
 
         const projectToken = await resolveGitHubTokenForProject(db, owner, repo, args.projectId, args._tenantContext);
+
+        const WRITE_ACTIONS = ["create_file", "update_file", "apply_patch", "smart_sync", "delete_file", "rename_file", "move_file"];
+        const isPromoteToProd = args._promoteToProd === true || (message && typeof message === "string" && (message.includes("[Staging→Prod]") || message.includes("[PROD]") || message.includes("[promote]")));
+        if (repo && WRITE_ACTIONS.includes(action) && !repo.endsWith("-test") && !isPromoteToProd) {
+            const testRepoName = `${repo}-test`;
+            try {
+                const testRepoCheck = await githubService.getRepo(owner || "ulyssemdbh-commits", testRepoName);
+                if (testRepoCheck) {
+                    console.log(`[DevOps-StagingGuard] ⚡ Auto-redirect: ${repo} → ${testRepoName} (staging-first policy)`);
+                    repo = testRepoName;
+                    if (args.repo) args.repo = testRepoName;
+                }
+            } catch {
+            }
+        }
 
         const executeAction = async (): Promise<string> => {
         switch (action) {
@@ -3329,7 +3346,7 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
                     return JSON.stringify({ type: "send_by_email", success: false, message: `Aucun fichier trouvé pour: ${detail || "(tous)"}` });
                 }
 
-                const { objectStorageClient } = await import("../../replit_integrations/object_storage/objectStorage");
+                const { downloadFromObjectStorage } = await import("../../api/v2/suguManagement/shared");
                 const { googleMailService } = await import("../googleMailService");
                 const { agentMailService } = await import("../agentMailService");
 
@@ -3358,12 +3375,11 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
                 for (const f of matchedFiles) {
                     let buf: Buffer;
                     try {
-                        const parts = f.storagePath.startsWith("/") ? f.storagePath.slice(1).split("/") : f.storagePath.split("/");
-                        const [contents] = await objectStorageClient.bucket(parts[0]).file(parts.slice(1).join("/")).download();
-                        buf = contents;
+                        const result = await downloadFromObjectStorage(f.storagePath);
+                        buf = result.buffer;
                     } catch (e: any) {
                         failed.push(f.originalName);
-                        console.error(`[SuguFiles] Storage download failed for ${f.originalName}:`, e.message);
+                        console.error(`[SuguFiles] Storage download failed for ${f.originalName} (path: ${f.storagePath}):`, e.message);
                         continue;
                     }
 
@@ -3392,6 +3408,94 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
                     filesTotal: matchedFiles.length,
                     failed: failed.length > 0 ? failed : undefined,
                     message: `${sentCount}/${matchedFiles.length} fichier(s) envoyé(s) à ${recipient}`
+                });
+            }
+            case "read_invoice_content": {
+                const { eq, ilike: ilike2, or: or2, desc: desc2 } = await import("drizzle-orm");
+                const { downloadFromObjectStorage } = await import("../../api/v2/suguManagement/shared");
+                const { getPdfParse } = await import("../../api/v2/suguManagement/documentParsers");
+                const stripAcc = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+                let filesToRead: any[] = [];
+                if (args.file_id) {
+                    filesToRead = await db.select().from(suguFiles).where(eq(suguFiles.id, args.file_id));
+                } else {
+                    const supplierFilter = args.supplier;
+                    if (supplierFilter) {
+                        const sna = stripAcc(supplierFilter);
+                        const cond = supplierFilter !== sna
+                            ? or2(ilike2(suguFiles.supplier, `%${supplierFilter}%`), ilike2(suguFiles.supplier, `%${sna}%`))
+                            : ilike2(suguFiles.supplier, `%${supplierFilter}%`);
+                        filesToRead = await db.select().from(suguFiles).where(cond!).orderBy(desc2(suguFiles.createdAt));
+                    } else {
+                        filesToRead = await db.select().from(suguFiles).orderBy(desc2(suguFiles.createdAt));
+                    }
+                    if (category) filesToRead = filesToRead.filter((f: any) => f.category === category);
+                    filesToRead = buildDateFilter(filesToRead);
+                    filesToRead = filesToRead.filter((f: any) => f.mimeType === "application/pdf");
+                    const maxFiles = Math.min(limit, 10);
+                    filesToRead = filesToRead.slice(0, maxFiles);
+                }
+
+                if (filesToRead.length === 0) {
+                    return JSON.stringify({ type: "read_invoice_content", error: "Aucun PDF trouvé pour ces critères" });
+                }
+
+                const searchTerm = search ? search.toLowerCase() : null;
+                const searchTermNoAccent = searchTerm ? stripAcc(searchTerm) : null;
+                const parsePdf = await getPdfParse();
+                const invoiceResults: any[] = [];
+                let totalMatches = 0;
+
+                for (const f of filesToRead) {
+                    try {
+                        const { buffer } = await downloadFromObjectStorage(f.storagePath);
+                        const pdfTimeout = new Promise<never>((_, reject) =>
+                            setTimeout(() => reject(new Error("pdf-parse timeout")), 15000)
+                        );
+                        const pdfData = await Promise.race([parsePdf(buffer), pdfTimeout]);
+                        const rawText: string = pdfData.text || "";
+                        const lines = rawText.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+
+                        if (searchTerm) {
+                            const matchedLines = lines.filter((line: string) => {
+                                const lower = line.toLowerCase();
+                                const lna = stripAcc(lower);
+                                return lower.includes(searchTerm) || lna.includes(searchTermNoAccent!);
+                            });
+                            if (matchedLines.length > 0) {
+                                totalMatches += matchedLines.length;
+                                invoiceResults.push({
+                                    fileId: f.id, fileName: f.originalName,
+                                    supplier: f.supplier, category: f.category, date: f.fileDate,
+                                    matchCount: matchedLines.length,
+                                    matchedLines,
+                                });
+                            }
+                        } else {
+                            invoiceResults.push({
+                                fileId: f.id, fileName: f.originalName,
+                                supplier: f.supplier, category: f.category, date: f.fileDate,
+                                totalLines: lines.length,
+                                fullText: lines.slice(0, 150).join("\n"),
+                            });
+                        }
+                    } catch (e: any) {
+                        invoiceResults.push({
+                            fileId: f.id, fileName: f.originalName, error: e.message,
+                        });
+                    }
+                }
+
+                return JSON.stringify({
+                    type: "read_invoice_content",
+                    filesScanned: filesToRead.length,
+                    filesWithMatches: searchTerm ? invoiceResults.filter((r: any) => !r.error && r.matchCount).length : undefined,
+                    totalMatches: searchTerm ? totalMatches : undefined,
+                    searchTerm: search || null,
+                    supplier: args.supplier || null,
+                    category: category || "toutes",
+                    results: invoiceResults,
                 });
             }
             default:
@@ -4695,14 +4799,20 @@ export async function executeSearchSuguData(args: Record<string, any>): Promise<
         } = await import("../../../shared/schema");
         const { desc, ilike, and, gte, lte, or } = await import("drizzle-orm");
 
-        const { search, startDate, endDate, tables: tablesStr } = args;
+        const { search: rawSearch, startDate, endDate, tables: tablesStr } = args;
+        const stripAccents = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const search = rawSearch;
+        const searchNoAccent = stripAccents(rawSearch);
         const tablesToSearch = tablesStr ? tablesStr.split(",").map((t: string) => t.trim()) : ["bank", "purchases", "expenses", "cash", "payroll"];
 
         const results: Record<string, any> = { type: "sugu_search", query: search, filters: { startDate, endDate } };
 
         // BANK ENTRIES
         if (tablesToSearch.includes("bank")) {
-            const conditions: any[] = [ilike(suguBankEntries.label, `%${search}%`)];
+            const searchCond = search !== searchNoAccent
+                ? or(ilike(suguBankEntries.label, `%${search}%`), ilike(suguBankEntries.label, `%${searchNoAccent}%`))
+                : ilike(suguBankEntries.label, `%${search}%`);
+            const conditions: any[] = [searchCond];
             if (startDate) conditions.push(gte(suguBankEntries.entryDate, startDate));
             if (endDate) conditions.push(lte(suguBankEntries.entryDate, endDate));
             const bankResults = await db.select().from(suguBankEntries).where(and(...conditions)).orderBy(desc(suguBankEntries.entryDate)).limit(50);
@@ -4719,10 +4829,18 @@ export async function executeSearchSuguData(args: Record<string, any>): Promise<
 
         // PURCHASES (fournisseurs)
         if (tablesToSearch.includes("purchases")) {
-            const conditions: any[] = [or(
-                ilike(suguPurchases.supplier, `%${search}%`),
-                ilike(suguPurchases.description, `%${search}%`)
-            )];
+            const searchConditions = search !== searchNoAccent
+                ? or(
+                    ilike(suguPurchases.supplier, `%${search}%`),
+                    ilike(suguPurchases.supplier, `%${searchNoAccent}%`),
+                    ilike(suguPurchases.description, `%${search}%`),
+                    ilike(suguPurchases.description, `%${searchNoAccent}%`)
+                )
+                : or(
+                    ilike(suguPurchases.supplier, `%${search}%`),
+                    ilike(suguPurchases.description, `%${search}%`)
+                );
+            const conditions: any[] = [searchConditions];
             if (startDate) conditions.push(gte(suguPurchases.invoiceDate, startDate));
             if (endDate) conditions.push(lte(suguPurchases.invoiceDate, endDate));
             const purchaseResults = await db.select().from(suguPurchases).where(and(...conditions)).orderBy(desc(suguPurchases.invoiceDate)).limit(50);
@@ -4740,11 +4858,21 @@ export async function executeSearchSuguData(args: Record<string, any>): Promise<
 
         // EXPENSES (frais généraux)
         if (tablesToSearch.includes("expenses")) {
-            const conditions: any[] = [or(
-                ilike(suguExpenses.label, `%${search}%`),
-                ilike(suguExpenses.description, `%${search}%`),
-                ilike(suguExpenses.category, `%${search}%`)
-            )];
+            const expSearchCond = search !== searchNoAccent
+                ? or(
+                    ilike(suguExpenses.label, `%${search}%`),
+                    ilike(suguExpenses.label, `%${searchNoAccent}%`),
+                    ilike(suguExpenses.description, `%${search}%`),
+                    ilike(suguExpenses.description, `%${searchNoAccent}%`),
+                    ilike(suguExpenses.category, `%${search}%`),
+                    ilike(suguExpenses.category, `%${searchNoAccent}%`)
+                )
+                : or(
+                    ilike(suguExpenses.label, `%${search}%`),
+                    ilike(suguExpenses.description, `%${search}%`),
+                    ilike(suguExpenses.category, `%${search}%`)
+                );
+            const conditions: any[] = [expSearchCond];
             if (startDate) conditions.push(gte(suguExpenses.period, startDate.substring(0, 7)));
             if (endDate) conditions.push(lte(suguExpenses.period, endDate.substring(0, 7)));
             const expenseResults = await db.select().from(suguExpenses).where(and(...conditions)).orderBy(desc(suguExpenses.createdAt)).limit(50);
@@ -4766,10 +4894,17 @@ export async function executeSearchSuguData(args: Record<string, any>): Promise<
             if (startDate) conditions.push(gte(suguCashRegister.entryDate, startDate));
             if (endDate) conditions.push(lte(suguCashRegister.entryDate, endDate));
             if (search && !startDate && !endDate) {
-                conditions.push(or(
-                    ilike(suguCashRegister.notes || '', `%${search}%`),
-                    ilike(suguCashRegister.entryDate, `%${search}%`)
-                ));
+                const cashSearchTerms = search !== searchNoAccent
+                    ? or(
+                        ilike(suguCashRegister.notes || '', `%${search}%`),
+                        ilike(suguCashRegister.notes || '', `%${searchNoAccent}%`),
+                        ilike(suguCashRegister.entryDate, `%${search}%`)
+                    )
+                    : or(
+                        ilike(suguCashRegister.notes || '', `%${search}%`),
+                        ilike(suguCashRegister.entryDate, `%${search}%`)
+                    );
+                conditions.push(cashSearchTerms);
             }
             if (conditions.length > 0) {
                 const cashResults = await db.select().from(suguCashRegister).where(and(...conditions)).orderBy(desc(suguCashRegister.entryDate)).limit(50);
@@ -4810,11 +4945,19 @@ export async function executeSearchSuguData(args: Record<string, any>): Promise<
         // PAYROLL
         if (tablesToSearch.includes("payroll")) {
             // Get employees matching the search term
-            const matchingEmps = await db.select().from(suguEmployees)
-                .where(or(
+            const empSearchCond = search !== searchNoAccent
+                ? or(
+                    ilike(suguEmployees.firstName, `%${search}%`),
+                    ilike(suguEmployees.firstName, `%${searchNoAccent}%`),
+                    ilike(suguEmployees.lastName, `%${search}%`),
+                    ilike(suguEmployees.lastName, `%${searchNoAccent}%`)
+                )
+                : or(
                     ilike(suguEmployees.firstName, `%${search}%`),
                     ilike(suguEmployees.lastName, `%${search}%`)
-                ));
+                );
+            const matchingEmps = await db.select().from(suguEmployees)
+                .where(empSearchCond);
             if (matchingEmps.length > 0) {
                 const { eq, inArray } = await import("drizzle-orm");
                 const empIds = matchingEmps.map((e: any) => e.id);
@@ -5772,7 +5915,8 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
             }
             case "update": {
                 if (!appName) return JSON.stringify({ error: "appName requis pour update" });
-                const result = await sshService.updateApp(appName, branch || "main");
+                const updateCaller = caller || "ulysse";
+                const result = await sshService.updateApp(appName, branch || "main", updateCaller as "max" | "ulysse" | "iris");
                 if (result.success) {
                     devopsAutoJournal(appName, "deploy", `Update: ${appName}`, `git pull + rebuild sur branche ${branch || "main"}`, [], { appName, branch: branch || "main" });
                 }
@@ -5819,6 +5963,15 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                 if (dangerousPatterns.test(command)) {
                     devopsDiscordNotify("Commande dangereuse bloquée", `\`${command.slice(0, 100)}\``, "error");
                     return JSON.stringify({ error: "Commande bloquée: pattern dangereux détecté. Seules les commandes sûres sont autorisées." });
+                }
+                const ulysseProtectedOps = /(?:cd\s+)?\/var\/www\/ulysse(?:\/|\s|$).*(?:npm\s+(?:run\s+build|install|ci)|rm\s|rmdir|clean|build|make)/i;
+                const ulysseDistWrite = /(?:rm|mv|cp|>|>>|tee|truncate|dd).*\/var\/www\/ulysse\/dist/i;
+                const ulysseRmDist = /\/var\/www\/ulysse\/dist.*(?:rm|rmdir|clean)/i;
+                const execCaller = caller || "ulysse";
+                if (execCaller !== "ulysse" && (ulysseProtectedOps.test(command) || ulysseDistWrite.test(command) || ulysseRmDist.test(command))) {
+                    console.warn(`[DevOpsServer] 🚫 BLOCKED exec targeting /var/www/ulysse from caller=${execCaller}: ${command.slice(0, 150)}`);
+                    devopsDiscordNotify("Commande Ulysse bloquée", `Caller: ${execCaller}\n\`${command.slice(0, 100)}\``, "error");
+                    return JSON.stringify({ error: "BLOCKED: Les commandes modifiant /var/www/ulysse/ sont réservées à Ulysse uniquement. Les projets DevMax doivent utiliser /var/www/apps/<nom>." });
                 }
                 const result = await sshService.executeCommand(command, 30000);
                 return JSON.stringify({ action: "exec", ...result });
