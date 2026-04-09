@@ -1,0 +1,6 @@
+{
+  "rules": {
+    "no-warning-comments": ["error", { "terms": ["todo", "fixme"], "location": "start" }],
+    "no-console": "warn"
+  }
+}

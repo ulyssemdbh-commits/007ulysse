@@ -1,0 +1,25 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14.x'
+    - run: npm install
+    - run: npm run lint
+    - run: npm test
+    - name: Test and Lint
+      run: |
+        npm run lint
+        if [ $? -ne 0 ]; then
+          echo "Lint errors found, failing the build."
+          exit 1
+        fi
+        npm test
