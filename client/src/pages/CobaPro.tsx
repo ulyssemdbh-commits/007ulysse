@@ -282,6 +282,7 @@ Tu as accès COMPLET à toutes les données business de ce restaurant via l'outi
           systemHint: cobaSystemHint,
           forceTools: ["coba_business", "query_coba", "compute_business_health", "sugu_full_overview"],
           cobaContext: `Restaurant: ${tenantName} (${tenantId})`,
+          pageContext: { pageId: "coba-pro", pageName: "COBA Pro", pageDescription: `Dashboard de gestion business COBA — restaurant ${tenantName}, finances, KPIs, stocks et opérations` },
         },
       };
       if (currentAttachments.length > 0) {

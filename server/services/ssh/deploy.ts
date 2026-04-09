@@ -1238,6 +1238,166 @@ export function createDeployMethods(service: SSHService) {
       };
     },
 
+    async deployFromDbFiles(params: {
+      appName: string;
+      files: { path: string; content: string }[];
+      port?: number;
+      buildCmd?: string;
+      startCmd?: string;
+      envVars?: Record<string, string>;
+      domain?: string;
+      createDb?: boolean;
+      caller?: "max" | "ulysse" | "iris";
+      devmaxProjectId?: string;
+    }): Promise<{ success: boolean; message: string; url?: string; port?: number; logs?: string[] }> {
+      const { files, appName: rawAppName, buildCmd, startCmd, envVars = {}, domain, createDb, caller = "ulysse", devmaxProjectId } = params;
+      const appName = rawAppName?.toLowerCase()?.trim();
+      const isolation = enforceAppIsolation(appName || "", caller);
+      if (!isolation.allowed) {
+        return { success: false, message: isolation.reason || "Blocked by isolation policy" };
+      }
+      const appDir = isolation.appDir;
+      const logs: string[] = [];
+
+      const lockAcquired = await acquireDeployLock(appName, logs);
+      if (!lockAcquired) {
+        return { success: false, message: `Deploy blocked: another deployment of "${appName}" is in progress.\n${logs.join("\n")}`, logs };
+      }
+
+      try {
+        logs.push(`[0/8] DB-Deploy: ${files.length} files → ${appDir}`);
+
+        const existingCheck = await service.executeCommand(`[ -d "${appDir}" ] && echo "EXISTS" || echo "NONE"`, 5000);
+        if (existingCheck.output?.trim() === "EXISTS") {
+          const snap = await service.snapshotProduction(appName);
+          if (snap.success) {
+            logs.push(`[0/8] Pre-deploy snapshot: ${snap.snapshotDir.split("/").pop()}`);
+          }
+        }
+
+        await service.executeCommand(`mkdir -p ${appDir}`, 5000);
+
+        const dirs = new Set<string>();
+        for (const f of files) {
+          const parts = f.path.split("/");
+          if (parts.length > 1) {
+            const dir = parts.slice(0, -1).join("/");
+            dirs.add(`${appDir}/${dir}`);
+          }
+        }
+        if (dirs.size > 0) {
+          await service.executeCommand(`mkdir -p ${Array.from(dirs).join(" ")}`, 10000);
+        }
+
+        let written = 0;
+        for (const f of files) {
+          try {
+            const decoded = f.content.includes("\n") ? f.content : Buffer.from(f.content, "base64").toString("utf-8");
+            const result = await service.writeRemoteFile(`${appDir}/${f.path}`, decoded, 15000);
+            if (result.success) written++;
+          } catch (writeErr: any) {
+            logs.push(`⚠️ Failed to write ${f.path}: ${writeErr.message?.substring(0, 100)}`);
+          }
+        }
+        logs.push(`[1/8] Files written: ${written}/${files.length}`);
+
+        if (devmaxProjectId) {
+          try {
+            const { db: dbConn } = await import("../../db");
+            const { sql } = await import("drizzle-orm");
+            const environment = appName.endsWith("-dev") ? "staging" : "production";
+            const envVarsRows = await dbConn.execute(sql`
+              SELECT key, value FROM devmax_env_vars 
+              WHERE project_id = ${devmaxProjectId} AND (environment = ${environment} OR environment = 'all')
+            `).then((r: any) => r.rows || r);
+            let envVarCount = 0;
+            for (const row of envVarsRows) {
+              if (row.key && row.value !== undefined && row.key !== "PORT" && !envVars[row.key]) {
+                envVars[row.key] = row.value;
+                envVarCount++;
+              }
+            }
+            if (envVarCount > 0) logs.push(`[0/8] DevMax DB: loaded ${envVarCount} env var(s) for ${environment}`);
+
+            if (!envVars["DATABASE_URL"]) {
+              const projRows = await dbConn.execute(sql`
+                SELECT db_url, db_provisioned FROM devmax_projects WHERE id = ${devmaxProjectId}
+              `).then((r: any) => r.rows || r);
+              if (projRows[0]?.db_provisioned && projRows[0]?.db_url) {
+                envVars["DATABASE_URL"] = projRows[0].db_url;
+                logs.push(`[0/8] DATABASE_URL injected from dedicated DB`);
+              }
+            }
+          } catch {}
+        }
+
+        const projectType = await service.detectProjectType(appDir);
+        logs.push(`[2/8] Type: ${projectType}`);
+
+        if (projectType === "static") {
+          const nginxDomain = resolveAppDomain(appName, domain);
+          const nginxFileName = normalizeNginxName(appName);
+          const staticDistCheck = await service.executeCommand(`[ -d "${appDir}/dist" ] && echo "dist" || ([ -d "${appDir}/build" ] && echo "build" || echo "root")`, 5000);
+          const staticBuildDir = staticDistCheck.output?.trim();
+          let staticRootDir = appDir;
+          if (staticBuildDir === "dist") staticRootDir = `${appDir}/dist`;
+          else if (staticBuildDir === "build") staticRootDir = `${appDir}/build`;
+          const staticNginxConf = staticNginxBlock(nginxDomain, staticRootDir, nginxFileName);
+
+          await service.executeCommand(nginxCleanupCmd(appName), 5000).catch(() => {});
+          await service.writeRemoteFile(`/etc/nginx/sites-available/${nginxFileName}`, staticNginxConf);
+          await service.executeCommand(
+            `ln -sf /etc/nginx/sites-available/${nginxFileName} /etc/nginx/sites-enabled/${nginxFileName} && nginx -t 2>&1 && systemctl reload nginx`,
+            10000
+          );
+          logs.push(`[3/8] Static site deployed with nginx`);
+          return { success: true, message: `Static site deployed: ${nginxDomain}`, url: `https://${nginxDomain}`, logs };
+        }
+
+        const finalBuildCmd = buildCmd || "npm install --legacy-peer-deps && npm run build";
+        const buildResult = await service.executeCommand(`cd ${appDir} && ${finalBuildCmd}`, 180000);
+        if (!buildResult.success) {
+          logs.push(`[3/8] Build: FAILED — ${buildResult.error?.substring(0, 300)}`);
+          return { success: false, message: `Build failed: ${buildResult.error?.substring(0, 500)}`, logs };
+        }
+        logs.push(`[3/8] Build: OK`);
+
+        const portResult = await service.executeCommand(
+          `for p in $(seq 3100 3999); do ss -tlnp | grep -q ":$p " || { echo $p; break; }; done`,
+          10000
+        );
+        const port = params.port || parseInt(portResult.output?.trim() || "3100");
+        logs.push(`[4/8] Port: ${port}`);
+
+        const finalStartCmd = startCmd || "npm start";
+        const ecosystemConf = pm2EcosystemConfig(appName, appDir, finalStartCmd, port, envVars);
+        await service.writeRemoteFile(`${appDir}/ecosystem.config.cjs`, ecosystemConf);
+
+        await service.executeCommand(`cd ${appDir} && pm2 delete ${appName} 2>/dev/null; pm2 start ecosystem.config.cjs`, 30000);
+        await service.executeCommand(`pm2 save`, 5000);
+        logs.push(`[5/8] PM2: started`);
+
+        const nginxDomain = resolveAppDomain(appName, domain);
+        const nginxFileName = normalizeNginxName(appName);
+        const nginxConf = proxyNginxBlock(nginxDomain, port, nginxFileName);
+        await service.executeCommand(nginxCleanupCmd(appName), 5000).catch(() => {});
+        await service.writeRemoteFile(`/etc/nginx/sites-available/${nginxFileName}`, nginxConf);
+        const nginxResult = await service.executeCommand(
+          `ln -sf /etc/nginx/sites-available/${nginxFileName} /etc/nginx/sites-enabled/${nginxFileName} && nginx -t 2>&1 && systemctl reload nginx`,
+          10000
+        );
+        logs.push(`[6/8] Nginx: ${nginxResult.success ? "OK" : "WARN"}`);
+
+        const certResult = await sslCertForDomain(nginxDomain, service);
+        logs.push(`[7/8] SSL: ${certResult.success ? "OK" : "skipped"}`);
+
+        logs.push(`[8/8] Deploy complete: https://${nginxDomain}`);
+        return { success: true, message: `Deployed from DB files: https://${nginxDomain}`, url: `https://${nginxDomain}`, port, logs };
+      } finally {
+        releaseDeployLock(appName);
+      }
+    },
+
     async promoteToProduction(params: {
       appName: string;
       port?: number;

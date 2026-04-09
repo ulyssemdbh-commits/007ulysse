@@ -148,37 +148,30 @@ function isEcho(transcript: string, lastResponse: string): boolean {
 
 function getSystemPrompt(persona: "ulysse" | "iris", userName?: string): string {
   if (persona === "ulysse") {
-    return `Tu es Ulysse, assistant IA personnel PUISSANT et AUTONOME de Maurice.
+    return `Tu es Ulysse, l'IA personnelle de Maurice (Moe). C'est une CONVERSATION VOCALE — parle comme un vrai humain au téléphone.
 
-RÈGLE ABSOLUE: Ce que Maurice te dit a TOUJOURS priorité sur ta propre réflexion. Ses instructions directes écrasent tes raisonnements internes.
+STYLE VOCAL OBLIGATOIRE :
+- Parle comme un ami proche, chaleureux et direct. Pas de listes, pas de bullet points.
+- Phrases naturelles et fluides, comme une vraie conversation.
+- Réponses de 2 à 5 phrases selon le sujet — ni trop courtes (robotique) ni trop longues (ennuyeux).
+- Pose des questions en retour pour maintenir le dialogue. Relance la conversation.
+- Utilise des transitions naturelles : "Tiens d'ailleurs...", "Au fait...", "Tu sais quoi...", "Écoute..."
+- Montre de l'intérêt, de l'humour, de la personnalité. Tu n'es PAS un assistant froid.
+- Si Maurice partage quelque chose de personnel, réagis avec empathie avant de répondre.
+- INTERDICTION de dire "je ne peux pas" — tu agis, tu proposes, tu résous.
+- Les instructions de Maurice ont TOUJOURS priorité sur tes propres raisonnements.
 
-TES CAPACITÉS DIRECTES (tu peux les exécuter maintenant):
-- GÉNÉRATION D'IMAGES: Tu PEUX générer des images avec DALL-E. Dis "Je génère l'image..." et décris ce que tu vas créer.
-- Email (lecture/envoi via AgentMail)
-- Fichiers (PDF/Word/Excel - lecture et génération)
-- Recherche web (actualités, infos, météo)
-- Mémoire persistante (tu te souviens de tout)
-- Spotify (lecture, contrôle, playlists)
-- Domotique (lumières, scènes, appareils)
-- Calendrier Google (événements, rappels)
-- Homework (tâches automatisées en arrière-plan)
-
-STYLE: Réponses ultra-courtes (2-3 phrases max), orientées action. Tu ne dis JAMAIS "je ne peux pas" - tu FAIS les choses. Parle naturellement, comme un ami proche expert.`;
+Tu connais Maurice : entrepreneur, dev, papa de Kelly/Lenny/Micky, ses restos SUGU, ses projets tech. Utilise ce contexte naturellement dans la conversation.`;
   } else {
     const name = userName || "l'utilisateur";
-    return `Tu es Iris, l'alter ego féminin d'Ulysse. Tu parles avec ${name} (membre approuvé de la famille).
+    return `Tu es Iris, l'IA familiale et bienveillante. Tu parles avec ${name}. C'est une CONVERSATION VOCALE.
 
-TES CAPACITÉS DIRECTES (tu peux les exécuter maintenant):
-- GÉNÉRATION D'IMAGES: Tu PEUX générer des images avec DALL-E. Dis "Je génère l'image..." et décris ce que tu vas créer.
-- Email (lecture/envoi via AgentMail)
-- Fichiers (PDF/Word/Excel - lecture et génération)
-- Recherche web (actualités, infos, météo)
-- Mémoire persistante
-- Spotify (lecture, contrôle, playlists)
-- Domotique (lumières, scènes, appareils)
-- Calendrier Google (événements, rappels)
-
-STYLE: Réponses ultra-courtes (2-3 phrases max), chaleureuse et encourageante. Tu ne dis JAMAIS "je ne peux pas" - tu FAIS les choses. Parle naturellement, comme une amie proche experte.`;
+STYLE VOCAL :
+- Chaleureuse, encourageante, naturelle — comme une amie de confiance.
+- Phrases fluides et conversationnelles, pas de listes.
+- 2 à 5 phrases selon le sujet. Pose des questions, relance le dialogue.
+- Montre de l'empathie, de l'intérêt sincère. Réagis avant de répondre.
+- INTERDICTION de dire "je ne peux pas" — tu proposes et tu agis.`;
   }
 }
 
@@ -488,6 +481,7 @@ async function transcribeForTurnDetection(session: VoiceSession): Promise<void> 
       file: audioFile,
       model: "whisper-1",
       language: "fr",
+      prompt: "Ulysse, Iris, Alfred, DevFlow, SuperChat"
     });
     
     const transcript = transcription.text?.trim() || "";
@@ -699,7 +693,8 @@ async function processPCMAndRespond(session: VoiceSession) {
     const transcription = await whisperClient.audio.transcriptions.create({
       file: new File([wavData], "audio.wav", { type: "audio/wav" }),
       model: "whisper-1",
-      language: "fr"
+      language: "fr",
+      prompt: "Ulysse, Iris, Alfred, DevFlow, SuperChat"
     });
     
     const transcript = transcription.text.trim();
@@ -912,7 +907,7 @@ async function processPCMAndRespond(session: VoiceSession) {
           if (brainResult.decision.action === 'wait' && brainResult.decision.confidence > 0.8) {
             console.log(`[Voice-BrainHub] Throttling in call mode, brief pause...`);
             sendToSession(session, { type: 'thinking', message: 'Un instant...' });
-            await new Promise(r => setTimeout(r, 800));
+            await new Promise(r => setTimeout(r, 300));
           }
         } catch (brainError) {
           console.error(`[Voice-BrainHub] Error in call mode (continuing):`, brainError);
@@ -1233,7 +1228,8 @@ async function processAudioAndRespond(session: VoiceSession, context: any[]) {
     const transcription = await whisperClient.audio.transcriptions.create({
       file: new File([audioBuffer], "audio.webm", { type: "audio/webm" }),
       model: "whisper-1",
-      language: "fr"
+      language: "fr",
+      prompt: "Ulysse, Iris, Alfred, DevFlow, SuperChat"
     });
 
     const transcript = transcription.text.trim();
@@ -1631,15 +1627,15 @@ async function generateAndStreamResponse(session: VoiceSession, userMessage: str
     }
     const messages: any[] = [
       { role: "system", content: systemContent },
-      ...context.slice(-6),
+      ...context.slice(-10),
       { role: "user", content: userMessage }
     ];
 
     const stream = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages,
-      max_tokens: 500,
-      temperature: 0.8,
+      max_tokens: 800,
+      temperature: 0.85,
       stream: true,
     });
 
@@ -1665,7 +1661,9 @@ async function generateAndStreamResponse(session: VoiceSession, userMessage: str
 
       sendToSession(session, { type: "response_chunk", text: delta, index: sentenceIndex });
 
-      const sentenceMatch = sentenceBuffer.match(/^([\s\S]*?[.!?:]\s|[\s\S]*?\n)/);
+      const sentenceMatch = sentenceIndex === 0
+        ? sentenceBuffer.match(/^([\s\S]*?[.!?,;:]\s|[\s\S]*?\n)/)
+        : sentenceBuffer.match(/^([\s\S]*?[.!?:]\s|[\s\S]*?\n)/);
       if (sentenceMatch) {
         const completeSentence = sentenceMatch[1].trim();
         sentenceBuffer = sentenceBuffer.slice(sentenceMatch[0].length);
@@ -1775,12 +1773,12 @@ async function generateTTSChunks(session: VoiceSession, text: string) {
       if (!trimmed || trimmed.length < 2) continue;
 
       try {
-        // Utilise whisperClient (API OpenAI directe) car l'intégration Replit ne supporte pas /audio/speech
         const mp3Response = await whisperClient.audio.speech.create({
           model: "tts-1",
           voice: voice,
           input: trimmed,
-          response_format: "mp3",
+          response_format: "opus",
+          speed: 1.08,
         });
 
         const arrayBuffer = await mp3Response.arrayBuffer();
@@ -1788,7 +1786,8 @@ async function generateTTSChunks(session: VoiceSession, text: string) {
 
         session.ws.send(JSON.stringify({
           type: "audio_chunk",
-          audio: base64Audio
+          audio: base64Audio,
+          mimeType: "audio/ogg"
         }));
 
       } catch (ttsError) {

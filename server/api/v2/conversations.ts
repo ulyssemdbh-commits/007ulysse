@@ -396,6 +396,11 @@ const conversationSchema = z.object({
     dgmObjective: z.string().optional(),
     dgmRepoContext: z.string().optional(),
     devmaxProjectId: z.string().optional(),
+    pageContext: z.object({
+      pageId: z.string(),
+      pageName: z.string(),
+      pageDescription: z.string(),
+    }).optional(),
     suguContext: z.object({
       restaurant: z.enum(["valentine", "maillane"]),
       persona: z.enum(["ulysse", "alfred"]),
@@ -763,6 +768,12 @@ router.post("/", async (req: Request, res: Response) => {
       } catch (snapErr: any) {
         console.error("[V2-UISNAPSHOT] Context error:", snapErr.message);
       }
+    }
+
+    let pageContextStr = "";
+    if (body.contextHints?.pageContext) {
+      const pc = body.contextHints.pageContext;
+      pageContextStr = `\n\n### EMPLACEMENT UTILISATEUR:\n- Page: ${pc.pageName}\n- Module: ${pc.pageId}\n- Contexte: ${pc.pageDescription}\nAdapte tes réponses à ce contexte spécifique. Si l'utilisateur pose une question, priorise les informations liées à cette page.\n`;
     }
 
     // Geolocation context (family members only - NOT Alfred for privacy)
@@ -2056,7 +2067,7 @@ STYLE:
 - Orientées action ("Voilà ce qu'on fait...")
 - Parle comme un ami proche expert
 - Pas de disclaimers ("en tant qu'IA...")
-- Pas de listes à puces - phrases parlées${selfAwarenessContext}${webSearchContext}${bettingUrlContext}${generalUrlContext}${timeContext}${calendarContext}${fileAttachmentContext}${memoryContext}${spotifyContext}${screenContext}${uiSnapshotContext}${geolocationContext}${smartHomeContext}${sportsContext}${homeworkContext}${monitoringContext}${agentMailContext}${itineraryContext}${faceRecognitionContext}${camerasContext}${charterContext}${patternsContext}${suggestionsContext}${curiosityContext}${domainContext}${generalFallbackContext}`;
+- Pas de listes à puces - phrases parlées${selfAwarenessContext}${webSearchContext}${bettingUrlContext}${generalUrlContext}${timeContext}${calendarContext}${fileAttachmentContext}${memoryContext}${spotifyContext}${screenContext}${uiSnapshotContext}${pageContextStr}${geolocationContext}${smartHomeContext}${sportsContext}${homeworkContext}${monitoringContext}${agentMailContext}${itineraryContext}${faceRecognitionContext}${camerasContext}${charterContext}${patternsContext}${suggestionsContext}${curiosityContext}${domainContext}${generalFallbackContext}`;
 
     const irisSystemPrompt = `${PERSONA_IDENTITIES.iris.identity}
 
@@ -2083,7 +2094,7 @@ STYLE AVEC ${userFirstName.toUpperCase()}:
 - Réponses précises en MAX 3 PHRASES, prête à développer si on demande plus de détails
 - Chaleureuse et encourageante — tu adaptes ton langage à ${userFirstName}
 - Pas de disclaimers ("en tant qu'IA...")
-- Pas de listes à puces - phrases naturelles${selfAwarenessContext}${webSearchContext}${bettingUrlContext}${generalUrlContext}${timeContext}${calendarContext}${fileAttachmentContext}${memoryContext}${recentConversationsContext}${spotifyContext}${screenContext}${uiSnapshotContext}${geolocationContext}${smartHomeContext}${sportsContext}${homeworkContext}${monitoringContext}${agentMailContext}${itineraryContext}${faceRecognitionContext}${camerasContext}${charterContext}${patternsContext}${suggestionsContext}${curiosityContext}${domainContext}${generalFallbackContext}`;
+- Pas de listes à puces - phrases naturelles${selfAwarenessContext}${webSearchContext}${bettingUrlContext}${generalUrlContext}${timeContext}${calendarContext}${fileAttachmentContext}${memoryContext}${recentConversationsContext}${spotifyContext}${screenContext}${uiSnapshotContext}${pageContextStr}${geolocationContext}${smartHomeContext}${sportsContext}${homeworkContext}${monitoringContext}${agentMailContext}${itineraryContext}${faceRecognitionContext}${camerasContext}${charterContext}${patternsContext}${suggestionsContext}${curiosityContext}${domainContext}${generalFallbackContext}`;
 
     const alfredSystemPrompt = `${PERSONA_IDENTITIES.alfred.identity}
 
@@ -2380,8 +2391,20 @@ READ (analyser, auditer, explorer, vérifier, check, status, résumé, diagnosti
 → Outil principal: analyze_repo depth="deep" pour les repos.
 → Résultat: un rapport structuré avec tes observations et recommandations.
 
-WRITE (modifie, crée, corrige, fixe, ajoute, refactore, déploie, implémente)
-→ L'utilisateur a EXPLICITEMENT demandé un changement.
+BUILD (construis, crée le projet, développe, reprends le travail, lance le pipeline, fais le tetris, build)
+→ L'utilisateur veut CONSTRUIRE ou CONTINUER un projet complet.
+→ Workflow OBLIGATOIRE: dgm_manage action:"auto_execute" avec {objective, repo_context, branch:"main", autoMerge:true}.
+→ auto_execute fait TOUT automatiquement: décompose, code, review, PR, merge. NE FAIS PAS de commits/PRs manuels.
+→ NE FAIS JAMAIS list_prs + merge_pr manuellement. C'est auto_execute qui gère.
+→ NOUVELLES CAPACITÉS AUTO (intégrées dans auto_execute):
+  • Validation structure projet: vérifie package.json, crée package-lock.json si absent (fix npm ci).
+  • Fix CI automatique: corrige workflows GitHub Actions (actions/checkout@v3→v4, npm ci→npm i si pas de lockfile).
+  • Attente CI réelle: au lieu d'un délai fixe, poll les GitHub Actions check-runs. Merge UNIQUEMENT si CI passe.
+  • Si CI échoue → merge bloqué, le pipeline report "failed_at_ci" au lieu de merger du code cassé.
+→ AVANT d'appeler auto_execute, vérifie que repo_context est bien formaté: "owner/repo" (ex: "ulyssemdbh-commits/tetrisv1").
+
+WRITE (modifie UN fichier, corrige UN bug, fixe, ajoute UNE feature, refactore)
+→ Changement CIBLÉ sur 1-3 fichiers.
 → Workflow: lire le code actuel → comprendre les dépendances → écrire le code COMPLET → apply_patch/update_file → vérifier {"success":true} → journal.
 
 DEBUG (bug, erreur, crash, 502, ne marche pas, cassé, down)
@@ -2391,6 +2414,14 @@ DEPLOY (déploie, met en prod, push, livre)
 → Workflow STAGING-FIRST: le code est DÉJÀ sur le repo "-test" (staging). Le déploiement en PROD = synchroniser le repo "-test" vers le repo principal.
 → Étapes: 1) Vérifier que le code sur le repo "-test" est prêt et fonctionnel. 2) Utiliser promote-staging (ou smart_sync vers le repo PRINCIPAL sans "-test") pour pousser en prod. 3) Deploy via devops_server. 4) Health check → rapport.
 → C'est le SEUL moment où tu touches au repo principal (sans "-test").
+→ PRÉ-DEPLOY CHECKLIST (vérifie TOUJOURS avant deploy):
+  1) package.json existe et a les bonnes dépendances.
+  2) package-lock.json existe (recommandé mais pas obligatoire).
+  3) Les workflows CI (.github/workflows) NE DOIVENT PAS utiliser actions/checkout ni actions/setup-node (politique org). Utiliser git clone direct à la place.
+  4) Les workflows CI utilisent TOUJOURS "npm install --legacy-peer-deps" (JAMAIS "npm ci" qui échoue sans lockfile).
+  5) Le build local (npm run build) passe sans erreur.
+→ POST-DEPLOY: TOUJOURS vérifier avec url_diagnose ou crawl_preview que le site répond en 200.
+→ ROLLBACK: En cas de régression post-deploy, utiliser rollback_app immédiatement — ne pas tenter de fixer en production.
 
 ⚠️ SI LA CATÉGORIE EST "READ" → TU NE FAIS AUCUNE ÉCRITURE. POINT FINAL.
 "Analyse ce repo" = READ. "Connais ce repo" = READ. "Check le code" = READ.
@@ -3175,6 +3206,14 @@ Commence par design_dashboard MAINTENANT.`
             const toolLabel = getToolLabel(toolName, toolArgs);
             safeWrite(`data: ${JSON.stringify({ type: "tool_status", status: "executing", tool: toolName, label: toolLabel })}\n\n`);
             
+            const { trackStart, trackEnd } = await import("../../services/activityTracker");
+            const actTrackId = trackStart({
+              persona: persona.toLowerCase(),
+              toolName,
+              label: toolLabel || toolName,
+              projectId: body.contextHints?.devmaxProjectId || undefined,
+            });
+
             const actionResult = await actionHub.execute({
               name: toolName,
               params: toolArgs,
@@ -3192,6 +3231,7 @@ Commence par design_dashboard MAINTENANT.`
               ? JSON.stringify(actionResult.result || { success: true })
               : JSON.stringify({ error: actionResult.error || "Exécution échouée" });
             
+            trackEnd(actTrackId, actionResult.success, actionResult.executionMs, actionResult.success ? undefined : (actionResult.error || "failed"));
             console.log(`[V2-SENSORY] ActionHub executed: ${toolName} → ${actionResult.success ? 'success' : 'failed'} in ${actionResult.executionMs}ms`);
             safeWrite(`data: ${JSON.stringify({ type: "tool_status", status: actionResult.success ? "done" : "error", tool: toolName, label: toolLabel, durationMs: actionResult.executionMs })}\n\n`);
             
@@ -3778,9 +3818,19 @@ Ne dis pas "je vais vérifier" — APPELLE LES OUTILS MAINTENANT.`
         }
         if (!streamFallbackSuccess) {
           streamError = streamError || err;
-          const errorMessage = "Désolé, une erreur s'est produite. Réessaie dans quelques instants.";
-          try { res.write(`data: ${JSON.stringify({ type: "chunk", content: errorMessage })}\n\n`); } catch {}
-          fullResponse = errorMessage;
+          const isQuotaErr = err.status === 429 || err.code === 'insufficient_quota' || err.message?.includes('exceeded your current quota');
+          const is403 = err.status === 403;
+          let degradedMessage: string;
+          if (isQuotaErr || is403) {
+            degradedMessage = "Mes services d'intelligence artificielle sont temporairement indisponibles — je suis en mode limité. " +
+              "Je peux toujours gérer ta musique, ton calendrier, tes mails, la domotique et DevMax. " +
+              "Pour les conversations intelligentes, il faut patienter le temps que mes capacités soient restaurées.";
+          } else {
+            degradedMessage = "Je rencontre un problème technique temporaire. Réessaie dans quelques instants.";
+          }
+          console.error(`[V2-DEGRADED] All AI providers exhausted. Last error: ${err.message} (${err.status || 'no status'})`);
+          try { res.write(`data: ${JSON.stringify({ type: "chunk", content: degradedMessage })}\n\n`); } catch {}
+          fullResponse = degradedMessage;
         }
       }
 
@@ -3877,7 +3927,8 @@ Ne dis pas "je vais vérifier" — APPELLE LES OUTILS MAINTENANT.`
           },
         });
 
-        if (isMaxAI && body.contextHints?.devmaxProjectId) {
+        const isMaxAITracking = body.sessionContext === "devops" && (body.contextHints?.systemHint || "").includes("MAX");
+        if (isMaxAITracking && body.contextHints?.devmaxProjectId) {
           try {
             const [devmaxProj] = await db.execute(sql`SELECT tenant_id FROM devmax_projects WHERE id = ${body.contextHints.devmaxProjectId}`).then((r: any) => r.rows || r);
             if (devmaxProj?.tenant_id) {
@@ -3992,7 +4043,21 @@ Ne dis pas "je vais vérifier" — APPELLE LES OUTILS MAINTENANT.`
         const nsQuota = nsErr.status === 429 || nsErr.code === 'insufficient_quota' || nsErr.message?.includes('insufficient_quota');
         if (nsQuota && nsProviders[nsi].provider === "openai") markOpenAIDown();
         console.error(`[V2-NonStream] ${nsProviders[nsi].provider} failed:`, nsErr.message);
-        if (nsi === nsProviders.length - 1) throw nsErr;
+        if (nsi === nsProviders.length - 1) {
+          const nsIsQuota = nsErr.status === 429 || nsErr.code === 'insufficient_quota' || nsErr.message?.includes('exceeded your current quota');
+          const nsIs403 = nsErr.status === 403;
+          if (nsIsQuota || nsIs403) {
+            console.error(`[V2-DEGRADED] All AI providers exhausted (non-stream). Last error: ${nsErr.message}`);
+            completion = {
+              choices: [{ message: { content: "Mes services d'intelligence artificielle sont temporairement indisponibles — je suis en mode limité. " +
+                "Je peux toujours gérer ta musique, ton calendrier, tes mails, la domotique et DevMax. " +
+                "Pour les conversations intelligentes, il faut patienter le temps que mes capacités soient restaurées." } }],
+              usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            } as any;
+          } else {
+            throw nsErr;
+          }
+        }
       }
     }
     

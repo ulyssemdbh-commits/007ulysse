@@ -1,6 +1,6 @@
-const CACHE_NAME = "ulysse-v4";
-const STATIC_CACHE = "ulysse-static-v4";
-const DYNAMIC_CACHE = "ulysse-dynamic-v4";
+const CACHE_NAME = "ulysse-v5";
+const STATIC_CACHE = "ulysse-static-v5";
+const DYNAMIC_CACHE = "ulysse-dynamic-v5";
 
 const STATIC_ASSETS = [
   "/",

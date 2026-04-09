@@ -114,10 +114,12 @@ export function DevOpsChatPanel({ currentTab }: { currentTab?: string }) {
         if (chatRes.ok) {
           const chatData = await chatRes.json();
           if (chatData.messages && chatData.messages.length > 0) {
-            const restored: ChatMessage[] = chatData.messages.map((m: any) => ({
-              role: m.role as "user" | "assistant",
-              content: m.content || "",
-            }));
+            const restored: ChatMessage[] = chatData.messages
+              .filter((m: any) => m.role !== "system" && !(m.content || "").includes("[SUPERCHAT CONTEXT"))
+              .map((m: any) => ({
+                role: m.role as "user" | "assistant",
+                content: m.content || "",
+              }));
             setMessages(restored);
             const lastThread = chatData.messages.find((m: any) => m.thread_id)?.thread_id;
             if (lastThread) setThreadId(lastThread);
@@ -367,6 +369,7 @@ APRES chaque deploy, lance TOUJOURS url_diagnose_all pour verifier staging ET pr
           dgmActive: true,
           dgmRepoContext: repoFull || undefined,
           devmaxProjectId: activeProject?.id || undefined,
+          pageContext: { pageId: "devmax", pageName: "DevMax Command Center", pageDescription: "Console DevOps MaxAI — GitHub, CI/CD, déploiements, serveurs, pipelines et gestion de projets" },
         },
       };
       if (currentAttachments.length > 0) {
@@ -517,7 +520,7 @@ Sois exhaustif et structure ta réponse clairement. L'objectif est que les 2 URL
   }, [activeProject, handleSend]);
 
   return (
-    <div className={cn("flex flex-col h-[520px] relative", isDragOver && "ring-2 ring-emerald-500/50 rounded-xl")} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
+    <div className={cn("flex flex-col h-full relative", isDragOver && "ring-2 ring-cyan-500/50 rounded-xl")} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
       {isDragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-emerald-500/10 backdrop-blur-sm rounded-xl border-2 border-dashed border-emerald-500/50">
           <div className="flex flex-col items-center gap-2 text-emerald-400">
@@ -539,7 +542,7 @@ Sois exhaustif et structure ta réponse clairement. L'objectif est que les 2 URL
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 rounded-xl border bg-background/50 p-3" ref={scrollRef}>
+      <ScrollArea className="flex-1 rounded-xl border border-zinc-700/50 bg-zinc-900/60 p-3" ref={scrollRef}>
         <div className="space-y-3">
           {messages.length === 0 && (
             <div className="text-center py-8 text-muted-foreground text-sm space-y-4">
@@ -575,7 +578,7 @@ Sois exhaustif et structure ta réponse clairement. L'objectif est que les 2 URL
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={cn("text-sm rounded-xl", msg.role === "user" ? "bg-emerald-500/10 ml-8 p-3" : "bg-muted/50 mr-4 p-3")}>
+            <div key={i} className={cn("text-sm rounded-xl", msg.role === "user" ? "bg-emerald-500/10 ml-8 p-3" : "bg-zinc-800/60 mr-4 p-3")}>
               <p className="text-[10px] text-muted-foreground mb-1 font-medium">{msg.role === "user" ? "Vous" : "MaxAI"}</p>
               {msg.attachments?.map((a, j) => (
                 <div key={j} className="mb-2">
@@ -598,7 +601,7 @@ Sois exhaustif et structure ta réponse clairement. L'objectif est que les 2 URL
                   ))}
                 </div>
               )}
-              <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+              <div className="prose prose-sm prose-invert max-w-none text-sm">
                 <MarkdownContent content={msg.content} />
               </div>
             </div>

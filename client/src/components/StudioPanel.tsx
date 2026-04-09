@@ -190,7 +190,13 @@ function useStudioFileChat(fileId: number | null, fileName: string | null, mimeT
       const res = await fetch(`/api/conversations/${convId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text, imageDataUrl: options?.imageDataUrl }),
+        body: JSON.stringify({
+          content: text,
+          imageDataUrl: options?.imageDataUrl,
+          contextHints: {
+            pageContext: { pageId: "studio", pageName: "Studio Iris", pageDescription: "Studio créatif Iris — analyse de fichiers, images, code et création de contenus" },
+          },
+        }),
         signal: controller.signal,
         credentials: "include",
       });

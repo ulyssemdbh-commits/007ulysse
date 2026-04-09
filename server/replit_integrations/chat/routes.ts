@@ -4714,20 +4714,21 @@ REFUSE de donner des informations inventées et propose d'utiliser MARS ou une s
       const detectedWorkflow = detectWorkflow(content);
       const workflowEnhancement = detectedWorkflow ? getActionPromptEnhancement(detectedWorkflow) : "";
       
+      let pageCtxStr = "";
+      const pageCtx = req.body?.contextHints?.pageContext;
+      if (pageCtx?.pageId && pageCtx?.pageName) {
+        pageCtxStr = `\n\n### EMPLACEMENT UTILISATEUR:\n- Page: ${pageCtx.pageName}\n- Module: ${pageCtx.pageId}\n- Contexte: ${pageCtx.pageDescription || ""}\nAdapte tes réponses à ce contexte spécifique.\n`;
+      }
+
       if (persona.isOwner) {
-        // Ulysse (owner) - full access to everything including files + sports + stocks + screen + domain context v2
-        // PRIORITY: stockContext FIRST (finance data takes priority over sports to avoid override)
-        const fullContext = timeContext + calendarContext + stockContext + sportsContext + locationContext + screenContext + selfAwarenessContext + recentFilesContext + webSearchContext + imageSearchContext + factVerificationWarning + domainContextV2 + workflowEnhancement;
+        const fullContext = timeContext + calendarContext + stockContext + sportsContext + locationContext + screenContext + selfAwarenessContext + recentFilesContext + webSearchContext + imageSearchContext + factVerificationWarning + domainContextV2 + pageCtxStr + workflowEnhancement;
         systemMessage = buildUlysseSystemPrompt(memoryContext, fullContext, codeContext);
       } else if (persona.isExternal) {
-        // Alfred (external) - LIMITED context: only web search, no family data, no screen monitoring
         console.log(`[CHAT] Using Alfred persona for external user: ${persona.userName}`);
-        const alfredContext = timeContext + webSearchContext + factVerificationWarning; // NO calendar, location, memory, homework, screen, etc.
+        const alfredContext = timeContext + webSearchContext + factVerificationWarning + pageCtxStr;
         systemMessage = buildAlfredSystemPrompt(alfredContext, persona.userName);
       } else {
-        // Iris (approved family) - full access like Ulysse including files + sports + stocks + screen + domain context v2
-        // PRIORITY: stockContext FIRST (finance data takes priority over sports to avoid override)
-        const fullContext = timeContext + calendarContext + stockContext + sportsContext + locationContext + screenContext + selfAwarenessContext + recentFilesContext + webSearchContext + imageSearchContext + factVerificationWarning + domainContextV2 + workflowEnhancement;
+        const fullContext = timeContext + calendarContext + stockContext + sportsContext + locationContext + screenContext + selfAwarenessContext + recentFilesContext + webSearchContext + imageSearchContext + factVerificationWarning + domainContextV2 + pageCtxStr + workflowEnhancement;
         systemMessage = buildIrisSystemPrompt(memoryContext, fullContext, persona.ownerName, persona.userName, codeContext);
       }
       

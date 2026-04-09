@@ -66,6 +66,10 @@ export interface DevmaxProject {
   repo_owner?: string;
   repo_name?: string;
   repo_url?: string;
+  staging_repo_owner?: string;
+  staging_repo_name?: string;
+  staging_repo_url?: string;
+  storage_mode?: "github" | "db" | "hybrid";
   deploy_slug?: string;
   created_at?: string;
   updated_at?: string;

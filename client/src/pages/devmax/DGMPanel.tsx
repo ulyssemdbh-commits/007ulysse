@@ -330,7 +330,7 @@ export function PreviewPanel() {
               {activeEnv === "staging" ? "TEST" : "LIVE"}
             </Badge>
           </div>
-          <div className="rounded-xl border overflow-hidden bg-white" style={{ height: "500px" }}>
+          <div className="rounded-xl border overflow-hidden bg-zinc-950" style={{ height: "500px" }}>
             <iframe
               key={iframeKey}
               src={currentUrl}

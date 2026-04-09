@@ -153,7 +153,7 @@ export function getAIForContext(_context: AIContext): AIEntry {
     if (!isOpenAIAvailable()) {
         const gemini = getGemini();
         if (gemini) {
-            return { client: gemini, model: "gemini-2.5-pro", provider: "gemini" };
+            return { client: gemini, model: "gemini-2.0-flash", provider: "gemini" };
         }
     }
     const model = CONTEXT_MODEL_MAP[_context] || "gpt-4.1-mini";
@@ -167,10 +167,10 @@ export function getFallbackChainForContext(_context: AIContext): AIEntry[] {
         const openai = getOpenAINullable();
         if (openai) chain.push({ client: openai, model: contextModel, provider: "openai" });
         const gemini = getGemini();
-        if (gemini) chain.push({ client: gemini, model: "gemini-2.5-pro", provider: "gemini" });
+        if (gemini) chain.push({ client: gemini, model: "gemini-2.0-flash", provider: "gemini" });
     } else {
         const gemini = getGemini();
-        if (gemini) chain.push({ client: gemini, model: "gemini-2.5-pro", provider: "gemini" });
+        if (gemini) chain.push({ client: gemini, model: "gemini-2.0-flash", provider: "gemini" });
         const openai = getOpenAINullable();
         if (openai) chain.push({ client: openai, model: contextModel, provider: "openai" });
     }
@@ -180,7 +180,7 @@ export function getFallbackChainForContext(_context: AIContext): AIEntry[] {
 export function getPrimaryAI(): AIEntry {
     if (!isOpenAIAvailable()) {
         const gemini = getGemini();
-        if (gemini) return { client: gemini, model: "gemini-2.5-pro", provider: "gemini" };
+        if (gemini) return { client: gemini, model: "gemini-2.0-flash", provider: "gemini" };
     }
     return { client: getOpenAI(), model: "gpt-4.1-mini", provider: "openai" };
 }

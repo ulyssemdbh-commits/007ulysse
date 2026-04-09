@@ -30,13 +30,18 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
   - **Ulysse** 🧠 (primary, Maurice's brain): Full-stack assistant with 90+ tools, voice, vision, DevOps.
   - **Iris** 🌸 (family + Senior CM Commax): Daughters' assistant + community management expert.
   - **Alfred** 🎩 (business SUGU + COBA): Restaurant operations, finances, employees, suppliers.
-  - **MaxAI** ⚡ (DevOps + infrastructure): Pipeline deploy, server monitoring, GitHub automation.
+  - **MaxAI** ⚡ (DevOps + infrastructure): Pipeline deploy, server monitoring, GitHub automation. DGM `auto_execute` action for full autonomous pipeline (decompose → code → review → PR → merge in one action). Enhanced with: `ensureProjectStructure` (auto-creates package-lock.json, fixes CI workflows v3→v4, npm ci→npm i), `waitForCI` (polls GitHub Actions check-runs before merge — blocks if CI fails), pre-deploy checklist in prompt.
   - Each AI has "CONSCIENCE DE SOI" (self-awareness of the other 3 AIs and collaboration rules).
   - `conversations.ts` uses `PERSONA_IDENTITIES.iris.identity` and `PERSONA_IDENTITIES.alfred.identity` — all identity changes go through `personaMapping.ts` ONLY.
   - COBA = client-facing version of Alfred for restaurant tenants on macommande.shop.
 - **Anti-Hallucination System**: Employs strict rules (e.g., forcing `browse_files` before code changes), multi-source verification, and verified memory entries.
 - **Anti-Read-Loop System**: Detects and corrects AI agents performing consecutive read-only operations without progressing to code modification.
-- **Staging-First Policy**: MaxAI codes ALWAYS on `{repo}-test` (staging repo). The main repo only receives code during production deployment via `promote-staging`. Backend `DevOps-StagingGuard` auto-redirects write actions (create_file, update_file, smart_sync, apply_patch) to the `-test` repo when it exists. Escape hatch: commit messages containing `[Staging→Prod]`, `[PROD]`, or `[promote]` bypass the guard for production deploys.
+- **DB-First File Architecture**: All test/staging files are stored in `devmax_files` table (branch `"test"`). No staging GitHub repo needed. `deploy-staging` reads files from DB branch "test" and deploys via SSH (`deployFromDbFiles`). `promote-production` copies test→prod in DB, then either pushes to GitHub + deploy (if `repo_owner/repo_name` configured) or deploys directly from DB files (if no GitHub).
+- **storage_mode**: `"github"` (prod via GitHub push), `"db"` (everything in DB), `"hybrid"`. Auto-set based on whether repo_owner/repo_name are configured.
+- **DB File Storage Service**: `server/services/devmaxFileStorage.ts` — CRUD (listFiles, getFile, saveFile, deleteFile, saveBatch, deleteAll), branch management (listBranches, copyBranch), stats. API routes: `/api/devmax/db-files/*`.
+- **deployFromDbFiles()**: SSH deploy method in `server/services/ssh/deploy.ts` — writes files directly to server via SSH, builds, starts with PM2, configures nginx + SSL. Used by both staging and production (DB mode) deploys. Auto-injects `DATABASE_URL` from dedicated project DB if provisioned.
+- **Dedicated Project DB**: Each DevMax project can have its own isolated PostgreSQL database on Hetzner. Provisioned via `POST /api/devmax/provision-db`. Status: `GET /api/devmax/provision-db/status`. Columns: `db_name`, `db_user`, `db_password`, `db_url`, `db_provisioned` on `devmax_projects`. The `DATABASE_URL` is auto-injected during deployment.
+- **Local Test Preview**: `GET /api/devmax/preview/:projectId/*?branch=test` serves test files directly from DB as a local preview (HTML/CSS/JS with proper MIME types). Shown in LivePreviewPanel via "Test" tab alongside Staging/Production tabs.
 
 ### Commax — Community Management
 - **Purpose**: Full community management platform propulsé par Ulysse. Conçu for mono-utilisateur with future multi-tenant architecture.

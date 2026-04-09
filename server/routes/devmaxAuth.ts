@@ -269,6 +269,29 @@ async function ensureDevmaxTables() {
     await db.execute(sql`ALTER TABLE devmax_projects ADD COLUMN IF NOT EXISTS cicd_branch TEXT DEFAULT 'main'`).catch(() => {});
     await db.execute(sql`ALTER TABLE devmax_projects ADD COLUMN IF NOT EXISTS webhook_id TEXT`).catch(() => {});
 
+    await db.execute(sql`ALTER TABLE devmax_projects ADD COLUMN IF NOT EXISTS staging_repo_owner TEXT`).catch(() => {});
+    await db.execute(sql`ALTER TABLE devmax_projects ADD COLUMN IF NOT EXISTS staging_repo_name TEXT`).catch(() => {});
+    await db.execute(sql`ALTER TABLE devmax_projects ADD COLUMN IF NOT EXISTS staging_repo_url TEXT`).catch(() => {});
+    await db.execute(sql`ALTER TABLE devmax_projects ADD COLUMN IF NOT EXISTS storage_mode TEXT DEFAULT 'github'`).catch(() => {});
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS devmax_files (
+        id SERIAL PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        branch TEXT NOT NULL DEFAULT 'main',
+        file_path TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        sha TEXT,
+        size INTEGER DEFAULT 0,
+        encoding TEXT DEFAULT 'utf-8',
+        updated_by TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(project_id, branch, file_path)
+      )
+    `).catch(() => {});
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_devmax_files_project ON devmax_files(project_id, branch)`).catch(() => {});
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS devmax_deployments (
         id SERIAL PRIMARY KEY,
@@ -1059,7 +1082,7 @@ router.post("/projects", async (req: Request, res: Response) => {
       .limit(1);
     if (!session) return res.status(401).json({ error: "Session expired" });
 
-    const { name, description, repoOwner, repoName, deploySlug, template } = req.body;
+    const { name, description, repoOwner, repoName, deploySlug, template, stagingRepoOwner, stagingRepoName, storageMode } = req.body;
     if (!name) return res.status(400).json({ error: "Nom du projet requis" });
 
     if (session.tenantId) {
@@ -1081,14 +1104,16 @@ router.post("/projects", async (req: Request, res: Response) => {
 
     const id = randomUUID();
     const repoUrl = repoOwner && repoName ? `https://github.com/${repoOwner}/${repoName}` : null;
+    const stagingRepoUrl = stagingRepoOwner && stagingRepoName ? `https://github.com/${stagingRepoOwner}/${stagingRepoName}` : null;
     const slug = (deploySlug || repoName || name).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    const resolvedStorageMode = storageMode || (repoOwner && repoName ? "github" : "db");
 
     const stagingUrl = slug ? `https://${slug}-dev.ulyssepro.org` : null;
     const productionUrl = slug ? `https://${slug}.ulyssepro.org` : null;
 
     await db.execute(sql`
-      INSERT INTO devmax_projects (id, fingerprint, name, description, repo_owner, repo_name, repo_url, deploy_slug, staging_url, production_url, deploy_url, tenant_id)
-      VALUES (${id}, ${session.fingerprint}, ${name}, ${description || null}, ${repoOwner || null}, ${repoName || null}, ${repoUrl}, ${slug}, ${stagingUrl}, ${productionUrl}, ${productionUrl}, ${session.tenantId || null})
+      INSERT INTO devmax_projects (id, fingerprint, name, description, repo_owner, repo_name, repo_url, staging_repo_owner, staging_repo_name, staging_repo_url, storage_mode, deploy_slug, staging_url, production_url, deploy_url, tenant_id)
+      VALUES (${id}, ${session.fingerprint}, ${name}, ${description || null}, ${repoOwner || null}, ${repoName || null}, ${repoUrl}, ${stagingRepoOwner || null}, ${stagingRepoName || null}, ${stagingRepoUrl}, ${resolvedStorageMode}, ${slug}, ${stagingUrl}, ${productionUrl}, ${productionUrl}, ${session.tenantId || null})
     `);
 
     let reservedPorts: { stagingPort: number; productionPort: number } | null = null;
@@ -1108,7 +1133,7 @@ router.post("/projects", async (req: Request, res: Response) => {
       db.execute(sql`INSERT INTO devmax_usage_logs (tenant_id, action, details) VALUES (${session.tenantId}, 'create_project', ${JSON.stringify({ projectId: id, name, template: template || null })})`).catch(() => {});
     }
 
-    res.json({ id, name, description, repoOwner, repoName, repoUrl, deploySlug: slug, template: template || null, stagingUrl, productionUrl, ports: reservedPorts });
+    res.json({ id, name, description, repoOwner, repoName, repoUrl, stagingRepoOwner, stagingRepoName, stagingRepoUrl, storageMode: resolvedStorageMode, deploySlug: slug, template: template || null, stagingUrl, productionUrl, ports: reservedPorts });
 
     if (slug) {
       import("../services/sshService").then(({ sshService }) => {
@@ -1414,8 +1439,9 @@ router.put("/projects/:projectId", async (req: Request, res: Response) => {
       return res.status(403).json({ error: "Accès refusé à ce projet" });
     }
 
-    const { name, description, repoOwner, repoName, deploySlug } = req.body;
+    const { name, description, repoOwner, repoName, deploySlug, stagingRepoOwner, stagingRepoName, storageMode } = req.body;
     const repoUrl = repoOwner && repoName ? `https://github.com/${repoOwner}/${repoName}` : null;
+    const stagingRepoUrl = stagingRepoOwner && stagingRepoName ? `https://github.com/${stagingRepoOwner}/${stagingRepoName}` : null;
     const slug = deploySlug ? deploySlug.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") : null;
 
     await db.execute(sql`
@@ -1425,6 +1451,10 @@ router.put("/projects/:projectId", async (req: Request, res: Response) => {
         repo_owner = ${repoOwner || null},
         repo_name = ${repoName || null},
         repo_url = ${repoUrl},
+        staging_repo_owner = ${stagingRepoOwner || null},
+        staging_repo_name = ${stagingRepoName || null},
+        staging_repo_url = ${stagingRepoUrl},
+        storage_mode = COALESCE(${storageMode || null}, storage_mode),
         deploy_slug = COALESCE(${slug}, deploy_slug),
         updated_at = NOW()
       WHERE id = ${projectId}

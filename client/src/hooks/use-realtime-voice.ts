@@ -81,20 +81,20 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
   const isCalibrationCompleteRef = useRef(false);
   
   // Seuils adaptatifs
-  const CALIBRATION_SAMPLES = 30; // ~500ms de calibration
-  const NOISE_FLOOR_MULTIPLIER = 2.5; // Seuil = bruit de fond × multiplier
-  const MIN_SPEECH_THRESHOLD = 0.015; // Seuil minimum absolu
-  const MAX_SPEECH_THRESHOLD = 0.08; // Seuil maximum
+  const CALIBRATION_SAMPLES = 20; // ~330ms de calibration (réduit pour démarrage rapide)
+  const NOISE_FLOOR_MULTIPLIER = 2.2; // Seuil = bruit de fond × multiplier (plus sensible)
+  const MIN_SPEECH_THRESHOLD = 0.012; // Seuil minimum absolu (plus sensible)
+  const MAX_SPEECH_THRESHOLD = 0.07; // Seuil maximum
   
-  // Durées configurables
-  const SILENCE_DURATION = 700; // ms de silence avant auto-stop (réduit de 1500ms)
-  const MIN_SPEECH_DURATION = 300; // Durée minimum de parole (ms)
-  const DEBOUNCE_TIME = 100; // Anti-rebond pour transitions
+  // Durées configurables — optimisées pour conversation fluide
+  const SILENCE_DURATION = 550; // ms de silence avant auto-stop (réduit de 700ms pour réactivité)
+  const MIN_SPEECH_DURATION = 200; // Durée minimum de parole (ms) — réduit pour phrases courtes
+  const DEBOUNCE_TIME = 80; // Anti-rebond pour transitions (réduit)
   
   // Hystérésis pour éviter les faux positifs
   const speechConfidenceRef = useRef<number>(0);
-  const SPEECH_CONFIRM_FRAMES = 5; // Frames consécutives pour confirmer parole
-  const SILENCE_CONFIRM_FRAMES = 8; // Frames consécutives pour confirmer silence
+  const SPEECH_CONFIRM_FRAMES = 4; // Frames consécutives pour confirmer parole (plus réactif)
+  const SILENCE_CONFIRM_FRAMES = 6; // Frames consécutives pour confirmer silence (plus réactif)
   const silenceConfidenceRef = useRef<number>(0);
   
   // Statistiques de debug

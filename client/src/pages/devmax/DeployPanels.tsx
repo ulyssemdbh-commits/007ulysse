@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { LivePreviewPanel, ProjectDatabasePanel } from "./InfraPanels";
 import { motion } from "framer-motion";
 import {
   RefreshCw,
@@ -22,6 +23,7 @@ import {
   Zap,
   Shield,
   GitFork,
+  HardDrive,
   Lock,
   Upload,
   Globe,
@@ -91,7 +93,7 @@ export function DeployPanel() {
         toast({
           title: data.browserAccessible ? "Staging deploye et accessible" : "Staging deploye avec succes",
           description: data.browserAccessible
-            ? `${data.stagingUrl}\nRepo: ${data.stagingRepo || ""}`
+            ? `${data.stagingUrl}\nSource: Fichiers Tests (DB)`
             : `${data.stagingUrl}\nHealth check: ${data.browserStatus || "en cours"} — le site peut prendre quelques secondes`,
         });
       } else {
@@ -294,10 +296,10 @@ export function DeployPanel() {
                 <><XCircle className="w-4 h-4 text-red-400" /> Deploiement echoue</>
               )}
             </h4>
-            {lastDeployResult.stagingRepo && (
-              <a href={lastDeployResult.stagingRepoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:underline flex items-center gap-1" data-testid="link-staging-repo">
-                <GitFork className="w-3 h-3" /> Repo staging: {lastDeployResult.stagingRepo}
-              </a>
+            {lastDeployResult.method === "db-files" && (
+              <span className="text-xs text-cyan-400 flex items-center gap-1">
+                <HardDrive className="w-3 h-3" /> Source: Fichiers Tests (DB)
+              </span>
             )}
             <div className="flex items-center gap-2 text-xs">
               <Badge variant="outline" className={cn("text-[10px]", lastDeployResult.browserAccessible ? "border-emerald-500/50 text-emerald-400" : "border-amber-500/50 text-amber-400")}>
@@ -357,9 +359,9 @@ export function DeployPanel() {
         <DeployRollbackSection pid={pid} />
       )}
 
-      {(status?.stagingUrl || status?.productionUrl) && (
-        <LivePreviewPanel stagingUrl={status?.stagingUrl || null} productionUrl={status?.productionUrl || null} />
-      )}
+      <ProjectDatabasePanel projectId={pid} />
+
+      <LivePreviewPanel stagingUrl={status?.stagingUrl || null} productionUrl={status?.productionUrl || null} projectId={pid} />
     </div>
   );
 }

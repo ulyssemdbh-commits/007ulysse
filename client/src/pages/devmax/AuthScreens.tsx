@@ -23,6 +23,8 @@ import {
   Edit3,
   Globe,
   ArrowRight,
+  HardDrive,
+  Database,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
@@ -187,6 +189,9 @@ export function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProjec
   const [newDesc, setNewDesc] = useState("");
   const [newRepoOwner, setNewRepoOwner] = useState("");
   const [newRepoName, setNewRepoName] = useState("");
+  const [newStagingRepoOwner, setNewStagingRepoOwner] = useState("");
+  const [newStagingRepoName, setNewStagingRepoName] = useState("");
+  const [newStorageMode, setNewStorageMode] = useState<"github" | "db">("github");
   const [newDeploySlug, setNewDeploySlug] = useState("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [newTemplate, setNewTemplate] = useState<string>("");
@@ -214,6 +219,7 @@ export function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProjec
         description: newDesc || undefined,
         repoOwner: newRepoOwner || undefined,
         repoName: newRepoName || undefined,
+        storageMode: (newRepoOwner && newRepoName) ? "github" : "db",
         deploySlug: computedSlug || undefined,
         template: newTemplate || undefined,
       });
@@ -234,6 +240,7 @@ export function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProjec
         repo_owner: data.repoOwner || newRepoOwner,
         repo_name: data.repoName || newRepoName,
         repo_url: data.repoUrl || "",
+        storage_mode: data.storageMode || ((newRepoOwner && newRepoName) ? "github" : "db"),
         deploy_slug: data.deploySlug || computedSlug,
         fingerprint: "",
         created_at: new Date().toISOString(),
@@ -245,6 +252,9 @@ export function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProjec
       setNewDesc("");
       setNewRepoOwner("");
       setNewRepoName("");
+      setNewStagingRepoOwner("");
+      setNewStagingRepoName("");
+      setNewStorageMode("github");
       setNewDeploySlug("");
       setSlugManuallyEdited(false);
       setNewTemplate("");
@@ -260,6 +270,7 @@ export function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProjec
       description: p.description || "",
       repoOwner: p.repo_owner || "",
       repoName: p.repo_name || "",
+      storageMode: (p.repo_owner && p.repo_name) ? "github" : "db",
     }),
     onSuccess: () => {
       toast({ title: "Projet mis a jour" });
@@ -343,30 +354,29 @@ export function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProjec
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-zinc-400 mb-1 block">GitHub Owner</label>
+                    <div>
+                      <label className="text-xs text-zinc-400 mb-1.5 block">Repo GitHub Production (optionnel)</label>
+                      <p className="text-[10px] text-zinc-500 mb-2">Si renseigné, le code sera pushé sur GitHub lors de la mise en prod. Sinon, tout reste en DB DevMax.</p>
+                      <div className="grid grid-cols-2 gap-2">
                         <Input
                           value={newRepoOwner}
                           onChange={e => setNewRepoOwner(e.target.value)}
-                          placeholder="username ou org"
+                          placeholder="owner"
                           className="rounded-xl bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
                           data-testid="input-repo-owner"
                         />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-400 mb-1 block">GitHub Repo</label>
                         <Input
                           value={newRepoName}
                           onChange={e => {
                             setNewRepoName(e.target.value);
                             if (!slugManuallyEdited) setNewDeploySlug("");
                           }}
-                          placeholder="nom-du-repo"
+                          placeholder="repo-name"
                           className="rounded-xl bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
                           data-testid="input-repo-name"
                         />
                       </div>
+                      <p className="text-[10px] text-cyan-400/60 mt-1">Fichiers Tests toujours stockés en DB DevMax. Staging deploye depuis DB.</p>
                     </div>
                     <div>
                       <label className="text-xs text-zinc-400 mb-1 block">URL de deploiement</label>
@@ -486,19 +496,22 @@ export function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProjec
                           placeholder="Description"
                           className="rounded-xl bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
                         />
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            value={editingProject.repo_owner || ""}
-                            onChange={e => setEditingProject({ ...editingProject, repo_owner: e.target.value })}
-                            placeholder="Owner"
-                            className="rounded-xl bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
-                          />
-                          <Input
-                            value={editingProject.repo_name || ""}
-                            onChange={e => setEditingProject({ ...editingProject, repo_name: e.target.value })}
-                            placeholder="Repo"
-                            className="rounded-xl bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
-                          />
+                        <div>
+                          <label className="text-[10px] text-emerald-400 mb-0.5 block">Repo GitHub Prod (optionnel)</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              value={editingProject.repo_owner || ""}
+                              onChange={e => setEditingProject({ ...editingProject, repo_owner: e.target.value })}
+                              placeholder="Owner"
+                              className="rounded-xl bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
+                            />
+                            <Input
+                              value={editingProject.repo_name || ""}
+                              onChange={e => setEditingProject({ ...editingProject, repo_name: e.target.value })}
+                              placeholder="Repo"
+                              className="rounded-xl bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
+                            />
+                          </div>
                         </div>
                         <div className="flex justify-end gap-2">
                           <Button variant="ghost" size="sm" className="rounded-xl" onClick={() => setEditingProject(null)}>Annuler</Button>
@@ -546,10 +559,22 @@ export function ProjectSelector({ onSelect }: { onSelect: (project: DevmaxProjec
                             </Button>
                           </div>
                         </div>
-                        {project.repo_owner && project.repo_name ? (
-                          <div className="flex items-center gap-2 text-xs text-zinc-400">
-                            <GitFork className="w-3 h-3 text-emerald-400" />
-                            <span className="font-mono">{project.repo_owner}/{project.repo_name}</span>
+                        {project.storage_mode === "db" ? (
+                          <div className="flex items-center gap-2 text-xs text-cyan-400">
+                            <Database className="w-3 h-3" />
+                            <span>Stockage DB DevMax</span>
+                          </div>
+                        ) : project.repo_owner && project.repo_name ? (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2 text-xs text-zinc-400">
+                              <GitFork className="w-3 h-3 text-emerald-400" />
+                              <span className="font-mono">{project.repo_owner}/{project.repo_name}</span>
+                              <span className="text-[9px] text-emerald-500/60">PROD</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-zinc-500">
+                              <HardDrive className="w-3 h-3 text-cyan-400" />
+                              <span className="text-[9px] text-cyan-500/60">Fichiers Tests en DB</span>
+                            </div>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 text-xs text-zinc-600">

@@ -1,4 +1,4 @@
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, SunMoon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTheme } from "@/components/theme-provider";
@@ -9,13 +9,27 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ className }: ThemeToggleProps) {
-  const { theme, setTheme } = useTheme();
-  
-  const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const { theme, setTheme, resolvedTheme } = useTheme();
 
-  const toggleTheme = () => {
-    setTheme(isDark ? "light" : "dark");
+  const cycleTheme = () => {
+    if (theme === "auto") setTheme("light");
+    else if (theme === "light") setTheme("dark");
+    else setTheme("auto");
   };
+
+  const label = theme === "auto" ? "Auto" : theme === "light" ? "Jour" : "Nuit";
+  const tooltip = theme === "auto"
+    ? "Mode auto (jour/nuit selon l'heure)"
+    : theme === "light"
+    ? "Mode jour — cliquer pour nuit"
+    : "Mode nuit — cliquer pour auto";
+
+  const Icon = theme === "auto" ? SunMoon : resolvedTheme === "dark" ? Moon : Sun;
+  const iconColor = theme === "auto"
+    ? "text-violet-400"
+    : resolvedTheme === "dark"
+    ? "text-indigo-400"
+    : "text-amber-500";
 
   return (
     <Tooltip>
@@ -23,25 +37,17 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={toggleTheme}
-          className={cn(
-            "gap-1.5 px-2",
-            isDark ? "text-indigo-400" : "text-amber-500",
-            className
-          )}
+          onClick={cycleTheme}
+          className={cn("gap-1.5 px-2", iconColor, className)}
           data-testid="button-theme-toggle"
-          aria-label={isDark ? "Passer en mode jour" : "Passer en mode nuit"}
+          aria-label={tooltip}
         >
-          {isDark ? (
-            <Moon className="h-4 w-4" />
-          ) : (
-            <Sun className="h-4 w-4" />
-          )}
-          <span className="text-xs font-medium">{isDark ? "Nuit" : "Jour"}</span>
+          <Icon className="h-4 w-4" />
+          <span className="text-xs font-medium">{label}</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        <p>{isDark ? "Passer en mode jour" : "Passer en mode nuit"}</p>
+        <p>{tooltip}</p>
       </TooltipContent>
     </Tooltip>
   );

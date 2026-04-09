@@ -491,7 +491,7 @@ function App() {
   if (isCobaPro) {
     return (
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="dark">
+        <ThemeProvider defaultTheme="auto">
           <TooltipProvider>
             <Toaster />
             <LazyPage><CobaProPage /></LazyPage>
@@ -504,7 +504,7 @@ function App() {
   if (isDevmaxAdmin) {
     return (
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="dark">
+        <ThemeProvider defaultTheme="auto">
           <TooltipProvider>
             <Toaster />
             <DevMaxAdminWrapper />
@@ -517,7 +517,7 @@ function App() {
   if (isDevmax) {
     return (
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="dark">
+        <ThemeProvider defaultTheme="auto">
           <TooltipProvider>
             <ErrorBoundary>
               <Toaster />
@@ -531,7 +531,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="dark">
+      <ThemeProvider defaultTheme="auto">
         <TooltipProvider>
           <ErrorBoundary>
             <AuthProvider>

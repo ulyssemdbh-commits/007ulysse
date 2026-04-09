@@ -1281,6 +1281,16 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                 devopsAutoJournal(`${owner}/${repo}`, "deploy", `PR #${pullNumber} mergée`, undefined, [], { prNumber: pullNumber });
                 return JSON.stringify({ success: true, merged });
             }
+            case "close_pr": {
+                if (!owner || !repo || !pullNumber) return JSON.stringify({ error: "owner, repo et pullNumber requis" });
+                const { githubApi } = await import("../githubService");
+                await githubApi(`/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+                    method: "PATCH",
+                    body: { state: "closed" },
+                });
+                console.log(`[DevOpsGitHub] Closed PR #${pullNumber} on ${owner}/${repo}`);
+                return JSON.stringify({ success: true, pullNumber, state: "closed" });
+            }
             case "get_file": {
                 if (!owner || !repo || !path) return JSON.stringify({ error: "owner, repo et path requis" });
                 let file: any = null;

@@ -267,6 +267,12 @@ export const devmaxProjects = pgTable("devmax_projects", {
   githubUser: text("github_user"),
   githubScopes: text("github_scopes"),
   githubConnectedAt: timestamp("github_connected_at"),
+  storageMode: text("storage_mode").default("db"),
+  dbName: text("db_name"),
+  dbUser: text("db_user"),
+  dbPassword: text("db_password"),
+  dbUrl: text("db_url"),
+  dbProvisioned: boolean("db_provisioned").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

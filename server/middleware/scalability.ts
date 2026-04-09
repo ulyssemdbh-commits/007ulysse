@@ -356,7 +356,7 @@ class BackpressureGuard {
       }
 
       if (this.activeRequests >= this.shedThreshold) {
-        const priority = (req as any).tenantPlan || "free";
+        const priority = (req as Request & { tenantPlan?: string }).tenantPlan || "free";
         if (PRIORITY_MAP[priority] >= 3) {
           res.status(503).json({
             error: "Server under heavy load, premium users prioritized",
@@ -391,7 +391,7 @@ export function concurrencyMiddleware(domain: string, timeoutMs: number = 30000)
     let slotId: string | null = null;
     try {
       slotId = await concurrencyLimiter.acquire(domain, `${req.method} ${req.path}`, timeoutMs);
-      (req as any)._concurrencySlotId = slotId;
+      (req as Request & { _concurrencySlotId?: string })._concurrencySlotId = slotId;
 
       const onFinish = () => {
         if (slotId) concurrencyLimiter.release(slotId);

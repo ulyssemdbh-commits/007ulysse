@@ -1,4 +1,6 @@
-import { Trophy, Brain, Store, DollarSign, FolderOpen, ListTodo, Pencil, Mail, BarChart3, GitBranch, Sparkles, Users, Stethoscope, Settings } from "lucide-react";
+import { Trophy, Brain, Store, DollarSign, FolderOpen, ListTodo, Pencil, Mail, BarChart3, GitBranch, Sparkles, Users, Stethoscope, Settings, CreditCard, CheckSquare, Briefcase } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 interface DashboardShortcutsProps {
   navigate: (path: string) => void;
@@ -9,32 +11,48 @@ const URL_SHORTCUTS = [
   { label: "Brain", icon: Brain, path: "/brain", color: "text-purple-400" },
   { label: "Val", icon: Store, path: "/suguval", color: "text-emerald-400" },
   { label: "Maillane", icon: Store, path: "/sugumaillane", color: "text-teal-400" },
-  { label: "Finances", icon: DollarSign, path: "/finances", color: "text-blue-400" },
-  { label: "Projets", icon: FolderOpen, path: "/projects", color: "text-orange-400" },
-  { label: "Tâches", icon: ListTodo, path: "/tasks", color: "text-green-400" },
+  { label: "Finances", icon: CreditCard, path: "/finances", color: "text-blue-400" },
+  { label: "Projets", icon: Briefcase, path: "/projects", color: "text-orange-400" },
+  { label: "Taches", icon: CheckSquare, path: "/tasks", color: "text-green-400" },
   { label: "Notes", icon: Pencil, path: "/notes", color: "text-pink-400" },
   { label: "Emails", icon: Mail, path: "/emails", color: "text-red-400" },
   { label: "Insights", icon: BarChart3, path: "/ulysse-insights", color: "text-cyan-400" },
   { label: "DevOps", icon: GitBranch, path: "/devops", color: "text-indigo-400" },
-  { label: "Iris DevOps", icon: Sparkles, path: "/devops-iris", color: "text-amber-400" },
+  { label: "Iris", icon: Sparkles, path: "/devops-iris", color: "text-amber-400" },
   { label: "SuperChat", icon: Users, path: "/superchat", color: "text-violet-400" },
   { label: "Diag", icon: Stethoscope, path: "/diagnostics", color: "text-slate-400" },
-  { label: "Réglages", icon: Settings, path: "/settings", color: "text-slate-300" },
+  { label: "Reglages", icon: Settings, path: "/settings", color: "text-slate-300" },
 ];
 
 export function DashboardShortcuts({ navigate }: DashboardShortcutsProps) {
+  const [activeModule, setActiveModule] = useState<string | null>(null);
+
   return (
-    <div className="w-full mb-3 z-10">
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-        {URL_SHORTCUTS.map(s => (
-          <button key={s.label} onClick={() => navigate(s.path)} data-testid={`shortcut-${s.label.toLowerCase()}`}
-            className="relative group flex flex-col items-center gap-1 flex-shrink-0 px-2.5 py-2 rounded-xl bg-black/30 hover:bg-cyan-950/30 border border-cyan-900/20 hover:border-cyan-500/50 transition-all duration-300 min-w-[52px]">
-            <s.icon className={`w-4 h-4 ${s.color}`} />
-            <span className="text-[8px] text-cyan-500/70 font-mono uppercase tracking-wider leading-none whitespace-nowrap group-hover:text-cyan-300">{s.label}</span>
+    <aside className="w-[72px] shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+      {URL_SHORTCUTS.map((mod) => {
+        const Icon = mod.icon;
+        const isActive = activeModule === mod.label;
+        return (
+          <button
+            key={mod.label}
+            onClick={() => {
+              setActiveModule(isActive ? null : mod.label);
+              navigate(mod.path);
+            }}
+            data-testid={`module-${mod.label.toLowerCase()}`}
+            className={cn(
+              "relative group flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl border transition-all duration-300",
+              isActive
+                ? "border-cyan-500/50 bg-cyan-950/30 text-cyan-300 shadow-[0_0_15px_rgba(0,212,255,0.15)]"
+                : "border-cyan-900/20 bg-black/30 text-cyan-700 hover:border-cyan-700/50 hover:text-cyan-400"
+            )}
+          >
+            <Icon className={cn("w-5 h-5", isActive ? "text-cyan-300" : mod.color)} />
+            <span className="text-[8px] uppercase tracking-wider font-mono opacity-80 group-hover:opacity-100 leading-tight">{mod.label}</span>
             <div className="absolute inset-0 border border-cyan-400/0 group-hover:border-cyan-400/20 rounded-xl transition-all duration-300" />
           </button>
-        ))}
-      </div>
-    </div>
+        );
+      })}
+    </aside>
   );
 }

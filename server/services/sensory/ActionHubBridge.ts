@@ -113,6 +113,21 @@ const TOOL_CATEGORY_MAP: Record<string, ActionCategory> = {
   // DevOps
   devops_github: "tool_call",
   devops_server: "tool_call",
+  devmax_db: "tool_call",
+  dashboard_screenshot: "tool_call",
+  // PDF & 3D
+  manage_3d_file: "file",
+  generate_invoice_pdf: "file",
+  pdf_master: "file",
+  // COBA
+  query_coba: "tool_call",
+  coba_business: "tool_call",
+  // SuperChat
+  superchat_search: "tool_call",
+  // Commax
+  commax_manage: "tool_call",
+  // Screen Monitor
+  screen_monitor_manage: "tool_call",
 };
 
 let bridgeInitialized = false;

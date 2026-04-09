@@ -100,7 +100,13 @@ export function useDashboardChat(params: UseDashboardChatParams) {
       const res = await fetch(`/api/conversations/${activeConversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, imageDataUrl, pdfPageImages, pdfBase64Full, pdfFileName }),
+        body: JSON.stringify({
+          content, imageDataUrl, pdfPageImages, pdfBase64Full, pdfFileName,
+          contextHints: {
+            includeMemory: true,
+            pageContext: { pageId: "dashboard", pageName: "Dashboard", pageDescription: "Tableau de bord principal d'Ulysse — hub central avec chat, raccourcis modules, agenda, finances et systèmes" },
+          },
+        }),
         signal: controller.signal,
       });
 

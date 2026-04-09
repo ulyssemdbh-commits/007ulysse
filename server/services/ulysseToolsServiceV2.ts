@@ -1123,290 +1123,153 @@ function generateErrorRecoveryHint(toolName: string, error: string, args: Record
   return hints.join(" ");
 }
 
+type ToolHandler = (args: Record<string, any>, userId: number) => Promise<string>;
+
+const TOOL_REGISTRY: Record<string, ToolHandler> = {
+  query_suguval_history: (a) => executeSuguvalQuery(a),
+  get_suguval_checklist: (a) => executeGetSuguvalChecklist(a),
+  send_suguval_shopping_list: (a) => executeSendSuguvalShoppingList(a),
+  query_sports_data: (a) => executeSportsQuery(a),
+  query_match_intelligence: (a) => executeMatchIntelligence(a),
+  query_matchendirect: (a) => executeMatchEndirectQuery(a),
+  query_football_db: (a) => executeFootballDbQuery(a),
+  query_brain: (a, u) => executeBrainQuery(a, u),
+  query_stock_data: (a) => executeStockQuery(a),
+  calendar_list_events: (a, u) => executeCalendarList(a, u),
+  calendar_create_event: (a, u) => executeCalendarCreate(a, u),
+  email_list_inbox: (a) => executeEmailList(a),
+  email_read_message: (a) => executeEmailRead(a),
+  email_reply: (a) => executeEmailReply(a),
+  email_forward: (a) => executeEmailForward(a),
+  email_send: (a) => executeEmailSend(a),
+  smarthome_control: (a, u) => executeSmartHomeControl(a, u),
+  location_get_weather: (a) => executeWeatherGet(a),
+  web_search: (a) => executeWebSearch(a),
+  read_url: (a) => executeReadUrl(a),
+  spotify_control: (a, u) => executeSpotifyControl(a, u),
+  discord_send_message: (a, u) => executeDiscordSendMessage(a, u),
+  discord_status: (_a, u) => executeDiscordStatus(u),
+  discord_add_reaction: (a, u) => executeDiscordAddReaction(a, u),
+  discord_remove_reaction: (a, u) => executeDiscordRemoveReaction(a, u),
+  discord_delete_message: (a, u) => executeDiscordDeleteMessage(a, u),
+  discord_send_file: (a, u) => executeDiscordSendFile(a, u),
+  discord_create_invitation: (a, u) => executeDiscordCreateInvitation(a, u),
+  discord_voice_status: (_a, u) => executeDiscordVoiceStatus(u),
+  memory_save: (a, u) => executeMemorySave(a, u),
+  superchat_search: (a, u) => executeSuperChatSearch(a, u),
+  image_generate: (a, u) => executeImageGenerate(a, u),
+  todoist_create_task: (a, u) => executeTodoistCreateTask(a, u),
+  todoist_list_tasks: (a) => executeTodoistListTasks(a),
+  todoist_complete_task: (a) => executeTodoistCompleteTask(a),
+  kanban_create_task: (a, u) => executeKanbanCreateTask(a, u),
+  task_queue_manage: (a, u) => executeTaskQueueManage(a, u),
+  work_journal_manage: (a, u) => executeWorkJournalManage(a, u),
+  devops_intelligence: (a, u) => executeDevOpsIntelligence(a, u),
+  dgm_manage: (a, u) => executeDgmManage(a, u),
+  devmax_db: (a) => executeDevmaxDb(a),
+  dashboard_screenshot: (a) => executeDashboardScreenshot(a),
+  analyze_file: (a, u) => executeAnalyzeFile(a, u),
+  analyze_invoice: (a, u) => executeAnalyzeInvoice(a, u),
+  generate_file: (a, u) => executeGenerateFile(a, u),
+  manage_3d_file: (a, u) => executeManage3DFile(a, u),
+  export_analysis: (a, u) => executeExportAnalysis(a, u),
+  export_invoice_excel: (a, u) => executeExportInvoiceExcel(a, u),
+  generate_invoice_pdf: (a, u) => executeGenerateInvoicePdf(a, u),
+  notion_manage: (a) => executeNotionManage(a),
+  drive_manage: (a) => executeDriveManage(a),
+  analyze_video: (a) => executeVideoAnalysis(a),
+  navigation_manage: (a, u) => executeNavigationManage(a, u),
+  monitoring_manage: (a) => executeMonitoringManage(a),
+  trading_alerts: (a, u) => executeTradingAlerts(a, u),
+  manage_sugu_bank: (a) => executeSuguBankManagement(a),
+  manage_sugu_purchases: (a) => executeSuguPurchasesManagement(a),
+  manage_sugu_expenses: (a) => executeSuguExpensesManagement(a),
+  manage_sugu_files: (a) => executeSuguFilesManagement(a),
+  manage_sugu_employees: (a) => executeSuguEmployeesManagement(a),
+  manage_sugu_payroll: (a) => executeSuguPayrollManagement(a),
+  search_sugu_data: (a) => executeSearchSuguData(a),
+  sugu_full_overview: (a) => executeSuguFullOverview(a),
+  compute_business_health: (a) => executeBusinessHealth(a),
+  detect_anomalies: (a) => executeDetectAnomalies(a),
+  query_hubrise: (a) => executeQueryHubrise(a),
+  manage_feature_flags: (a) => executeManageFeatureFlags(a),
+  search_nearby_places: (a, u) => executeSearchNearbyPlaces(a as any, u),
+  geocode_address: (a) => executeGeocodeAddress(a as any),
+  query_bets_tracker: (a, u) => executeBetsTrackerQuery(a, u),
+  query_sugu_analytics: (a) => executeSuguAnalyticsQuery(a),
+  query_daily_summary: (a, u) => executeDailySummaryQuery(a, u),
+  commax_manage: (a, u) => executeCommaxManage(a, u),
+  screen_monitor_manage: (a, u) => executeScreenMonitorManage(a, u),
+  generate_morning_briefing: (a) => executeGenerateMorningBriefing(a),
+  generate_financial_report: (a) => executeGenerateFinancialReport(a),
+  analyze_document_image: (a) => executeAnalyzeDocumentImage(a),
+  import_bank_statement: (a) => executeImportBankStatement(a),
+  manage_telegram_bot: (a) => executeManageTelegramBot(a),
+  query_app_data: (a) => executeQueryAppData(a),
+  query_apptoorder: (a) => executeQueryAppToOrder(a),
+  query_coba: (a) => executeQueryCoba(a),
+  coba_business: (a) => executeCobaBusinessTool(a),
+  sensory_hub: (a, u) => executeSensoryHub(a, u),
+  generate_self_reflection: (_a, u) => executeGenerateSelfReflection(u),
+  manage_ai_system: (a, u) => executeManageAISystem(a, u),
+  app_navigate: (a, u) => executeAppNavigate(a, u),
+  devops_github: (a) => executeDevopsGithub(a),
+  devops_server: (a) => executeDevopsServer(a),
+  pdf_master: (a) => executePdfMaster(a),
+};
+
+async function executeEmailReply(args: Record<string, any>): Promise<string> {
+  try {
+    const { googleMailService } = await import('./googleMailService');
+    const connected = await googleMailService.isConnected();
+    if (!connected) {
+      return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
+    }
+    const result = await googleMailService.sendReply({
+      to: args.to,
+      subject: args.subject,
+      body: args.body,
+      inReplyTo: args.in_reply_to,
+      originalBody: args.original_body,
+      originalFrom: args.original_from,
+      originalDate: args.original_date,
+    });
+    return JSON.stringify({ type: 'email_replied', success: true, from: 'ulyssemdbh@gmail.com', to: args.to, messageId: result.messageId });
+  } catch (err: any) {
+    console.error(`[EmailReply] Error: ${err.message}`);
+    return JSON.stringify({ error: `Échec de la réponse Gmail: ${err.message}` });
+  }
+}
+
+async function executeEmailForward(args: Record<string, any>): Promise<string> {
+  try {
+    const { googleMailService } = await import('./googleMailService');
+    const connected = await googleMailService.isConnected();
+    if (!connected) {
+      return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
+    }
+    const result = await googleMailService.sendForward({
+      to: args.to,
+      subject: args.subject,
+      forwardNote: args.forward_note,
+      originalFrom: args.original_from,
+      originalDate: args.original_date,
+      originalBody: args.original_body,
+    });
+    return JSON.stringify({ type: 'email_forwarded', success: true, from: 'ulyssemdbh@gmail.com', to: args.to, messageId: result.messageId });
+  } catch (err: any) {
+    console.error(`[EmailForward] Error: ${err.message}`);
+    return JSON.stringify({ error: `Échec du transfert Gmail: ${err.message}` });
+  }
+}
+
 // Exported for ActionHubBridge integration
 export async function executeToolCallV2Internal(toolName: string, args: Record<string, any>, userId: number): Promise<string> {
-  switch (toolName) {
-    // Data tools
-    case "query_suguval_history":
-      return await executeSuguvalQuery(args);
-    case "get_suguval_checklist":
-      return await executeGetSuguvalChecklist(args);
-    case "send_suguval_shopping_list":
-      return await executeSendSuguvalShoppingList(args);
-    case "query_sports_data":
-      return await executeSportsQuery(args);
-    case "query_match_intelligence":
-      return await executeMatchIntelligence(args);
-    case "query_matchendirect":
-      return await executeMatchEndirectQuery(args);
-    case "query_football_db":
-      return await executeFootballDbQuery(args);
-    case "query_brain":
-      return await executeBrainQuery(args, userId);
-    case "query_stock_data":
-      return await executeStockQuery(args);
-
-    // Calendar tools
-    case "calendar_list_events":
-      return await executeCalendarList(args, userId);
-    case "calendar_create_event":
-      return await executeCalendarCreate(args, userId);
-
-    // Email tools
-    case "email_list_inbox":
-      return await executeEmailList(args);
-    case "email_read_message":
-      return await executeEmailRead(args);
-    case "email_reply": {
-      try {
-        const { googleMailService } = await import('./googleMailService');
-        const connected = await googleMailService.isConnected();
-        if (!connected) {
-          return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
-        }
-        const result = await googleMailService.sendReply({
-          to: args.to,
-          subject: args.subject,
-          body: args.body,
-          inReplyTo: args.in_reply_to,
-          originalBody: args.original_body,
-          originalFrom: args.original_from,
-          originalDate: args.original_date,
-        });
-        return JSON.stringify({ type: 'email_replied', success: true, from: 'ulyssemdbh@gmail.com', to: args.to, messageId: result.messageId });
-      } catch (err: any) {
-        console.error(`[EmailReply] Error: ${err.message}`);
-        return JSON.stringify({ error: `Échec de la réponse Gmail: ${err.message}` });
-      }
-    }
-    case "email_forward": {
-      try {
-        const { googleMailService } = await import('./googleMailService');
-        const connected = await googleMailService.isConnected();
-        if (!connected) {
-          return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
-        }
-        const result = await googleMailService.sendForward({
-          to: args.to,
-          subject: args.subject,
-          forwardNote: args.forward_note,
-          originalFrom: args.original_from,
-          originalDate: args.original_date,
-          originalBody: args.original_body,
-        });
-        return JSON.stringify({ type: 'email_forwarded', success: true, from: 'ulyssemdbh@gmail.com', to: args.to, messageId: result.messageId });
-      } catch (err: any) {
-        console.error(`[EmailForward] Error: ${err.message}`);
-        return JSON.stringify({ error: `Échec du transfert Gmail: ${err.message}` });
-      }
-    }
-    case "email_send":
-      return await executeEmailSend(args);
-
-    // Smart home tools
-    case "smarthome_control":
-      return await executeSmartHomeControl(args, userId);
-
-    // Location & weather tools
-    case "location_get_weather":
-      return await executeWeatherGet(args);
-
-    // Web search tools
-    case "web_search":
-      return await executeWebSearch(args);
-    case "read_url":
-      return await executeReadUrl(args);
-
-    // Spotify tools
-    case "spotify_control":
-      return await executeSpotifyControl(args, userId);
-
-    // Discord tools (Action-First execution)
-    case "discord_send_message":
-      return await executeDiscordSendMessage(args, userId);
-    case "discord_status":
-      return await executeDiscordStatus(userId);
-    case "discord_add_reaction":
-      return await executeDiscordAddReaction(args, userId);
-    case "discord_remove_reaction":
-      return await executeDiscordRemoveReaction(args, userId);
-    case "discord_delete_message":
-      return await executeDiscordDeleteMessage(args, userId);
-    case "discord_send_file":
-      return await executeDiscordSendFile(args, userId);
-    case "discord_create_invitation":
-      return await executeDiscordCreateInvitation(args, userId);
-    case "discord_voice_status":
-      return await executeDiscordVoiceStatus(userId);
-
-    // Memory tools
-    case "memory_save":
-      return await executeMemorySave(args, userId);
-
-    // SuperChat intelligence
-    case "superchat_search":
-      return await executeSuperChatSearch(args, userId);
-
-    // Image tools
-    case "image_generate":
-      return await executeImageGenerate(args, userId);
-
-    // Todoist tools (Action-First execution)
-    case "todoist_create_task":
-      return await executeTodoistCreateTask(args, userId);
-    case "todoist_list_tasks":
-      return await executeTodoistListTasks(args);
-    case "todoist_complete_task":
-      return await executeTodoistCompleteTask(args);
-
-    // Kanban tools
-    case "kanban_create_task":
-      return await executeKanbanCreateTask(args, userId);
-
-    case "task_queue_manage":
-      return await executeTaskQueueManage(args, userId);
-
-    case "work_journal_manage":
-      return await executeWorkJournalManage(args, userId);
-
-    case "devops_intelligence":
-      return await executeDevOpsIntelligence(args, userId);
-
-    case "dgm_manage":
-      return await executeDgmManage(args, userId);
-
-    case "devmax_db":
-      return await executeDevmaxDb(args);
-
-    case "dashboard_screenshot":
-      return await executeDashboardScreenshot(args);
-
-    // Universal file analysis tools
-    case "analyze_file":
-      return await executeAnalyzeFile(args, userId);
-    case "analyze_invoice":
-      return await executeAnalyzeInvoice(args, userId);
-    
-    // Universal file generation tools
-    case "generate_file":
-      return await executeGenerateFile(args, userId);
-    case "manage_3d_file":
-      return await executeManage3DFile(args, userId);
-    case "export_analysis":
-      return await executeExportAnalysis(args, userId);
-    case "export_invoice_excel":
-      return await executeExportInvoiceExcel(args, userId);
-    case "generate_invoice_pdf":
-      return await executeGenerateInvoicePdf(args, userId);
-
-    // Notion & Drive tools
-    case "notion_manage":
-      return await executeNotionManage(args);
-    case "drive_manage":
-      return await executeDriveManage(args);
-
-    // Video analysis
-    case "analyze_video":
-      return await executeVideoAnalysis(args);
-
-    // Navigation & Monitoring
-    case "navigation_manage":
-      return await executeNavigationManage(args, userId);
-    case "monitoring_manage":
-      return await executeMonitoringManage(args);
-
-    // Trading
-    case "trading_alerts":
-      return await executeTradingAlerts(args, userId);
-
-    // SUGU management tools
-    case "manage_sugu_bank":
-      return await executeSuguBankManagement(args);
-    case "manage_sugu_purchases":
-      return await executeSuguPurchasesManagement(args);
-    case "manage_sugu_expenses":
-      return await executeSuguExpensesManagement(args);
-    case "manage_sugu_files":
-      return await executeSuguFilesManagement(args);
-    case "manage_sugu_employees":
-      return await executeSuguEmployeesManagement(args);
-    case "manage_sugu_payroll":
-      return await executeSuguPayrollManagement(args);
-    case "search_sugu_data":
-      return await executeSearchSuguData(args);
-    case "sugu_full_overview":
-      return await executeSuguFullOverview(args);
-
-    // Business intelligence tools
-    case "compute_business_health":
-      return await executeBusinessHealth(args);
-    case "detect_anomalies":
-      return await executeDetectAnomalies(args);
-    case "query_hubrise":
-      return await executeQueryHubrise(args);
-    case "manage_feature_flags":
-      return await executeManageFeatureFlags(args);
-
-    // Location tools
-    case "search_nearby_places":
-      return await executeSearchNearbyPlaces(args as any, userId);
-    case "geocode_address":
-      return await executeGeocodeAddress(args as any);
-
-    // Analytics tools
-    case "query_bets_tracker":
-      return await executeBetsTrackerQuery(args, userId);
-    case "query_sugu_analytics":
-      return await executeSuguAnalyticsQuery(args);
-    case "query_daily_summary":
-      return await executeDailySummaryQuery(args, userId);
-
-    // Commax — Community Management (Iris)
-    case "commax_manage":
-      return await executeCommaxManage(args, userId);
-
-    // Screen Monitor — Vision + Prise en main bureau (Ulysse)
-    case "screen_monitor_manage":
-      return await executeScreenMonitorManage(args, userId);
-
-    // === AUTOMATION FEATURES ===
-    case "generate_morning_briefing":
-      return await executeGenerateMorningBriefing(args);
-    case "generate_financial_report":
-      return await executeGenerateFinancialReport(args);
-    case "analyze_document_image":
-      return await executeAnalyzeDocumentImage(args);
-    case "import_bank_statement":
-      return await executeImportBankStatement(args);
-    case "manage_telegram_bot":
-      return await executeManageTelegramBot(args);
-    case "query_app_data":
-      return await executeQueryAppData(args);
-    case "query_apptoorder":
-      return await executeQueryAppToOrder(args);
-    case "query_coba":
-      return await executeQueryCoba(args);
-    case "coba_business":
-      return await executeCobaBusinessTool(args);
-    case "sensory_hub":
-      return await executeSensoryHub(args, userId);
-    case "generate_self_reflection":
-      return await executeGenerateSelfReflection(userId);
-    case "manage_ai_system":
-      return await executeManageAISystem(args, userId);
-    case "app_navigate":
-      return await executeAppNavigate(args, userId);
-    case "devops_github":
-      return await executeDevopsGithub(args);
-    case "devops_server":
-      return await executeDevopsServer(args);
-
-    case "pdf_master":
-      return await executePdfMaster(args);
-
-    default:
-      return JSON.stringify({ error: `Fonction inconnue: ${toolName}` });
+  const handler = TOOL_REGISTRY[toolName];
+  if (handler) {
+    return handler(args, userId);
   }
+  return JSON.stringify({ error: `Fonction inconnue: ${toolName}` });
 }
 
 // === TOOL IMPLEMENTATIONS ===
@@ -3359,6 +3222,170 @@ async function executeDgmManage(args: any, userId?: number): Promise<string> {
         const nextTask = await dgmPipelineOrchestrator.getNextPendingTask(session.id);
         if (!nextTask) return JSON.stringify({ action: "next_task", message: "Toutes les tâches sont terminées ou en cours!", sessionId: session.id });
         return JSON.stringify({ action: "next_task", task: { id: nextTask.id, title: nextTask.title, description: nextTask.description, testCriteria: nextTask.testCriteria, impactedFiles: nextTask.impactedFiles } });
+      }
+
+      case "auto_execute": {
+        if (!args.objective) return JSON.stringify({ error: "objective requis — décris ce que tu veux construire" });
+        if (!args.repo_context) return JSON.stringify({ error: "repo_context requis (ex: ulyssemdbh-commits/tetrisv1-test)" });
+
+        const repoParts = args.repo_context.split("/");
+        const owner = repoParts[0] || "ulyssemdbh-commits";
+        const repo = repoParts[1] || "";
+        if (!repo) return JSON.stringify({ error: "repo_context invalide" });
+
+        const config = {
+          owner,
+          repo,
+          branch: args.branch || "main",
+          autoMerge: args.autoMerge !== false,
+          autoDeploy: args.autoDeploy || false,
+          appName: args.appName || undefined,
+          requireApproval: [] as string[],
+        };
+
+        console.log(`[DGM] 🚀 AUTO_EXECUTE started: "${args.objective}" on ${args.repo_context}`);
+        const autoStart = Date.now();
+
+        const { getSessionResume } = await import("./dgmPipelineOrchestrator");
+        const previousWork = await getSessionResume(args.repo_context);
+        if (previousWork?.hasExistingWork) {
+          console.log(`[DGM] AUTO_EXECUTE: Found previous work — ${previousWork.completedTasks.length} completed, ${previousWork.failedTasks.length} failed`);
+        }
+
+        const allOldSessions = await db.select().from(dgmSessions)
+          .where(sql`${dgmSessions.userId} = ${uid} AND ${dgmSessions.repoContext} = ${args.repo_context}`)
+          .orderBy(sql`${dgmSessions.id} DESC`);
+
+        if (allOldSessions.length > 0) {
+          const oldSessionIds = allOldSessions.map(s => s.id);
+          await db.update(dgmSessions).set({ active: false, deactivatedAt: new Date() })
+            .where(sql`${dgmSessions.id} IN (${sql.join(oldSessionIds.map(id => sql`${id}`), sql`,`)})`);
+          console.log(`[DGM] AUTO_EXECUTE: Deactivated ${allOldSessions.length} old session(s) for ${args.repo_context}`);
+        }
+
+        try {
+          const branchesRaw = await executeDevopsGithub({ action: "list_branches", owner, repo });
+          const branchesData = JSON.parse(branchesRaw);
+          const dgmBranches = (branchesData.branches || [])
+            .filter((b: any) => (b.name || b).toString().startsWith("dgm/"))
+            .map((b: any) => (b.name || b).toString());
+
+          if (dgmBranches.length > 0) {
+            console.log(`[DGM] AUTO_EXECUTE: Cleaning ${dgmBranches.length} stale dgm/ branches...`);
+            const closedPRs: string[] = [];
+            try {
+              const prsRaw = await executeDevopsGithub({ action: "list_prs", owner, repo, state: "open" });
+              const prsData = JSON.parse(prsRaw);
+              for (const pr of (prsData.pullRequests || [])) {
+                if (pr.head?.ref?.startsWith("dgm/") || pr.title?.includes("[DGM]")) {
+                  try {
+                    await executeDevopsGithub({ action: "close_pr", owner, repo, pullNumber: pr.number });
+                    closedPRs.push(`#${pr.number}`);
+                  } catch {}
+                }
+              }
+            } catch {}
+            if (closedPRs.length > 0) console.log(`[DGM] AUTO_EXECUTE: Closed ${closedPRs.length} old PRs: ${closedPRs.join(", ")}`);
+
+            let deletedCount = 0;
+            for (const branchName of dgmBranches) {
+              try {
+                await executeDevopsGithub({ action: "delete_branch", owner, repo, branch: branchName });
+                deletedCount++;
+              } catch {}
+            }
+            console.log(`[DGM] AUTO_EXECUTE: Deleted ${deletedCount}/${dgmBranches.length} stale dgm/ branches`);
+          }
+        } catch (cleanupErr: any) {
+          console.warn(`[DGM] AUTO_EXECUTE: Branch cleanup warning (non-blocking): ${cleanupErr.message}`);
+        }
+
+        const [newSession] = await db.insert(dgmSessions).values({
+          userId: uid,
+          active: true,
+          objective: args.objective,
+          repoContext: args.repo_context,
+          activatedAt: new Date(),
+        }).returning();
+        const sessionId = newSession.id;
+
+        const { dgmPipelineOrchestrator, ensureProjectStructure } = await import("./dgmPipelineOrchestrator");
+
+        console.log(`[DGM] AUTO_EXECUTE: Running project structure validation...`);
+        const structureResult = await ensureProjectStructure(config);
+        if (structureResult.fixed.length > 0) {
+          console.log(`[DGM] AUTO_EXECUTE: Fixed ${structureResult.fixed.length} structure issues: ${structureResult.fixed.join(", ")}`);
+        }
+        if (structureResult.errors.length > 0) {
+          console.warn(`[DGM] AUTO_EXECUTE: ${structureResult.errors.length} structure warnings: ${structureResult.errors.join(", ")}`);
+        }
+
+        const decomposition = await dgmPipelineOrchestrator.decomposeObjective(args.objective, args.repo_context);
+
+        const maxTasks = 8;
+        if (decomposition.tasks.length > maxTasks) {
+          console.log(`[DGM] AUTO_EXECUTE: Capping tasks from ${decomposition.tasks.length} to ${maxTasks}`);
+          decomposition.tasks = decomposition.tasks.slice(0, maxTasks);
+        }
+
+        const tasks = await dgmPipelineOrchestrator.createPipelineTasks(sessionId, decomposition);
+        console.log(`[DGM] AUTO_EXECUTE: ${tasks.length} tasks created (complexity: ${decomposition.estimatedComplexity}, est: ${decomposition.estimatedDurationMinutes}min)`);
+
+        const taskIds = tasks.map(t => t.id);
+        const pipelineResult = await dgmPipelineOrchestrator.runParallelPipeline(
+          sessionId, taskIds, config, `[DGM-AUTO] ${args.objective.substring(0, 50)}`
+        );
+
+        const succeeded = Object.values(pipelineResult.results).filter(r =>
+          r.finalStatus === "pipeline_complete" || r.finalStatus === "pr_created_awaiting_merge"
+        ).length;
+        const failed = Object.values(pipelineResult.results).filter(r =>
+          r.finalStatus.includes("failed") || r.finalStatus.includes("error")
+        ).length;
+
+        await db.update(dgmSessions).set({
+          completedTasks: succeeded,
+          totalTasks: taskIds.length,
+          active: false,
+          deactivatedAt: new Date(),
+        }).where(eq(dgmSessions.id, sessionId));
+
+        const totalMs = Date.now() - autoStart;
+        console.log(`[DGM] 🏁 AUTO_EXECUTE completed: ${succeeded}/${taskIds.length} succeeded, ${failed} failed [${totalMs}ms]`);
+
+        const summary = Object.entries(pipelineResult.results).map(([tid, r]) => ({
+          taskId: Number(tid),
+          title: tasks.find(t => t.id === Number(tid))?.title || "?",
+          finalStatus: r.finalStatus,
+          durationMs: r.metrics.totalDurationMs,
+          retries: r.metrics.retryCount,
+          prUrl: r.stages.pr_creation?.data?.prUrl,
+        }));
+
+        return JSON.stringify({
+          action: "auto_execute",
+          version: "V3",
+          objective: args.objective,
+          repo: args.repo_context,
+          sessionId,
+          complexity: decomposition.estimatedComplexity,
+          totalTasks: taskIds.length,
+          succeeded,
+          failed,
+          totalDurationMs: totalMs,
+          totalDurationFormatted: totalMs >= 60000
+            ? `${Math.floor(totalMs / 60000)}m ${Math.round((totalMs % 60000) / 1000)}s`
+            : `${Math.round(totalMs / 1000)}s`,
+          summary,
+          previousWork: previousWork?.hasExistingWork ? {
+            completedBefore: previousWork.completedTasks.length,
+            failedBefore: previousWork.failedTasks.length,
+            lastCheckpoint: previousWork.lastCheckpoint,
+          } : null,
+          message: failed === 0
+            ? `✅ Pipeline complet : ${succeeded} tâches exécutées, toutes les PRs créées et mergées.`
+            : `⚠️ Pipeline partiel : ${succeeded}/${taskIds.length} réussies, ${failed} échouées. Vérifie les erreurs.`,
+        });
       }
 
       default:

@@ -444,7 +444,12 @@ export default function Assistant() {
       const res = await fetch(`/api/conversations/${selectedId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: userMessage }),
+        body: JSON.stringify({
+          content: userMessage,
+          contextHints: {
+            pageContext: { pageId: "assistant", pageName: "Assistant Complet", pageDescription: "Assistant IA complet — mode conversation étendue avec tous les outils disponibles" },
+          },
+        }),
         signal: abortControllerRef.current.signal,
         credentials: "include"
       });
@@ -772,7 +777,9 @@ export default function Assistant() {
                   </div>
                 )}
                 
-                {activeConversation?.messages?.map((msg, idx) => (
+                {activeConversation?.messages
+                  ?.filter((msg) => msg.role !== "system" && !msg.content?.includes("[SUPERCHAT CONTEXT"))
+                  .map((msg, idx) => (
                   <MessageBubble 
                     key={idx}
                     msg={msg}

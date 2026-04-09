@@ -249,7 +249,46 @@ export async function executeSportsQuery(args: { query_type: string; league?: st
         }
         case 'today_matches':
         case 'upcoming_matches': {
-            const matches = await sportsService.getMatchesForDate(targetDate);
+            let matches = await sportsService.getMatchesForDate(targetDate);
+
+            if (matches.length === 0) {
+                console.log('[SPORTS-TOOL] Cache empty for date, fetching directly from API-Football...');
+                try {
+                    const { apiFootballService } = await import("../apiFootballService");
+                    const dateStr = targetDate.toISOString().split('T')[0];
+                    const apiMatches = await apiFootballService.getTodayFootballMatches();
+                    if (apiMatches && apiMatches.length > 0) {
+                        const targetLeagueIds = [61, 39, 140, 78, 135, 2, 3];
+                        const filtered = apiMatches.filter((m: any) => targetLeagueIds.includes(m.league?.id));
+                        matches = filtered.map((m: any) => ({
+                            id: m.fixture.id,
+                            externalId: String(m.fixture.id),
+                            sport: 'football',
+                            league: m.league.name,
+                            leagueId: m.league.id,
+                            country: m.league.country,
+                            homeTeam: m.teams.home.name,
+                            awayTeam: m.teams.away.name,
+                            homeTeamId: m.teams.home.id,
+                            awayTeamId: m.teams.away.id,
+                            homeTeamLogo: m.teams.home.logo,
+                            awayTeamLogo: m.teams.away.logo,
+                            matchDate: new Date(m.fixture.date),
+                            venue: m.fixture.venue?.name || null,
+                            status: m.fixture.status.short === "NS" ? "scheduled" :
+                                m.fixture.status.short === "LIVE" || m.fixture.status.short === "1H" || m.fixture.status.short === "2H" || m.fixture.status.short === "HT" ? "live" :
+                                m.fixture.status.short === "FT" ? "finished" : "scheduled",
+                            homeScore: m.goals?.home ?? null,
+                            awayScore: m.goals?.away ?? null,
+                            stats: { round: m.league.round || null, referee: m.fixture.referee || null },
+                        }));
+                        console.log(`[SPORTS-TOOL] API fallback returned ${matches.length} matches from target leagues`);
+                    }
+                } catch (err) {
+                    console.error('[SPORTS-TOOL] API fallback failed:', err);
+                }
+            }
+
             const filtered = matches.filter((m: any) => {
                 if (league && !m.league.toLowerCase().includes(league.toLowerCase())) return false;
                 if (team) {
@@ -258,7 +297,6 @@ export async function executeSportsQuery(args: { query_type: string; league?: st
                 return true;
             });
 
-            // If no matches found for the specific league, provide helpful feedback
             if (filtered.length === 0 && league) {
                 const allLeagues = [...new Set(matches.map((m: any) => m.league))];
                 const dateStr = targetDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });

@@ -358,16 +358,16 @@ export const communicationToolDefs: ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "dgm_manage",
-            description: "DGM V2 — Dev God Mode ultra-performant. Actions: create_tasks, start_task, complete_task, test_task, fail_task, status | decompose_objective (décomposition IA + groupes parallèles) | run_pipeline (pipeline individuel avec métriques) | run_parallel_pipeline (exécution parallèle de tâches indépendantes) | get_independent_tasks (tâches prêtes pour parallélisation) | rollback (rollback concret: revert PR + redeploy app) | pipeline_report (rapport V2 avec timing par stage) | next_task | clear_cache | circuit_status. V2: notifications Discord auto, rollback concret, cache fichiers, circuit breaker, retry avec feedback, fetch parallèle, batch DB writes.",
+            description: "DGM V2 — Dev God Mode ultra-performant. ⭐ ACTION PRÉFÉRÉE: auto_execute = pipeline complet autonome (décompose + code + review + PR + merge en UNE action). Autres actions: create_tasks, start_task, complete_task, test_task, fail_task, status | decompose_objective | run_pipeline | run_parallel_pipeline | get_independent_tasks | rollback | pipeline_report | next_task | clear_cache | circuit_status.",
             parameters: {
                 type: "object",
                 properties: {
                     action: {
                         type: "string",
-                        enum: ["create_tasks", "start_task", "complete_task", "test_task", "fail_task", "status", "decompose_objective", "run_pipeline", "run_parallel_pipeline", "get_independent_tasks", "rollback", "pipeline_report", "next_task", "clear_cache", "circuit_status"],
-                        description: "Action DGM V2"
+                        enum: ["auto_execute", "create_tasks", "start_task", "complete_task", "test_task", "fail_task", "status", "decompose_objective", "run_pipeline", "run_parallel_pipeline", "get_independent_tasks", "rollback", "pipeline_report", "next_task", "clear_cache", "circuit_status"],
+                        description: "Action DGM V2 — UTILISE auto_execute pour construire/créer un projet complet en une seule action"
                     },
-                    objective: { type: "string", description: "Pour decompose_objective: l'objectif haut niveau à décomposer en tâches" },
+                    objective: { type: "string", description: "Pour auto_execute ou decompose_objective: l'objectif haut niveau à réaliser" },
                     tasks: {
                         type: "array",
                         items: {
@@ -409,8 +409,8 @@ export const communicationToolDefs: ChatCompletionTool[] = [
                     codeChanges: { type: "array", items: { type: "string" }, description: "Fichiers modifiés" },
                     error: { type: "string", description: "Message d'erreur (pour fail_task)" },
                     reason: { type: "string", description: "Raison du rollback (pour rollback)" },
-                    sessionId: { type: "number", description: "Pour pipeline_report: ID de session spécifique" },
-                    repo_context: { type: "string", description: "Contexte repo (owner/repo)" }
+                    repo_context: { type: "string", description: "Pour auto_execute et autres: owner/repo (ex: ulyssemdbh-commits/tetrisv1-test)" },
+                    sessionId: { type: "number", description: "Pour pipeline_report: ID de session spécifique" }
                 },
                 required: ["action"]
             }

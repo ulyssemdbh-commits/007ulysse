@@ -21,6 +21,7 @@ import { DashboardChatArea } from "@/components/DashboardChatArea";
 import { DashboardiOSSlider } from "@/components/DashboardiOSSlider";
 import { DashboardLeftColumn } from "@/components/DashboardLeftColumn";
 import { DashboardShortcuts } from "@/components/DashboardShortcuts";
+import { DashboardRightPanel } from "@/components/DashboardRightPanel";
 import { useDisplayWindow } from "@/components/DisplayWindow";
 import { ProgressTrackerInline } from "@/components/ProgressTracker";
 import { PreviewConfirmationCard } from "@/components/PreviewConfirmationCard";
@@ -428,182 +429,78 @@ export default function Dashboard() {
   }, [input, isStreaming, isSpeaking, panels.showHistory, sttSupported, toggleListening, stopSpeaking, handleSend, createConversation]);
 
   return (
-    <div className="min-h-screen bg-[#0a0e1a] text-cyan-50 flex flex-col overflow-x-hidden relative">
-      <div className="fixed inset-0 pointer-events-none z-0">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0a0e1a] text-foreground dark:text-cyan-50 font-sans overflow-hidden relative selection:bg-cyan-500/30">
+      <div className="absolute inset-0 pointer-events-none dark:block hidden">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#00d4ff08_1px,transparent_1px),linear-gradient(to_bottom,#00d4ff08_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/8 rounded-full blur-[128px]" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/8 rounded-full blur-[128px]" />
       </div>
 
-      <DashboardHeader
-        user={user}
-        personaName={personaName}
-        panels={panels}
-        logout={logout}
-        createConversation={createConversation}
-        setActiveConversationId={setActiveConversationId}
-        isSpeaking={isSpeaking}
-        isListening={isListening}
-        isStreaming={isStreaming}
-        isProcessing={isProcessing}
-        isInCall={isInCall}
-        callState={callState}
-        startCall={startCall}
-        endCall={endCall}
-        autoSpeak={autoSpeak}
-        setAutoSpeak={setAutoSpeak}
-        sttSupported={sttSupported}
-        ttsSupported={ttsSupported}
-        startListening={startListening}
-        stopListening={stopListening}
-        stopSpeaking={stopSpeaking}
-        setConversationMode={setConversationMode}
-        micPermission={micPermission}
-        requestMicrophonePermission={requestMicrophonePermission}
-        isIOS={isIOS}
-        unlockTTS={unlockTTS}
-        burgerMenuOpen={burgerMenuOpen}
-        setBurgerMenuOpen={setBurgerMenuOpen}
-        handleLogoLongPressStart={handleLogoLongPressStart}
-        handleLogoLongPressEnd={handleLogoLongPressEnd}
-      />
-
-      <AnimatePresence>
-        {(isListening || isSpeaking || conversationMode || isStreaming) && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="bg-black/40 backdrop-blur-sm border-b border-cyan-500/20 px-2 md:px-4 py-1.5 flex items-center justify-center gap-3 md:gap-4 text-xs md:text-sm"
-          >
-            {isListening && (
-              <motion.div
-                className="flex items-center gap-1.5 text-green-500"
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 1, repeat: Infinity }}
-                data-testid="status-listening"
-              >
-                <Mic className="w-3.5 h-3.5" />
-                <span className="font-medium">Micro actif</span>
-              </motion.div>
-            )}
-            {isSpeaking && (
-              <motion.div
-                className="flex items-center gap-1.5 text-blue-500"
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 0.5, repeat: Infinity }}
-                data-testid="status-speaking"
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-                <span className="font-medium">{personaName} parle</span>
-              </motion.div>
-            )}
-            {isStreaming && !isSpeaking && (
-              <motion.div
-                className="flex items-center gap-1.5 text-primary"
-                animate={{ opacity: [1, 0.6, 1] }}
-                transition={{ duration: 1, repeat: Infinity }}
-                data-testid="status-thinking"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span className="font-medium">{personaName} réfléchit...</span>
-              </motion.div>
-            )}
-            {conversationMode && !isStreaming && !isSpeaking && (
-              <div className="flex items-center gap-1.5 text-muted-foreground" data-testid="status-conversation-mode">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Mode conversation - dites "Over" pour terminer</span>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <DashboardPanels
-        panels={panels}
-        diagnostics={diagnostics}
-        activeConversationId={activeConversationId}
-        setActiveConversationId={setActiveConversationId}
-        personaName={personaName}
-        geo={geo}
-        geoAccuracyMode={geoAccuracyMode}
-        setGeoAccuracyMode={setGeoAccuracyMode}
-        navigationDestination={navigationDestination}
-        setNavigationDestination={setNavigationDestination}
-        isOwner={user?.isOwner || false}
-        showImageEditor={showImageEditor}
-        setShowImageEditor={setShowImageEditor}
-        pendingFileAnalysis={pendingFileAnalysis}
-        setPendingFileAnalysis={setPendingFileAnalysis}
-      />
-
-      <DashboardiOSSlider
-        isIOS={isIOS}
-        ttsSupported={ttsSupported}
-        ttsUnlocked={ttsUnlocked}
-        unlockTTS={unlockTTS}
-      />
-
-      <div className="flex-1 flex flex-col lg:flex-row items-center lg:items-start justify-start lg:justify-center p-4 md:p-8 relative overflow-y-auto overflow-x-hidden gap-6 lg:gap-10 w-full max-w-full">
-        <motion.div 
-          className="absolute inset-0 pointer-events-none overflow-hidden"
-          animate={{ opacity: isActive ? 0.4 : 0.15 }}
-          transition={{ duration: 0.8 }}
-        >
-          <motion.div 
-            className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] md:w-[350px] h-[200px] md:h-[350px] rounded-full"
-            style={{
-              background: `radial-gradient(circle, #00d4ff20 0%, #00d4ff08 40%, transparent 70%)`,
-              filter: 'blur(60px)'
-            }}
-          />
-        </motion.div>
-
-        <DashboardLeftColumn
+      <div className="relative z-10 flex flex-col h-screen max-h-screen p-2 sm:p-3 gap-2 sm:gap-3 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
+        <DashboardHeader
+          user={user}
           personaName={personaName}
-          visualMode={visualMode}
-          conversationMood={conversationMood}
-          displayWindow={displayWindow}
-          isOwner={user?.isOwner || false}
-          isActive={isActive}
+          panels={panels}
+          logout={logout}
+          createConversation={createConversation}
+          setActiveConversationId={setActiveConversationId}
           isSpeaking={isSpeaking}
           isListening={isListening}
-          isSearching={isSearching}
-          isAnalyzing={isAnalyzing}
-          orbColor={orbColor}
-          orbIntensity={orbIntensity}
-          isPaused={isAppPaused}
-          reducedMotion={prefersReducedMotion}
+          isStreaming={isStreaming}
+          isProcessing={isProcessing}
+          isInCall={isInCall}
+          callState={callState}
+          startCall={startCall}
+          endCall={endCall}
+          autoSpeak={autoSpeak}
+          setAutoSpeak={setAutoSpeak}
+          sttSupported={sttSupported}
+          ttsSupported={ttsSupported}
+          startListening={startListening}
+          stopListening={stopListening}
+          stopSpeaking={stopSpeaking}
+          setConversationMode={setConversationMode}
+          micPermission={micPermission}
+          requestMicrophonePermission={requestMicrophonePermission}
+          isIOS={isIOS}
+          unlockTTS={unlockTTS}
+          burgerMenuOpen={burgerMenuOpen}
+          setBurgerMenuOpen={setBurgerMenuOpen}
+          handleLogoLongPressStart={handleLogoLongPressStart}
+          handleLogoLongPressEnd={handleLogoLongPressEnd}
         />
 
-        <div className="flex flex-col items-center gap-4 z-10 w-full lg:flex-1">
-          <motion.div
-            className="text-center mb-4 md:mb-6 z-10"
-            animate={{ opacity: isActive ? 1 : 0.7 }}
-          >
-            <h2 className="text-lg md:text-2xl font-semibold text-cyan-100 mb-2 flex items-center justify-center gap-2 drop-shadow-[0_0_8px_rgba(0,212,255,0.3)]">
-              {isSpeaking ? `${personaName} parle` : isListening ? "Je vous écoute" : isStreaming ? (
-                <>
-                  <span>{personaName} réfléchit</span>
-                  <span className="inline-flex gap-1">
-                    <motion.span className="w-2 h-2 bg-primary rounded-full" animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 0.8, repeat: Infinity, delay: 0 }} />
-                    <motion.span className="w-2 h-2 bg-primary rounded-full" animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 0.8, repeat: Infinity, delay: 0.2 }} />
-                    <motion.span className="w-2 h-2 bg-primary rounded-full" animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 0.8, repeat: Infinity, delay: 0.4 }} />
-                  </span>
-                </>
-              ) : null}
-            </h2>
-            {!isSpeaking && !isListening && !isStreaming && <MarseilleInfo />}
-            {isSpeaking && (
-              <Button variant="ghost" size="sm" onClick={stopSpeaking} aria-label="Interrompre la parole" data-testid="button-stop-speaking">
-                <VolumeX className="w-4 h-4 mr-2" /> Interrompre
-              </Button>
-            )}
-          </motion.div>
+        <DashboardPanels
+          panels={panels}
+          diagnostics={diagnostics}
+          activeConversationId={activeConversationId}
+          setActiveConversationId={setActiveConversationId}
+          personaName={personaName}
+          geo={geo}
+          geoAccuracyMode={geoAccuracyMode}
+          setGeoAccuracyMode={setGeoAccuracyMode}
+          navigationDestination={navigationDestination}
+          setNavigationDestination={setNavigationDestination}
+          isOwner={user?.isOwner || false}
+          showImageEditor={showImageEditor}
+          setShowImageEditor={setShowImageEditor}
+          pendingFileAnalysis={pendingFileAnalysis}
+          setPendingFileAnalysis={setPendingFileAnalysis}
+        />
 
-          <ProgressTrackerInline userId={user?.id} />
+        <DashboardiOSSlider
+          isIOS={isIOS}
+          ttsSupported={ttsSupported}
+          ttsUnlocked={ttsUnlocked}
+          unlockTTS={unlockTTS}
+        />
 
-          {user?.isOwner && <DashboardShortcuts navigate={navigate} />}
+        <div className="flex flex-1 gap-3 overflow-hidden">
+          {user?.isOwner && (
+            <div className="hidden lg:block">
+              <DashboardShortcuts navigate={navigate} />
+            </div>
+          )}
 
           <DashboardChatArea
             lastMessages={lastMessages}
@@ -636,6 +533,10 @@ export default function Dashboard() {
             setShowImageEditor={setShowImageEditor}
             queryClient={queryClient}
           />
+
+          <div className="hidden lg:block">
+            <DashboardRightPanel />
+          </div>
         </div>
       </div>
 

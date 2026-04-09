@@ -51,7 +51,10 @@ function scpDir(localPath: string, remotePath: string): void {
   const scpPrefix = HETZNER_SSH_PASSWORD
     ? `sshpass -p "${HETZNER_SSH_PASSWORD}" scp -r -o StrictHostKeyChecking=no`
     : `scp -r -o StrictHostKeyChecking=no`;
-  run(`${scpPrefix} ${localPath} ${HETZNER_USER}@${HETZNER_HOST}:${remotePath}`, { timeout: 120_000, silent: true });
+  const src = localPath.endsWith("/") ? localPath.slice(0, -1) : localPath;
+  const parentDir = remotePath.endsWith("/") ? remotePath.slice(0, -1) : remotePath;
+  const remoteParent = parentDir.substring(0, parentDir.lastIndexOf("/"));
+  run(`${scpPrefix} ${src} ${HETZNER_USER}@${HETZNER_HOST}:${remoteParent}/`, { timeout: 120_000, silent: true });
 }
 
 async function main() {

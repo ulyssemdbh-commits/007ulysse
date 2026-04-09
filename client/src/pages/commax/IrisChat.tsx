@@ -63,6 +63,9 @@ export function MiniIrisChat({ open, onClose, initialMsg }: { open: boolean; onC
           message: text,
           respondents: ["iris"],
           sessionId: sessionId || undefined,
+          contextHints: {
+            pageContext: { pageId: "iris-chat", pageName: "Iris Chat", pageDescription: "Interface de conversation avec Iris — intelligence créative, communication et analyse" },
+          },
         }),
       });
 

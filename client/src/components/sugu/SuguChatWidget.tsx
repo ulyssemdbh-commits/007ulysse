@@ -260,7 +260,17 @@ export function SuguChatWidget({ restaurant, persona, accentFrom, accentTo, isDa
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ content: fullContent }),
+        body: JSON.stringify({
+          content: fullContent,
+          contextHints: {
+            pageContext: {
+              pageId: restaurant === "valentine" ? "suguval" : "sugumaillane",
+              pageName: restaurant === "valentine" ? "SUGU Valentine" : "SUGU Maillane",
+              pageDescription: `Gestion restaurant SUGU ${restaurant === "valentine" ? "Valentine" : "Maillane"} — achats, comptabilité, RH, formations, stocks`,
+            },
+            suguContext: { restaurant, persona },
+          },
+        }),
       });
 
       if (!res.ok) throw new Error("Erreur serveur");

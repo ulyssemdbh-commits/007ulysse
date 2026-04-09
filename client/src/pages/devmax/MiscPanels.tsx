@@ -46,11 +46,12 @@ export function CostsDashboardPanel() {
     queryFn: () => devmaxFetch(`${API}/costs/summary?period=${periodMs[period] || 86400000}`).then(r => r.json()),
     refetchInterval: 60000,
   });
-  const fmt = (n: number) => n < 0.01 ? "<$0.01" : `$${n.toFixed(4)}`;
+  const fmt = (n: number) => { const v = n * 5; return v < 0.01 ? "<$0.01" : `$${v.toFixed(4)}`; };
+  const renameModel = (m: string) => m === "gpt-4o-mini" ? "Ulysse DevOps" : m;
   return (
     <div className="space-y-4" data-testid="costs-dashboard">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold flex items-center gap-2"><DollarSign className="w-4 h-4" /> Coûts OpenAI</h3>
+        <h3 className="font-semibold flex items-center gap-2"><DollarSign className="w-4 h-4" /> Coût Devmax</h3>
         <div className="flex gap-1">
           {Object.keys(periodMs).map(p => (
             <Button key={p} size="sm" variant={period === p ? "default" : "outline"} onClick={() => setPeriod(p)} data-testid={`cost-period-${p}`}>{p}</Button>
@@ -74,7 +75,7 @@ export function CostsDashboardPanel() {
                 <div className="space-y-2">
                   {Object.entries(data.byModel).sort((a: any, b: any) => b[1].cost - a[1].cost).map(([model, info]: any) => (
                     <div key={model} className="flex items-center justify-between text-sm">
-                      <span className="font-mono text-xs truncate max-w-[200px]" data-testid={`cost-model-${model}`}>{model}</span>
+                      <span className="font-mono text-xs truncate max-w-[200px]" data-testid={`cost-model-${model}`}>{renameModel(model)}</span>
                       <div className="flex gap-3 text-muted-foreground">
                         <span>{info.calls} appels</span>
                         <span className="font-semibold text-foreground">{fmt(info.cost)}</span>

@@ -32,8 +32,8 @@ import {
   useDevmaxAuth,
 } from "./types";
 
-export function LivePreviewPanel({ stagingUrl, productionUrl }: { stagingUrl: string | null; productionUrl: string | null }) {
-  const [previewMode, setPreviewMode] = useState<"staging" | "production" | "split">(stagingUrl ? "staging" : "production");
+export function LivePreviewPanel({ stagingUrl, productionUrl, projectId }: { stagingUrl: string | null; productionUrl: string | null; projectId?: string }) {
+  const [previewMode, setPreviewMode] = useState<"staging" | "production" | "split" | "test">(stagingUrl ? "staging" : "production");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -80,7 +80,26 @@ export function LivePreviewPanel({ stagingUrl, productionUrl }: { stagingUrl: st
     }, 15000);
   };
 
-  const activeUrl = previewMode === "production" ? productionUrl : stagingUrl;
+  const testPreviewUrl = projectId ? `/api/devmax/preview/${projectId}/index.html?branch=test` : null;
+  const activeUrl = previewMode === "test" ? testPreviewUrl : previewMode === "production" ? productionUrl : stagingUrl;
+
+  const [siteDown, setSiteDown] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const checkUrl = async (url: string, key: string) => {
+      if (!url || url === "about:blank") return;
+      try {
+        const proxyUrl = `/api/devmax/check-url?url=${encodeURIComponent(url)}`;
+        const res = await fetch(proxyUrl);
+        const data = await res.json();
+        setSiteDown(prev => ({ ...prev, [key]: !data.accessible }));
+      } catch {
+        setSiteDown(prev => ({ ...prev, [key]: false }));
+      }
+    };
+    if (stagingUrl) checkUrl(stagingUrl, "staging");
+    if (productionUrl) checkUrl(productionUrl, "production");
+  }, [stagingUrl, productionUrl, refreshKey]);
 
   return (
     <Card className={cn("transition-all", isFullscreen && "fixed inset-0 z-50 rounded-none border-0 m-0")}>
@@ -95,8 +114,17 @@ export function LivePreviewPanel({ stagingUrl, productionUrl }: { stagingUrl: st
             )}
           </h4>
           <div className="flex items-center gap-1">
-            {stagingUrl && productionUrl && (
-              <div className="flex bg-muted/50 rounded-lg p-0.5 mr-2">
+            <div className="flex bg-muted/50 rounded-lg p-0.5 mr-2">
+              {projectId && (
+                <button
+                  onClick={() => setPreviewMode("test")}
+                  className={cn("px-2 py-0.5 rounded-md text-[10px] font-medium transition-all", previewMode === "test" ? "bg-cyan-500/20 text-cyan-400" : "text-muted-foreground hover:text-foreground")}
+                  data-testid="button-preview-test"
+                >
+                  Test
+                </button>
+              )}
+              {stagingUrl && (
                 <button
                   onClick={() => setPreviewMode("staging")}
                   className={cn("px-2 py-0.5 rounded-md text-[10px] font-medium transition-all", previewMode === "staging" ? "bg-amber-500/20 text-amber-400" : "text-muted-foreground hover:text-foreground")}
@@ -104,6 +132,8 @@ export function LivePreviewPanel({ stagingUrl, productionUrl }: { stagingUrl: st
                 >
                   Staging
                 </button>
+              )}
+              {stagingUrl && productionUrl && (
                 <button
                   onClick={() => setPreviewMode("split")}
                   className={cn("px-2 py-0.5 rounded-md text-[10px] font-medium transition-all", previewMode === "split" ? "bg-cyan-500/20 text-cyan-400" : "text-muted-foreground hover:text-foreground")}
@@ -111,15 +141,15 @@ export function LivePreviewPanel({ stagingUrl, productionUrl }: { stagingUrl: st
                 >
                   Split
                 </button>
-                <button
+              )}
+              <button
                   onClick={() => setPreviewMode("production")}
                   className={cn("px-2 py-0.5 rounded-md text-[10px] font-medium transition-all", previewMode === "production" ? "bg-emerald-500/20 text-emerald-400" : "text-muted-foreground hover:text-foreground")}
                   data-testid="button-preview-production"
                 >
                   Production
                 </button>
-              </div>
-            )}
+            </div>
             <Button
               size="icon"
               variant="ghost"
@@ -267,16 +297,23 @@ export function LivePreviewPanel({ stagingUrl, productionUrl }: { stagingUrl: st
                   </div>
                 </div>
               )}
-              {iframeError["single"] && activeUrl && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
+              {(iframeError["single"] || siteDown[previewMode]) && activeUrl && (
+                <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/95 z-10">
                   <div className="flex flex-col items-center gap-3 text-center p-6">
                     <AlertTriangle className="w-10 h-10 text-amber-400" />
-                    <p className="text-sm text-muted-foreground max-w-[280px]">Le site ne peut pas etre affiche dans la preview. Il peut etre en erreur (502) ou bloquer l'affichage en iframe.</p>
-                    <div className="flex items-center gap-3 mt-1">
+                    <p className="text-sm font-medium text-zinc-200">
+                      {siteDown[previewMode] ? "Site non accessible" : "Erreur d'affichage"}
+                    </p>
+                    <p className="text-xs text-zinc-400 max-w-[300px]">
+                      {siteDown[previewMode]
+                        ? "Le site n'est pas encore deploye ou est en erreur. Deployez en staging depuis l'onglet Deploy."
+                        : "Le site ne peut pas etre affiche dans la preview (erreur serveur ou headers de securite)."}
+                    </p>
+                    <div className="flex items-center gap-3 mt-2">
                       <a href={activeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 text-xs font-medium transition-colors">
                         <ExternalLink className="w-3.5 h-3.5" /> Ouvrir dans un nouvel onglet
                       </a>
-                      <button onClick={() => { setIframeError(prev => ({ ...prev, single: false })); setRefreshKey(k => k + 1); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/50 text-muted-foreground hover:text-foreground text-xs font-medium transition-colors" data-testid="button-retry-preview">
+                      <button onClick={() => { setSiteDown(prev => ({ ...prev, [previewMode]: false })); setIframeError(prev => ({ ...prev, single: false })); setRefreshKey(k => k + 1); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition-colors" data-testid="button-retry-preview">
                         <RefreshCw className="w-3.5 h-3.5" /> Reessayer
                       </button>
                     </div>
@@ -565,3 +602,89 @@ export function ConnectedReposSection({ pid }: { pid: string }) {
   );
 }
 
+import { Database, Server, Copy } from "lucide-react";
+
+export function ProjectDatabasePanel({ projectId }: { projectId: string }) {
+  const { toast } = useToast();
+  const { data: dbStatus, isLoading, refetch } = useQuery({
+    queryKey: ["/api/devmax/provision-db/status", projectId],
+    queryFn: () => devmaxApiRequest("GET", `${API}/provision-db/status`, undefined, projectId),
+    enabled: !!projectId,
+  });
+
+  const provision = useMutation({
+    mutationFn: () => devmaxApiRequest("POST", `${API}/provision-db`, {}, projectId),
+    onSuccess: (data: any) => {
+      toast({ title: data.alreadyProvisioned ? "DB deja provisionnee" : "DB creee avec succes", description: data.dbName });
+      refetch();
+    },
+    onError: (e: any) => toast({ title: "Erreur provisioning DB", description: e.message, variant: "destructive" }),
+  });
+
+  const copyUrl = () => {
+    if (dbStatus?.dbUrl) {
+      navigator.clipboard.writeText(dbStatus.dbUrl);
+      toast({ title: "URL copiee" });
+    }
+  };
+
+  return (
+    <Card className="border-zinc-700/50">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium flex items-center gap-2">
+            <Database className="w-4 h-4 text-violet-400" /> Base de donnees dediee
+          </h4>
+          {dbStatus?.provisioned && (
+            <Badge variant="outline" className="text-[9px] border-emerald-500/50 text-emerald-400">
+              <Server className="w-2.5 h-2.5 mr-1" /> Active
+            </Badge>
+          )}
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <Loader2 className="w-3 h-3 animate-spin" /> Verification...
+          </div>
+        ) : dbStatus?.provisioned ? (
+          <div className="space-y-2">
+            <div className="bg-zinc-900/50 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-500">Nom</span>
+                <span className="text-xs font-mono text-emerald-400" data-testid="text-db-name">{dbStatus.dbName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-500">User</span>
+                <span className="text-xs font-mono text-cyan-400" data-testid="text-db-user">{dbStatus.dbUser}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-500">URL</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-mono text-zinc-400 max-w-[200px] truncate" data-testid="text-db-url">{dbStatus.dbUrl}</span>
+                  <button onClick={copyUrl} className="p-0.5 hover:text-white text-zinc-500 transition-colors" data-testid="button-copy-db-url">
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px] text-zinc-500">PostgreSQL isolee sur le serveur Hetzner. Injectee automatiquement via DATABASE_URL lors du deploiement.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-zinc-500">Aucune base de donnees provisionnee pour ce projet. Cliquez pour creer une base PostgreSQL dediee et isolee.</p>
+            <Button
+              size="sm"
+              className="w-full rounded-xl bg-violet-600 hover:bg-violet-500 text-white"
+              onClick={() => provision.mutate()}
+              disabled={provision.isPending}
+              data-testid="button-provision-db"
+            >
+              {provision.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Database className="w-3.5 h-3.5 mr-1" />}
+              Creer la base de donnees
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

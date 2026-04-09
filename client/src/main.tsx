@@ -16,14 +16,14 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
 
       const cacheKeys = await caches.keys();
       for (const key of cacheKeys) {
-        if (key.includes("ulysse-") && !key.includes("v4")) {
+        if (key.includes("ulysse-") && !key.includes("v5")) {
           await caches.delete(key);
           console.log("[PWA] Deleted old cache:", key);
         }
       }
 
       const registration = await navigator.serviceWorker.register("/sw.js");
-      console.log("[PWA] Service Worker v4 registered:", registration.scope);
+      console.log("[PWA] Service Worker v5 registered:", registration.scope);
 
       registration.addEventListener("updatefound", () => {
         const newWorker = registration.installing;

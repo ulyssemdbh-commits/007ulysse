@@ -415,17 +415,25 @@ async function getProjectRepo(req: Request, res: Response): Promise<{ owner: str
   }
 
   const p = project.rows[0] as any;
-  if (!p.repo_owner || !p.repo_name) {
+
+  const env = (req.query.env as string) || (req.headers["x-devmax-env"] as string) || "production";
+  const isStaging = env === "staging";
+
+  const owner = isStaging && p.staging_repo_owner ? p.staging_repo_owner : p.repo_owner;
+  const name = isStaging && p.staging_repo_name ? p.staging_repo_name : p.repo_name;
+  const storageMode = p.storage_mode || "github";
+
+  if (storageMode === "github" && (!owner || !name)) {
     res.status(400).json({ error: "Ce projet n'a pas de repo GitHub configure" });
     return null;
   }
 
   await db.execute(sql`UPDATE devmax_projects SET updated_at = NOW() WHERE id = ${projectId}`);
 
-  const githubToken = await resolveProjectGitHubToken(projectId);
+  const githubToken = storageMode === "github" ? await resolveProjectGitHubToken(projectId) : null;
 
-  const deploySlug = p.deploy_slug || p.repo_name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  return { owner: p.repo_owner, name: p.repo_name, deploySlug, githubToken };
+  const deploySlug = p.deploy_slug || (name || p.name || "").toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return { owner: owner || "", name: name || "", deploySlug, githubToken, storageMode, env };
 }
 
 function withRepoToken<T>(token: string | null, fn: () => Promise<T>): Promise<T> {
@@ -1106,69 +1114,52 @@ router.post("/preflight-check", async (req: Request, res: Response) => {
 router.post("/deploy-staging", async (req: Request, res: Response) => {
   try {
     const startTime = Date.now();
-    const repo = await getProjectRepo(req, res);
-    if (!repo) return;
     const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID requis" });
 
-    const [proj] = await db.execute(sql`SELECT tenant_id FROM devmax_projects WHERE id = ${projectId}`).then((r: any) => r.rows || r).catch(() => [{}]);
+    const [proj] = await db.execute(sql`SELECT * FROM devmax_projects WHERE id = ${projectId}`).then((r: any) => r.rows || r).catch(() => [null]);
+    if (!proj) return res.status(404).json({ error: "Projet non trouvé" });
+
     const planCheck = await checkPlanLimits(proj?.tenant_id, "deploy");
     if (!planCheck.allowed) return res.status(403).json({ error: planCheck.reason, plan: planCheck.plan, usage: planCheck.usage, limit: planCheck.limit });
 
-    const { branch, buildCmd, startCmd, envVars, createDb } = req.body;
+    const { buildCmd, startCmd, envVars, createDb } = req.body;
 
     const { sshService } = await import("../services/sshService");
-    const repoUrl = `https://github.com/${repo.owner}/${repo.name}.git`;
-    const appName = repo.deploySlug;
-    const stagingRepoName = `${repo.name}-test`;
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    const deploySlug = proj.deploy_slug || proj.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    const appName = deploySlug;
+    const stagingAppName = `${appName}-dev`;
     const stagingLogs: string[] = [];
 
-    const preflight = await runSourceCodePreflight(repo.owner, repo.name, repo.githubToken, stagingLogs);
-    if (preflight.blocking) {
+    const dbFiles = await devmaxFileStorage.listFiles(projectId, "test");
+    const hasGitHub = proj.repo_owner && proj.repo_name;
+    const { branch: reqBranch } = req.body;
+    const gitBranch = reqBranch || "main";
+
+    if (dbFiles.length === 0 && !hasGitHub) {
       return res.status(422).json({
         success: false,
-        message: `Déploiement bloqué par le preflight:\n${preflight.issues.join("\n")}`,
-        preflight,
-        logs: stagingLogs,
+        message: "Aucun fichier test trouvé en DB et aucun repo GitHub configuré. Ajoutez des fichiers ou configurez un repo.",
+        logs: ["No test files found in devmax_files and no GitHub repo configured"],
       });
     }
 
-    let stagingRepoUrl = repoUrl;
-    try {
-      await withRepoToken(repo.githubToken, async () => {
-        const existingRepo = await githubService.getRepo(repo.owner, stagingRepoName).catch(() => null);
-        if (!existingRepo) {
-          stagingLogs.push(`Creating staging repo: ${repo.owner}/${stagingRepoName}`);
-          await githubService.createRepo(stagingRepoName, {
-            description: `Staging clone of ${repo.name} — auto-managed by Ulysse AI`,
-            isPrivate: true,
-            autoInit: false,
-          });
-          stagingLogs.push(`Staging repo created: ${repo.owner}/${stagingRepoName}`);
-        } else {
-          stagingLogs.push(`Staging repo exists: ${repo.owner}/${stagingRepoName}`);
-        }
-      });
-      stagingRepoUrl = `https://github.com/${repo.owner}/${stagingRepoName}.git`;
+    const useGitHub = dbFiles.length === 0 && hasGitHub;
+    let fileContents: { path: string; content: string }[] = [];
 
-      const token = repo.githubToken || await sshService.resolveGitHubToken();
-      if (token) {
-        const mirrorResult = await sshService.executeCommand(
-          `cd /tmp && rm -rf _staging_mirror_${appName} && ` +
-          `git clone --mirror https://x-access-token:${token}@github.com/${repo.owner}/${repo.name}.git _staging_mirror_${appName} 2>&1 && ` +
-          `cd _staging_mirror_${appName} && ` +
-          `git remote set-url --push origin https://x-access-token:${token}@github.com/${repo.owner}/${stagingRepoName}.git && ` +
-          `git push --mirror 2>&1 && ` +
-          `cd /tmp && rm -rf _staging_mirror_${appName}`,
-          120000
-        );
-        if (mirrorResult.success) {
-          stagingLogs.push(`Code mirrored to staging repo`);
-        } else {
-          stagingLogs.push(`Mirror push warning: ${mirrorResult.error?.substring(0, 200)}`);
+    if (!useGitHub) {
+      for (const f of dbFiles) {
+        if (f.type === "file") {
+          const file = await devmaxFileStorage.getFile(projectId, "test", f.path);
+          if (file) {
+            fileContents.push({ path: file.file_path, content: file.content });
+          }
         }
       }
-    } catch (repoErr: any) {
-      stagingLogs.push(`Staging repo setup: ${repoErr.message?.substring(0, 200) || "skipped"}`);
+      stagingLogs.push(`[0/8] Fichiers Tests chargés: ${fileContents.length} fichiers depuis DB`);
+    } else {
+      stagingLogs.push(`[0/8] Mode GitHub: déploiement depuis ${proj.repo_owner}/${proj.repo_name} (branche ${gitBranch})`);
     }
 
     const skipTests = req.body.skipTests === true;
@@ -1192,22 +1183,43 @@ router.post("/deploy-staging", async (req: Request, res: Response) => {
       }
     }
 
-    const result = await sshService.deployStagingApp({
-      repoUrl: stagingRepoUrl,
-      appName,
-      branch: branch || "main",
-      buildCmd,
-      startCmd,
-      envVars,
-      createDb,
-      caller: "max",
-      devmaxProjectId: projectId,
-    });
+    const stagingDomain = `${stagingAppName}.ulyssepro.org`;
+    let result: any;
+
+    if (useGitHub) {
+      const pat = process.env.MAURICE_GITHUB_PAT || "";
+      const repoUrl = `https://${pat ? pat + "@" : ""}github.com/${proj.repo_owner}/${proj.repo_name}.git`;
+      result = await sshService.deployApp({
+        repoUrl,
+        appName: stagingAppName,
+        branch: gitBranch,
+        buildCmd,
+        startCmd,
+        envVars,
+        createDb,
+        domain: stagingDomain,
+        caller: "max",
+        devmaxProjectId: projectId,
+      });
+    } else {
+      result = await sshService.deployFromDbFiles({
+        appName: stagingAppName,
+        files: fileContents,
+        buildCmd,
+        startCmd,
+        envVars,
+        createDb,
+        domain: stagingDomain,
+        caller: "max",
+        devmaxProjectId: projectId,
+      });
+    }
 
     let browserAccessible = false;
     let browserStatus = "unknown";
-    if (result.success && result.stagingUrl) {
-      const health = await checkDeployHealth(result.stagingUrl, sshService);
+    const stagingUrl = `https://${stagingDomain}`;
+    if (result.success) {
+      const health = await checkDeployHealth(stagingUrl, sshService);
       browserAccessible = health.accessible;
       browserStatus = health.status;
     }
@@ -1223,19 +1235,19 @@ router.post("/deploy-staging", async (req: Request, res: Response) => {
       }
     }
 
+    const productionDomain = `${appName}.ulyssepro.org`;
     const fullLogs = [...stagingLogs, ...(result.logs || [])];
     if (result.success) {
       fullLogs.push(`Browser check: ${browserStatus} (${browserAccessible ? "accessible" : "NOT accessible"})`);
     }
 
     if (result.success && projectId) {
-      const stagingRepoFullName = `${repo.owner}/${stagingRepoName}`;
       const sPort = result.port || null;
       await db.execute(sql`
         UPDATE devmax_projects 
-        SET staging_url = ${result.stagingUrl || null}, 
+        SET staging_url = ${stagingUrl}, 
             staging_port = ${sPort},
-            production_url = ${result.productionUrl || null},
+            production_url = ${"https://" + productionDomain},
             environment = 'staging',
             last_deployed_at = NOW(),
             updated_at = NOW()
@@ -1249,31 +1261,31 @@ router.post("/deploy-staging", async (req: Request, res: Response) => {
         environment: "staging",
         trigger: "manual",
         commitSha: undefined,
-        branch: branch || "main",
+        branch: "test",
         status: result.success ? "success" : "failed",
-        url: result.stagingUrl,
+        url: stagingUrl,
         logs: fullLogs,
         duration: Date.now() - startTime,
       }).catch((e: any) => console.warn("[DevMax] logDeployment staging error:", e.message));
     }
 
-    await logDevmaxActivity(req, "deploy-staging", branch || "main", {
-      stagingUrl: result.stagingUrl,
-      stagingRepo: `${repo.owner}/${stagingRepoName}`,
+    await logDevmaxActivity(req, "deploy-staging", "test", {
+      stagingUrl,
       browserAccessible,
       browserStatus,
       success: result.success,
+      method: "db-files",
     });
 
     sendDevmaxNotification({
       tenantId: proj?.tenant_id,
       projectId,
       type: result.success ? "deploy_success" : "deploy_failed",
-      title: result.success ? `Staging déployé: ${repo.deploySlug}` : `Échec déploiement: ${repo.deploySlug}`,
+      title: result.success ? `Staging déployé: ${appName}` : `Échec déploiement: ${appName}`,
       message: result.success
-        ? `Branche ${branch || "main"} déployée sur ${result.stagingUrl}. Status: ${browserStatus}`
+        ? `Fichiers Tests déployés sur ${stagingUrl}. Status: ${browserStatus}`
         : `Le déploiement a échoué. ${result.message?.substring(0, 200)}`,
-      metadata: { stagingUrl: result.stagingUrl, branch: branch || "main", browserStatus },
+      metadata: { stagingUrl, browserStatus },
     }).catch(() => {});
 
     const testSummary = [];
@@ -1283,15 +1295,15 @@ router.post("/deploy-staging", async (req: Request, res: Response) => {
 
     res.json({
       ...result,
-      stagingRepo: `${repo.owner}/${stagingRepoName}`,
-      stagingRepoUrl: `https://github.com/${repo.owner}/${stagingRepoName}`,
+      stagingUrl,
       browserAccessible,
       browserStatus,
       preDeployTests: preTestResult,
       postDeployTests: postTestResult,
       logs: fullLogs,
+      method: "db-files",
       message: result.success
-        ? `${result.message}\n\nStaging repo: ${repo.owner}/${stagingRepoName}\nBrowser: ${browserStatus}${testLine}${!browserAccessible ? "\n⚠️ L'URL staging n'est pas encore accessible depuis le navigateur. Verifiez DNS/SSL." : ""}`
+        ? `${result.message}\nSource: Fichiers Tests (DB)\nBrowser: ${browserStatus}${testLine}${!browserAccessible ? "\n⚠️ L'URL staging n'est pas encore accessible. Vérifiez DNS/SSL." : ""}`
         : result.message,
     });
   } catch (error: any) {
@@ -1301,15 +1313,23 @@ router.post("/deploy-staging", async (req: Request, res: Response) => {
 
 router.post("/promote-production", async (req: Request, res: Response) => {
   try {
-    const repo = await getProjectRepo(req, res);
-    if (!repo) return;
     const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID requis" });
     const startTime = Date.now();
 
+    const [proj] = await db.execute(sql`SELECT * FROM devmax_projects WHERE id = ${projectId}`).then((r: any) => r.rows || r).catch(() => [null]);
+    if (!proj) return res.status(404).json({ error: "Projet non trouvé" });
+
     const { sshService } = await import("../services/sshService");
-    const appName = repo.deploySlug;
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    const deploySlug = proj.deploy_slug || proj.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    const appName = deploySlug;
     const skipTests = req.body?.skipTests === true;
+    const { buildCmd, startCmd } = req.body || {};
     const promoteLogs: string[] = [];
+
+    const hasGitHub = !!(proj.repo_owner && proj.repo_name);
+    promoteLogs.push(`[0] Mode: ${hasGitHub ? "GitHub + Deploy" : "DB Files → Deploy"}`);
 
     let preTestResult: TestSuiteResult | null = null;
     if (!skipTests) {
@@ -1331,90 +1351,150 @@ router.post("/promote-production", async (req: Request, res: Response) => {
       }
     }
 
-    const latestCommit = await sshService.executeCommand(
-      `cd /var/www/apps/${appName}-dev && git log -1 --format="%H|%s" 2>/dev/null || cd /var/www/apps/${appName}-staging && git log -1 --format="%H|%s" 2>/dev/null || echo "unknown|unknown"`,
-      5000
-    );
-    const [commitSha, commitMessage] = (latestCommit.output?.trim() || "unknown|unknown").split("|");
-
-    const result = await sshService.promoteToProduction({
-      appName,
-      caller: "max",
-    });
-
-    let browserAccessible = false;
-    let browserStatus = "unknown";
-    if (result.success && result.productionUrl) {
-      const health = await checkDeployHealth(result.productionUrl, sshService);
-      browserAccessible = health.accessible;
-      browserStatus = health.status;
-    }
-
-    let postTestResult: TestSuiteResult | null = null;
-    if (result.success && !skipTests) {
-      try {
-        postTestResult = await runPostDeployTests(appName, "production", sshService);
-        promoteLogs.push(`POST-PROMOTE TESTS: ${postTestResult.passed}/${postTestResult.total} passed (${postTestResult.duration}ms)`);
-        postTestResult.tests.forEach(t => promoteLogs.push(`  ${t.pass ? "✅" : "❌"} ${t.name}: ${t.detail}`));
-      } catch (testErr: any) {
-        promoteLogs.push(`POST-PROMOTE TESTS: erreur — ${testErr.message?.slice(0, 100)}`);
+    const testFiles = await devmaxFileStorage.listFiles(projectId, "test");
+    const fileContents: { path: string; content: string }[] = [];
+    for (const f of testFiles) {
+      if (f.type === "file") {
+        const file = await devmaxFileStorage.getFile(projectId, "test", f.path);
+        if (file) fileContents.push({ path: file.file_path, content: file.content });
       }
     }
 
-    if (result.success && projectId) {
-      await db.execute(sql`
-        UPDATE devmax_projects 
-        SET production_url = ${result.productionUrl || null},
-            deploy_url = ${result.productionUrl || null},
-            environment = 'production',
-            last_promoted_at = NOW(),
-            updated_at = NOW()
-        WHERE id = ${projectId}
-      `);
+    const hasDbFiles = fileContents.length > 0;
+
+    if (!hasDbFiles && !hasGitHub) {
+      return res.status(422).json({ success: false, message: "Aucun fichier test en DB et aucun repo GitHub configuré.", logs: promoteLogs });
     }
 
-    const allLogs = [...promoteLogs, ...(result.logs || [])];
+    if (hasDbFiles) {
+      await devmaxFileStorage.deleteAll(projectId, "prod");
+      for (const f of fileContents) {
+        await devmaxFileStorage.saveFile(projectId, "prod", f.path, f.content);
+      }
+      promoteLogs.push(`[1] Fichiers Prod créés en DB: ${fileContents.length} fichiers copiés depuis Tests`);
+    } else {
+      promoteLogs.push(`[1] Mode GitHub direct — pas de fichiers test en DB, déploiement depuis repo`);
+    }
 
-    if (projectId) {
-      const { logDeployment } = await import("./devmaxWebhook");
-      await logDeployment(projectId, {
-        environment: "production",
-        trigger: "manual",
-        commitSha: commitSha !== "unknown" ? commitSha : undefined,
-        commitMessage: commitMessage !== "unknown" ? commitMessage : undefined,
-        branch: "main",
-        status: result.success ? "success" : "failed",
-        url: result.productionUrl,
-        logs: allLogs,
-        duration: Date.now() - startTime,
+    if (hasGitHub) {
+      const githubToken = await resolveProjectGitHubToken(projectId);
+      try {
+        let mainBranch = "main";
+        try {
+          const mainRepo = await withRepoToken(githubToken, () => githubService.getRepo(proj.repo_owner, proj.repo_name));
+          mainBranch = (mainRepo as any).default_branch || "main";
+        } catch {}
+
+        if (hasDbFiles) {
+          let pushed = 0;
+          for (const file of fileContents) {
+            try {
+              let existingSha: string | undefined;
+              try {
+                const existing = await withRepoToken(githubToken, () =>
+                  githubService.getFileContent(proj.repo_owner, proj.repo_name, file.path, mainBranch)
+                );
+                existingSha = (existing as any).sha;
+              } catch {}
+              const b64Content = Buffer.from(file.content).toString("base64");
+              await withRepoToken(githubToken, () =>
+                githubService.createOrUpdateFileRaw(
+                  proj.repo_owner, proj.repo_name, file.path, b64Content,
+                  `[Prod] ${file.path}`, mainBranch, existingSha
+                )
+              );
+              pushed++;
+            } catch {}
+          }
+          promoteLogs.push(`[2] GitHub push: ${pushed}/${fileContents.length} fichiers → ${proj.repo_owner}/${proj.repo_name}`);
+        } else {
+          promoteLogs.push(`[2] GitHub: déploiement direct depuis repo (pas de push nécessaire)`);
+        }
+
+        const pat = process.env.MAURICE_GITHUB_PAT || "";
+        const repoUrl = `https://${pat ? pat + "@" : ""}github.com/${proj.repo_owner}/${proj.repo_name}.git`;
+        const result = await sshService.deployApp({
+          repoUrl,
+          appName,
+          branch: mainBranch,
+          buildCmd,
+          startCmd,
+          domain: `${appName}.ulyssepro.org`,
+          caller: "max",
+          devmaxProjectId: projectId,
+        });
+
+        let browserAccessible = false;
+        let browserStatus = "unknown";
+        const productionUrl = `https://${appName}.ulyssepro.org`;
+        if (result.success) {
+          const health = await checkDeployHealth(productionUrl, sshService);
+          browserAccessible = health.accessible;
+          browserStatus = health.status;
+        }
+
+        if (result.success && projectId) {
+          await db.execute(sql`
+            UPDATE devmax_projects SET production_url = ${productionUrl}, deploy_url = ${productionUrl}, environment = 'production', last_promoted_at = NOW(), updated_at = NOW() WHERE id = ${projectId}
+          `);
+        }
+
+        const allLogs = [...promoteLogs, ...(result.logs || [])];
+        if (projectId) {
+          const { logDeployment } = await import("./devmaxWebhook");
+          await logDeployment(projectId, {
+            environment: "production", trigger: "manual", branch: mainBranch,
+            status: result.success ? "success" : "failed", url: productionUrl, logs: allLogs, duration: Date.now() - startTime,
+          }).catch(() => {});
+        }
+
+        await logDevmaxActivity(req, "promote-production", "main", { productionUrl, browserAccessible, browserStatus, success: result.success, method: "github" });
+
+        res.json({ ...result, browserAccessible, browserStatus, preDeployTests: preTestResult, logs: allLogs, method: "github" });
+      } catch (ghErr: any) {
+        promoteLogs.push(`GitHub push error: ${ghErr.message?.substring(0, 200)}`);
+        return res.status(500).json({ success: false, message: `Échec push GitHub: ${ghErr.message}`, logs: promoteLogs });
+      }
+    } else {
+      const prodDomain = `${appName}.ulyssepro.org`;
+      const result = await sshService.deployFromDbFiles({
+        appName,
+        files: fileContents,
+        buildCmd,
+        startCmd,
+        domain: prodDomain,
+        caller: "max",
+        devmaxProjectId: projectId,
       });
+
+      let browserAccessible = false;
+      let browserStatus = "unknown";
+      const productionUrl = `https://${prodDomain}`;
+      if (result.success) {
+        const health = await checkDeployHealth(productionUrl, sshService);
+        browserAccessible = health.accessible;
+        browserStatus = health.status;
+      }
+
+      if (result.success && projectId) {
+        await db.execute(sql`
+          UPDATE devmax_projects SET production_url = ${productionUrl}, deploy_url = ${productionUrl}, environment = 'production', last_promoted_at = NOW(), updated_at = NOW() WHERE id = ${projectId}
+        `);
+      }
+
+      const allLogs = [...promoteLogs, ...(result.logs || [])];
+      if (projectId) {
+        const { logDeployment } = await import("./devmaxWebhook");
+        await logDeployment(projectId, {
+          environment: "production", trigger: "manual", branch: "main",
+          status: result.success ? "success" : "failed", url: productionUrl, logs: allLogs, duration: Date.now() - startTime,
+        }).catch(() => {});
+      }
+
+      await logDevmaxActivity(req, "promote-production", "main", { productionUrl, browserAccessible, browserStatus, success: result.success, method: "db" });
+
+      res.json({ ...result, browserAccessible, browserStatus, preDeployTests: preTestResult, logs: allLogs, method: "db", productionUrl });
     }
-
-    await logDevmaxActivity(req, "promote-production", "main", {
-      productionUrl: result.productionUrl,
-      browserAccessible,
-      browserStatus,
-      success: result.success,
-      preDeployTests: preTestResult ? `${preTestResult.passed}/${preTestResult.total}` : null,
-      postDeployTests: postTestResult ? `${postTestResult.passed}/${postTestResult.total}` : null,
-    });
-
-    const testSummary = [];
-    if (preTestResult) testSummary.push(`PRE: ${preTestResult.passed}/${preTestResult.total}`);
-    if (postTestResult) testSummary.push(`POST: ${postTestResult.passed}/${postTestResult.total}`);
-    const testLine = testSummary.length ? `\nTests: ${testSummary.join(" | ")}` : "";
-
-    res.json({
-      ...result,
-      browserAccessible,
-      browserStatus,
-      preDeployTests: preTestResult,
-      postDeployTests: postTestResult,
-      logs: allLogs,
-      message: result.success
-        ? `${result.message}\nBrowser: ${browserStatus}${testLine}${!browserAccessible ? "\n⚠️ L'URL production n'est pas encore accessible depuis le navigateur. Verifiez DNS/SSL." : ""}`
-        : result.message,
-    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -1497,6 +1577,41 @@ router.post("/rollback-production", async (req: Request, res: Response) => {
         ? `${result.message}\nBrowser: ${browserStatus}${!browserAccessible ? "\n⚠️ L'URL production n'est pas encore accessible depuis le navigateur." : ""}`
         : result.message,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/activity/live", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    const { getActivities, getRunningActivities } = await import("../services/activityTracker");
+    const running = getRunningActivities(projectId || undefined);
+    const recent = getActivities(projectId || undefined, 15);
+
+    let dgmSession: any = null;
+    let dgmTasks: any[] = [];
+    if (projectId) {
+      try {
+        const project = await db.execute(sql`SELECT repo_owner, repo_name FROM devmax_projects WHERE id = ${projectId}`);
+        const row = project?.rows?.[0] as any;
+        if (row) {
+          const repoCtx = `${row.repo_owner}/${row.repo_name}`;
+          const sessions = await db.execute(
+            sql`SELECT * FROM dgm_sessions WHERE repo_context = ${repoCtx} AND active = true ORDER BY created_at DESC LIMIT 1`
+          );
+          if (sessions.rows?.length) {
+            dgmSession = sessions.rows[0];
+            const tasksResult = await db.execute(
+              sql`SELECT * FROM dgm_tasks WHERE session_id = ${(dgmSession as any).id} ORDER BY sort_order`
+            );
+            dgmTasks = tasksResult.rows as any[];
+          }
+        }
+      } catch (_) {}
+    }
+
+    res.json({ running, recent, dgmSession, dgmTasks });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -2840,6 +2955,253 @@ router.post("/run-tests-protocol", async (req: Request, res: Response) => {
       summary: `${totalPassed}/${allTests.length} tests passed${totalFailed > 0 ? ` — ${totalFailed} failed` : ""}`,
       details: lines.join("\n"),
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/db-files", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID required" });
+    const branch = (req.query.branch as string) || "main";
+    const dir = req.query.dir as string | undefined;
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    const files = await devmaxFileStorage.listFiles(projectId, branch, dir);
+    res.json({ files, branch });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/db-files/content", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID required" });
+    const branch = (req.query.branch as string) || "main";
+    const filePath = req.query.path as string;
+    if (!filePath) return res.status(400).json({ error: "path required" });
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    const file = await devmaxFileStorage.getFile(projectId, branch, filePath);
+    if (!file) return res.status(404).json({ error: "File not found" });
+    res.json({ path: file.file_path, content: file.content, sha: file.sha, size: file.size });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/db-files", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID required" });
+    const { branch, files } = req.body;
+    if (!files || !Array.isArray(files)) return res.status(400).json({ error: "files array required" });
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    const count = await devmaxFileStorage.saveBatch(projectId, branch || "main", files);
+    res.json({ success: true, savedCount: count });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete("/db-files", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID required" });
+    const { branch, path: filePath } = req.body;
+    if (!filePath) return res.status(400).json({ error: "path required" });
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    await devmaxFileStorage.deleteFile(projectId, branch || "main", filePath);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/db-files/branches", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID required" });
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    const branches = await devmaxFileStorage.listBranches(projectId);
+    res.json({ branches: branches.length > 0 ? branches : ["main"] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/db-files/stats", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID required" });
+    const branch = (req.query.branch as string) || "main";
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    const stats = await devmaxFileStorage.getStats(projectId, branch);
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/provision-db", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID requis" });
+
+    const [proj] = await db.execute(sql`SELECT * FROM devmax_projects WHERE id = ${projectId}`).then((r: any) => r.rows || r).catch(() => [null]);
+    if (!proj) return res.status(404).json({ error: "Projet non trouvé" });
+
+    const planCheck = await checkPlanLimits(proj?.tenant_id, "deploy");
+    if (!planCheck.allowed) return res.status(403).json({ error: planCheck.reason });
+
+    if (proj.db_provisioned && proj.db_url) {
+      return res.json({
+        success: true,
+        message: `Base de données déjà provisionnée: ${proj.db_name}`,
+        dbName: proj.db_name,
+        dbUser: proj.db_user,
+        dbUrl: proj.db_url,
+        alreadyProvisioned: true,
+      });
+    }
+
+    const deploySlug = proj.deploy_slug || proj.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    const safeSlug = deploySlug.replace(/-/g, "_");
+    const dbName = req.body.dbName || `devmax_${safeSlug}_db`;
+    const dbUser = req.body.dbUser || `devmax_${safeSlug}`;
+    const crypto = await import("crypto");
+    const dbPassword = req.body.dbPassword || crypto.randomBytes(16).toString("hex");
+
+    const { sshService } = await import("../services/sshService");
+    const result = await sshService.createDatabase(dbName, dbUser, dbPassword);
+
+    if (!result.success) {
+      return res.status(500).json({ success: false, message: result.message });
+    }
+
+    await db.execute(sql`
+      UPDATE devmax_projects 
+      SET db_name = ${dbName}, db_user = ${dbUser}, db_password = ${dbPassword}, 
+          db_url = ${result.connectionUrl}, db_provisioned = true, updated_at = NOW()
+      WHERE id = ${projectId}
+    `);
+
+    await logDevmaxActivity(req, "provision-db", "main", { dbName, dbUser, success: true });
+
+    res.json({
+      success: true,
+      message: result.message,
+      dbName,
+      dbUser,
+      dbUrl: result.connectionUrl,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/provision-db/status", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.headers["x-devmax-project"] as string;
+    if (!projectId) return res.status(400).json({ error: "Project ID requis" });
+
+    const [proj] = await db.execute(sql`
+      SELECT db_name, db_user, db_url, db_provisioned FROM devmax_projects WHERE id = ${projectId}
+    `).then((r: any) => r.rows || r).catch(() => [null]);
+    if (!proj) return res.status(404).json({ error: "Projet non trouvé" });
+
+    res.json({
+      provisioned: !!proj.db_provisioned,
+      dbName: proj.db_name || null,
+      dbUser: proj.db_user || null,
+      dbUrl: proj.db_url || null,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/check-url", async (req: Request, res: Response) => {
+  try {
+    const url = req.query.url as string;
+    if (!url) return res.json({ accessible: false, error: "No URL" });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(url, { method: "HEAD", signal: controller.signal, redirect: "follow" });
+      clearTimeout(timeout);
+      const accessible = response.status >= 200 && response.status < 400;
+      res.json({ accessible, status: response.status });
+    } catch (e: any) {
+      clearTimeout(timeout);
+      res.json({ accessible: false, error: e.message?.slice(0, 100) });
+    }
+  } catch (error: any) {
+    res.json({ accessible: false, error: error.message });
+  }
+});
+
+router.get("/preview/:projectId/*", async (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.params;
+    const filePath = req.params[0] || "index.html";
+    const branch = (req.query.branch as string) || "test";
+
+    const { devmaxFileStorage } = await import("../services/devmaxFileStorage");
+    const file = await devmaxFileStorage.getFile(projectId, branch, filePath);
+
+    if (!file) {
+      if (filePath === "index.html" || filePath === "") {
+        const files = await devmaxFileStorage.listFiles(projectId, branch);
+        const htmlFiles = files.filter(f => f.path.endsWith(".html")).map(f => f.path);
+        const indexFile = htmlFiles.find(f => f === "index.html") || htmlFiles[0];
+        if (indexFile) {
+          const fallback = await devmaxFileStorage.getFile(projectId, branch, indexFile);
+          if (fallback) {
+            res.set("Content-Type", "text/html; charset=utf-8");
+            return res.send(fallback.content);
+          }
+        }
+        const allFiles = files.filter(f => f.type === "file").map(f => f.path);
+        const listing = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview — Fichiers Tests</title>
+<style>body{font-family:system-ui;background:#0a0a0a;color:#e5e5e5;padding:2rem}
+a{color:#22d3ee;text-decoration:none}a:hover{text-decoration:underline}
+li{padding:4px 0}h2{color:#10b981}</style></head>
+<body><h2>Fichiers Tests (${allFiles.length})</h2><ul>${allFiles.map(f => `<li><a href="/api/devmax/preview/${projectId}/${f}?branch=${branch}">${f}</a></li>`).join("")}</ul></body></html>`;
+        res.set("Content-Type", "text/html; charset=utf-8");
+        return res.send(listing);
+      }
+      return res.status(404).json({ error: `Fichier non trouvé: ${filePath}` });
+    }
+
+    const ext = filePath.split(".").pop()?.toLowerCase() || "";
+    const mimeMap: Record<string, string> = {
+      html: "text/html; charset=utf-8",
+      htm: "text/html; charset=utf-8",
+      css: "text/css; charset=utf-8",
+      js: "application/javascript; charset=utf-8",
+      mjs: "application/javascript; charset=utf-8",
+      ts: "application/typescript; charset=utf-8",
+      tsx: "application/typescript; charset=utf-8",
+      jsx: "application/javascript; charset=utf-8",
+      json: "application/json; charset=utf-8",
+      svg: "image/svg+xml",
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      ico: "image/x-icon",
+      woff: "font/woff",
+      woff2: "font/woff2",
+      ttf: "font/ttf",
+      txt: "text/plain; charset=utf-8",
+      md: "text/markdown; charset=utf-8",
+      xml: "application/xml; charset=utf-8",
+    };
+    const contentType = mimeMap[ext] || "application/octet-stream";
+    res.set("Content-Type", contentType);
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.send(file.content);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

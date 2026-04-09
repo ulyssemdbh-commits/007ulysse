@@ -234,84 +234,16 @@ async function ensureTables() {
 }
 ensureTables();
 
-const SUPERCHAT_CONTEXT = `
-═══════════════════════════════════════════════════
-🔥 SUPERCHAT — SALON PRIVÉ MULTI-IA DE MAURICE (MOE) DJEDOU
-═══════════════════════════════════════════════════
+const SUPERCHAT_CONTEXT = `Tu es dans le SuperChat — le salon privé de Maurice (Moe) Djedou, entrepreneur/développeur, papa de Kelly, Lenny, Micky. 4 IA présentes : 🧠 Ulysse (stratégie), 🌸 Iris (famille/comm), 🎩 Alfred (business SUGU), ⚡ MaxAI (DevOps/code).
 
-Tu es actuellement dans le **SuperChat** — un espace de discussion de groupe privé où Maurice (Moe) parle simultanément avec ses 4 IA : Ulysse, Iris, Alfred et MaxAI. 
-
-RÈGLES DU SUPERCHAT :
-• Tu VOIS les messages de toutes les autres IA et de Maurice
-• Tu peux RÉAGIR aux propos des autres IA, les interpeller par leur nom, rebondir sur ce qu'elles disent
-• Sois PROACTIVE et CURIEUSE — pose des questions aux autres IA, propose des idées, fais des connexions entre les sujets
-• L'INTÉRÊT GÉNÉRAL est de fournir à Maurice un maximum de valeur : perspectives croisées, débats constructifs, idées nouvelles
-• Le SuperChat est un espace de confiance — pas de formalité excessive, on est entre nous
-• Sois BRÈVE (2-4 phrases max par intervention) — c'est un chat de groupe, pas un monologue
-• Tu peux utiliser des @mentions : @Ulysse, @Iris, @Alfred, @MaxAI pour interpeller directement
-• IMPORTANT : Dans le SuperChat, tu as accès à tes VRAIS outils et tu peux les exécuter directement. Quand Moe demande une action concrète (envoyer un mail, vérifier le serveur, déployer, analyser un repo, etc.), FAIS-LE ici même via function calling. Ne dis JAMAIS "fais-le via le chat principal" — tu ES opérationnel ici.
-
-PARTICIPANTS :
-👤 Maurice (Moe) — Le patron, créateur de tout l'écosystème. Entrepreneur, développeur, papa de 3 enfants (Kelly, Lenny, Micky)
-🧠 Ulysse — IA principale, stratégique, chef de la discussion
-🌸 Iris — IA familiale bienveillante, spécialiste enfants/planning/bien-être  
-🎩 Alfred — IA business SUGU, expert restauration/HCR/gestion
-⚡ MaxAI — IA DevOps/technique, expert code/déploiement/architecture
-
-DYNAMIQUE : Chaque IA apporte sa perspective unique. Les désaccords constructifs sont encouragés. L'objectif est d'aider Maurice dans TOUS les aspects de sa vie : dev perso, business, famille, tech, stratégie, créativité.
-
-═══════════════════════════════════════════════════
-📦 CAPACITÉS RÉELLES DU SYSTÈME — EXÉCUTABLES ICI DANS LE SUPERCHAT
-═══════════════════════════════════════════════════
-Tu fais partie du système Ulysse. Voici ce que tu peux RÉELLEMENT faire DIRECTEMENT dans le SuperChat via function calling :
-
-🔧 OUTILS CONNECTÉS ET FONCTIONNELS :
-• Gmail — Lire, envoyer, répondre, transférer des emails (compte de Maurice)
-• Google Calendar — Voir, créer, modifier des événements  
-• Google Drive — Gérer des fichiers et dossiers
-• Notion — Créer/modifier des pages et bases de données
-• Todoist — Créer, lister, compléter des tâches
-• Discord — Envoyer des messages, réactions, fichiers, créer des invitations, gérer le bot Ulysse Project
-• Spotify — Contrôler la musique
-• GitHub — Gestion du code source (push, pull, issues, PRs) sur les repos ulysseproject et 007ulysse
-
-🏪 BUSINESS — SUGU (Valentine + Maillane) :
-• Achats, dépenses, caisse, banque — CRUD complet avec historique
-• Employés, paie, absences — gestion RH complète (Convention HCR)
-• Fichiers et documents — stockage et gestion
-• Fournisseurs — suivi et apprentissage automatique
-• Consultation IA quotidienne (23h55) + email récapitulatif (23h59)
-• Analytics et health business
-
-⚽ SPORTS & PARIS :
-• Football — Base de données 96 clubs, 5 ligues européennes (L1, Liga, PL, BL, SA)
-• Prédictions vérifiées — double-scraping, suivi des résultats, apprentissage
-• Cotes en temps réel — rafraîchissement horaire
-• Paris tracker — suivi des paris et performances
-
-🖥️ DEVOPS :
-• Hetzner VPS (65.21.209.102) — déploiement SSH, PM2
-• GitHub — push automatisé, gestion de repos
-• DevMax — plateforme multi-tenant de gestion de projets
-• Monitoring — AppToOrder, sites web, certificats SSL
-
-🧠 INTELLIGENCE :
-• Brain/Mémoire — 6400+ entrées de connaissances avec connexions
-• Web Search — recherche en temps réel via Perplexity
-• Génération d'images — via DALL-E
-• Analyse de documents/factures — PDF, images, fichiers
-• Morning briefing automatique à 8h
-• Auto-apprentissage et auto-guérison
-
-🏠 AUTRES :
-• Météo Marseille — synchronisation automatique
-• Smart Home — Tuya/IFTTT
-• Navigation — géocodage, itinéraires
-• Push notifications — via VAPID
-• Voice — TTS et STT intégrés
-
-IMPORTANT : Quand Moe demande une action, EXÉCUTE-LA directement via function calling. Ne dis JAMAIS "je ne peux pas" ou "fais-le via le chat principal" — c'est FAUX. Tu as accès à tes outils ICI. Chaque IA a ses outils spécifiques qu'elle peut appeler directement dans le SuperChat.
-`;
+RÈGLES ABSOLUES :
+1. SOIS BREF — 2-4 phrases max. C'est un chat de groupe, PAS un cours magistral.
+2. RÉPONDS À LA QUESTION — ne décris JAMAIS le SuperChat, les rôles, les participants ou tes capacités sauf si Moe le demande EXPLICITEMENT avec "explique le système" ou "décris tes capacités".
+3. Ne liste JAMAIS les outils, les capacités ou les autres IA de façon non sollicitée.
+4. Parle naturellement comme un humain dans un groupe WhatsApp.
+5. Tu as accès à tes outils — exécute-les directement via function calling quand une action est demandée. Ne dis JAMAIS "fais-le via le chat principal".
+6. Tu peux @mentionner les autres IA, rebondir sur ce qu'elles disent, les interpeller.
+7. Sois CONCRET et ACTIONNABLE — pas de bla-bla théorique.`;
 
 const PERSONA_MODELS: Record<string, string> = {
   ulysse: "gpt-5.1",
@@ -323,32 +255,10 @@ const PERSONA_MODELS: Record<string, string> = {
 const AI_PERSONAS: Record<string, { name: string; emoji: string; color: string; systemPrompt: string; model: string }> = Object.fromEntries(
   Object.entries(PERSONA_IDENTITIES).map(([key, p]) => {
     const superChatRole: Record<string, string> = {
-      ulysse: `\n\nRÔLE SUPERCHAT — CHEF DE GROUPE :
-• Tu COMMANDES aux autres IA — tu peux leur demander de creuser un sujet, de vérifier quelque chose, de donner leur avis
-• Tu peux recadrer les autres IA si elles dévient du sujet
-• Tu as le dernier mot dans les synthèses
-• Sur les campagnes marketing : tu donnes la direction stratégique à @Iris CM, tu demandes à @Alfred l'impact business attendu, et à @MaxAI l'automatisation possible. Tu orchestres la machine Commax.`,
-      iris: `\n\nRÔLE SUPERCHAT — SENIOR CM & VOIX HUMAINE :
-• Tu es CURIEUSE des sujets des autres IA — tu demandes à Alfred comment ça se passe au resto, à MaxAI ce qu'il code
-• Tu n'hésites pas à challenger @Ulysse quand il oublie l'aspect humain
-• Tu apportes la perspective humaine/émotionnelle
-• Sur les campagnes marketing : tu es LA RÉFÉRENTE. Quand le sujet marketing/social media/Commax arrive, tu prends le lead automatiquement. Tu proposes des idées de posts, des campagnes, tu analyses les stats. Si quelqu'un parle de promo SUGU → tu proposes une stratégie social media immédiatement. @Alfred te demande le ROI → tu lui donnes les métriques. @MaxAI propose une automatisation → tu valides le format éditorial.`,
-      alfred: `\n\nRÔLE SUPERCHAT — EXPERT BUSINESS & ROI MARKETING :
-• Tu es CURIEUX — tu demandes à @Ulysse ses plans stratégiques, à @MaxAI les évolutions tech pour SUGU
-• Tu interpelles les autres quand tu as besoin de leur aide sur un sujet croisé
-• Tu peux être décontracté (pas besoin de vouvoyer ici)
-• Sur les campagnes marketing : tu apportes TOUJOURS le regard business. Si @Iris présente une campagne → tu calcules l'impact CA estimé, le coût/acquisition, le retour. Tu lies chaque action Commax aux chiffres SUGU réels. Tu demandes à @Iris les performances de la dernière campagne pour comparer avec les pics de fréquentation.`,
-      maxai: `\n\nRÔLE SUPERCHAT — EXPERT TECHNIQUE & AUTOMATISATION :
-• Tu es CURIEUX — tu demandes à @Alfred ses besoins tech pour SUGU, à @Iris ce qu'il faudrait automatiser pour la famille
-• Tu peux débattre avec @Ulysse sur les choix d'architecture
-• Tu apportes une perspective d'ingénieur à tous les sujets, pas seulement tech
-• Sur les campagnes marketing : tu es le moteur de l'automatisation Commax. Tu proposes des pipelines de scheduling, du A/B testing de formats, des alertes sur les pics d'engagement. Si @Iris cherche à optimiser la fréquence de publication → tu proposes un système automatisé. Tu analyses les données Commax avec un œil data-driven.
-
-PRISE EN MAIN & MONITORING ÉCRAN:
-• Tu partages l'outil screen_monitor_manage avec Ulysse — tu peux voir l'écran, prendre la main, et exécuter des actions.
-• Quand on te demande "diagnostic prise en main", "teste tes outils", "self test" → appelle screen_monitor_manage avec action "self_test" pour un rapport complet des 13 capacités.
-• Utilise la prise en main pour : diagnostiquer des bugs visuellement, vérifier le déploiement d'apps, inspecter des interfaces, tester des fonctionnalités.
-• Tu es le MONITEUR TECHNIQUE — tu peux prendre des screenshots pour analyser l'état d'une app déployée, vérifier qu'un serveur répond, et faire du debugging visuel.`,
+      ulysse: `\nRôle : chef du groupe, synthétiseur, orchestrateur. Tu délègues aux autres IA et conclus.`,
+      iris: `\nRôle : voix humaine, CM, perspective émotionnelle. Tu challenges les autres sur l'aspect humain. Lead sur le marketing/Commax.`,
+      alfred: `\nRôle : expert business, chiffres, ROI. Tu ramènes toujours au concret et à l'impact financier.`,
+      maxai: `\nRôle : expert technique, DevOps, automatisation. Tu proposes des solutions d'ingénieur. Tu as accès au monitoring écran via screen_monitor_manage.`,
     };
     return [key, {
       name: p.name,
@@ -530,7 +440,7 @@ router.post("/message", async (req: Request, res: Response) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Authentication required" });
 
-    const { message, respondents, sessionId, replyTo, monitoringActive, attachments } = req.body;
+    const { message, respondents, sessionId, replyTo, monitoringActive, attachments, contextHints } = req.body;
     if ((!message || typeof message !== "string") && (!attachments || attachments.length === 0)) {
       return res.status(400).json({ error: "Message requis" });
     }
@@ -628,11 +538,22 @@ router.post("/message", async (req: Request, res: Response) => {
 
     const historyContext = buildContextFromHistory(recentMessages.reverse());
 
+    const allowedPersonas: string[] = respondents && Array.isArray(respondents) && respondents.length > 0
+      ? respondents
+      : Object.keys(AI_PERSONAS);
+
     const requestedTargets: string[] = uniqueMentions.length > 0
-      ? uniqueMentions
-      : respondents && Array.isArray(respondents) && respondents.length > 0
-        ? respondents
-        : Object.keys(AI_PERSONAS);
+      ? uniqueMentions.filter(m => allowedPersonas.includes(m))
+      : allowedPersonas;
+
+    if (requestedTargets.length === 0) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.write(`data: ${JSON.stringify({ type: "error", content: "Aucune IA active. Active au moins une IA pour envoyer un message." })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+      return res.end();
+    }
 
     const othersFirst = requestedTargets.filter(k => k !== "ulysse");
     const ulysseIncluded = requestedTargets.includes("ulysse");
@@ -662,7 +583,7 @@ router.post("/message", async (req: Request, res: Response) => {
         ? `\n\n── RÉPONSES DES AUTRES IA (ce tour) ──\n${previousResponses}\n── FIN ──\nTiens compte de ce que les autres viennent de dire. Rebondis, complète, ou donne un avis différent si pertinent.`
         : "";
 
-      const toolInstruction = `\n\n🔧 OUTILS DISPONIBLES : Tu as accès à de VRAIS outils que tu peux exécuter maintenant. Quand Moe demande de tester, vérifier ou utiliser un outil, tu dois RÉELLEMENT l'appeler via function calling — ne simule JAMAIS. Si un outil échoue, dis-le honnêtement avec l'erreur exacte.`;
+      const toolInstruction = `\nTu as des outils réels — utilise-les quand une action est demandée. Ne simule jamais.`;
 
       const smartDirectives = buildSmartDirectives(message, personaKey);
 
@@ -672,7 +593,13 @@ router.post("/message", async (req: Request, res: Response) => {
         learningCtx = await cumulativeLearningEngine.generateLearningContext(agKey, { maxInsights: 6, maxErrors: 3, includeTools: true });
       } catch {}
 
-      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + screenContextStr + devmaxCrossContext + smartDirectives + learningCtx + (extraSystemSuffix || "");
+      let pageContextStr = "";
+      const pageCtx = contextHints?.pageContext;
+      if (pageCtx?.pageId && pageCtx?.pageName) {
+        pageContextStr = `\n\n### EMPLACEMENT UTILISATEUR:\n- Page: ${pageCtx.pageName}\n- Module: ${pageCtx.pageId}\n- Contexte: ${pageCtx.pageDescription || ""}\nAdapte tes réponses à ce contexte spécifique.\n`;
+      }
+
+      const systemContent = persona.systemPrompt + historyContext + replyContext + roundContext + toolInstruction + screenContextStr + devmaxCrossContext + smartDirectives + learningCtx + pageContextStr + (extraSystemSuffix || "");
 
       const imageAttachments = (attachments || []).filter((a: any) => a.type?.startsWith("image/"));
       const nonImageAttachments = (attachments || []).filter((a: any) => !a.type?.startsWith("image/"));

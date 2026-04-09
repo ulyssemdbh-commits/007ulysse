@@ -281,17 +281,16 @@ export function UlysseChatProvider({ children }: { children: React.ReactNode }) 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 90000);
 
-    const contextHint = currentPageContext
-      ? `\n[CONTEXTE PAGE: ${currentPageContext.pageName} — ${currentPageContext.pageDescription}]`
-      : "";
-
     try {
       const res = await fetch(`/api/conversations/${convId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: contextHint ? content + contextHint : content,
+          content,
           imageDataUrl,
+          contextHints: currentPageContext ? {
+            pageContext: currentPageContext,
+          } : undefined,
         }),
         signal: controller.signal,
       });

@@ -122,7 +122,7 @@ export function activityIngestionMiddleware(req: Request, res: Response, next: N
             if (res.statusCode >= 400) return;
 
             // Get userId from session or JWT auth
-            const userId = (req as any).userId || req.user?.id || (req as any).session?.userId;
+            const userId = (req as Request & { userId?: number; session?: { userId?: number } }).userId || req.user?.id || (req as Request & { session?: { userId?: number } }).session?.userId;
             if (!userId || typeof userId !== "number") return;
 
             const path = req.path;

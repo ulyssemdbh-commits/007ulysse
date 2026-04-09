@@ -247,10 +247,11 @@ async function ttsOneSentence(text: string, voice: string): Promise<AudioResult 
             model: "tts-1",
             voice: voice as any,
             input: text.trim(),
-            response_format: "mp3",
+            response_format: "opus",
+            speed: 1.08,
         });
         const buf = Buffer.from(await resp.arrayBuffer());
-        return { audio: buf.toString("base64"), mimeType: "audio/mpeg" };
+        return { audio: buf.toString("base64"), mimeType: "audio/ogg" };
     } catch (err) {
         console.error("[VoicePipeline] OpenAI TTS fallback error for:", JSON.stringify(text.slice(0, 40)), err);
         return null;

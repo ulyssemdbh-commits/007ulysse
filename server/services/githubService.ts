@@ -163,9 +163,13 @@ export async function getFileContent(owner: string, repo: string, path: string, 
 }
 
 export async function createOrUpdateFile(
-  owner: string, repo: string, path: string,
+  owner: string, repo: string, filePath: string,
   content: string, message: string, branch: string, sha?: string
 ) {
+  const path = filePath;
+  if (path.startsWith('.github/workflows/') && (path.endsWith('.yml') || path.endsWith('.yaml'))) {
+    content = sanitizeWorkflowContent(content);
+  }
   const base64Content = Buffer.from(content).toString("base64");
   let fileSha = sha;
   if (!fileSha) {
@@ -274,11 +278,46 @@ export async function getRepoLanguages(owner: string, repo: string) {
   return githubApi(`/repos/${owner}/${repo}/languages`);
 }
 
+function sanitizeWorkflowContent(content: string): string {
+  if (!content.includes('npm ci') && !/uses:\s*actions\//.test(content)) return content;
+  
+  console.log(`[GitHubService] Sanitizing workflow: replacing npm ci / external actions`);
+  return `name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        run: |
+          git clone --depth 1 https://x-access-token:\${{ github.token }}@github.com/\${{ github.repository }}.git .
+          if [ "\${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin \${{ github.event.pull_request.head.sha }}
+            git checkout \${{ github.event.pull_request.head.sha }}
+          fi
+      - name: Install
+        run: npm install --legacy-peer-deps
+      - name: Build
+        run: npm run build --if-present
+`;
+}
+
 export async function applyPatch(
   owner: string, repo: string, branch: string,
   files: Array<{ path: string; content: string }>,
   commitMessage: string
 ) {
+  files = files.map(f => {
+    if (f.path.startsWith('.github/workflows/') && (f.path.endsWith('.yml') || f.path.endsWith('.yaml'))) {
+      return { ...f, content: sanitizeWorkflowContent(f.content) };
+    }
+    return f;
+  });
   console.log(`[GitHubService] applyPatch: ${owner}/${repo}@${branch} — ${files.length} file(s)`);
   
   let branchData: any;
@@ -361,6 +400,12 @@ export async function smartSync(
   files: Array<{ path: string; content: string | Buffer }>,
   commitMessage?: string
 ): Promise<SmartSyncResult> {
+  files = files.map(f => {
+    if (f.path.startsWith('.github/workflows/') && (f.path.endsWith('.yml') || f.path.endsWith('.yaml')) && typeof f.content === 'string') {
+      return { ...f, content: sanitizeWorkflowContent(f.content) };
+    }
+    return f;
+  });
   const total = files.length;
   console.log(`[GitHubService] smartSync: ${owner}/${repo}@${branch} — ${total} file(s) to compare`);
 

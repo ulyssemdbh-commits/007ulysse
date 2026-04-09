@@ -38,9 +38,11 @@ import {
   HeartPulse,
   KeyRound,
   FlaskConical,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { DevMaxRightPanel } from "@/components/DevMaxRightPanel";
 import DevMaxLanding from "./DevMaxLanding";
 import {
   API,
@@ -69,16 +71,53 @@ import { OverviewPanel, EnvVarsPanel, NotificationsPanel, CustomDomainsPanel, Lo
 import { MetricsPanel, PlanBillingPanel } from "./devmax/MonitoringPanels";
 import { MonComptePanel } from "./devmax/ProfilePanels";
 
+const DEVMAX_TABS = [
+  { id: "overview", label: "Apercu", icon: Activity, color: "text-emerald-400" },
+  { id: "branches", label: "Branches", icon: GitBranch, needsRepo: true, color: "text-cyan-400" },
+  { id: "commits", label: "Commits", icon: GitCommit, needsRepo: true, color: "text-blue-400" },
+  { id: "prs", label: "PRs", icon: GitPullRequest, needsRepo: true, color: "text-purple-400" },
+  { id: "cicd", label: "CI/CD", icon: Play, needsRepo: true, color: "text-green-400" },
+  { id: "files", label: "Fichiers", icon: FileCode, needsRepo: true, color: "text-yellow-400" },
+  { id: "files-test", label: "Tests", icon: FlaskConical, needsRepo: true, color: "text-amber-400" },
+  { id: "rollback", label: "Rollback", icon: RotateCcw, needsRepo: true, color: "text-orange-400" },
+  { id: "deploy", label: "Deploy", icon: Rocket, needsRepo: true, color: "text-red-400" },
+  { id: "preview", label: "Preview", icon: Eye, needsRepo: true, color: "text-teal-400" },
+  { id: "dgm", label: "DGM", icon: Zap, needsRepo: true, color: "text-yellow-300" },
+  { id: "github", label: "GitHub", icon: Shield, needsRepo: true, color: "text-slate-300" },
+  { id: "journal", label: "Journal", icon: BookOpen, needsRepo: true, color: "text-indigo-400" },
+  { id: "envvars", label: "Env Vars", icon: Key, needsRepo: true, color: "text-pink-400" },
+  { id: "logs", label: "Logs", icon: ScrollText, needsRepo: true, color: "text-violet-400" },
+  { id: "metrics", label: "Metriques", icon: BarChart3, needsRepo: true, color: "text-cyan-300" },
+  { id: "domains", label: "Domaines", icon: Globe, needsRepo: true, color: "text-sky-400" },
+  { id: "costs", label: "Couts", icon: DollarSign, needsRepo: true, color: "text-lime-400" },
+  { id: "events", label: "Events", icon: Activity, needsRepo: true, color: "text-orange-300" },
+  { id: "health", label: "Health", icon: HeartPulse, needsRepo: true, color: "text-rose-400" },
+  { id: "secrets", label: "Secrets", icon: KeyRound, needsRepo: true, color: "text-fuchsia-400" },
+  { id: "deploy-history", label: "Historique", icon: History, needsRepo: true, color: "text-emerald-300" },
+  { id: "notifications", label: "Notifs", icon: Bell, color: "text-amber-300" },
+  { id: "plan", label: "Plan", icon: CreditCard, color: "text-green-300" },
+  { id: "chat", label: "MaxAI", icon: Bot, color: "text-blue-300" },
+  { id: "account", label: "Compte", icon: Settings, color: "text-slate-400" },
+];
+
 function DevmaxDashboard() {
   const { logout, activeProject, setActiveProject } = useDevmaxAuth();
   const shouldAutoAudit = !!activeProject?._triggerAudit;
   const [activeTab, setActiveTab] = useState(shouldAutoAudit ? "chat" : "overview");
+  const [time, setTime] = useState(new Date().toLocaleTimeString("fr-FR", { hour12: false }));
   const pid = activeProject?.id || "";
 
   useEffect(() => {
     if (pid) setActiveTab(shouldAutoAudit ? "chat" : "overview");
   }, [pid]);
-  const repoUrl = activeProject?.repo_url || "";
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTime(new Date().toLocaleTimeString("fr-FR", { hour12: false }));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const repoFull = activeProject?.repo_owner && activeProject?.repo_name
     ? `${activeProject.repo_owner}/${activeProject.repo_name}`
     : "";
@@ -107,237 +146,151 @@ function DevmaxDashboard() {
     enabled: !!pid && !!activeProject?.repo_owner,
   });
 
-  const { data: headerDeploys } = useQuery<{ deployments: any[] }>({
-    queryKey: [API, "deployments", "stats", pid],
-    queryFn: () => devmaxFetch(`${API}/deployments?limit=5`, undefined, pid).then(r => r.json()),
-    enabled: !!pid,
-  });
-
-  const lastRun = runs?.workflow_runs?.[0];
-  const lastDeploy = headerDeploys?.deployments?.[0];
-  const ciStatus = lastRun?.conclusion === "success" ? "success" : lastRun?.conclusion === "failure" ? "failure" : lastRun?.status === "in_progress" ? "running" :
-    lastDeploy?.status === "success" ? "success" : lastDeploy?.status === "failed" ? "failure" : lastDeploy?.status === "pending" ? "running" :
-    activeProject?.last_deployed_at ? "success" : "idle";
   const hasRepo = !!activeProject?.repo_owner && !!activeProject?.repo_name;
+  const visibleTabs = DEVMAX_TABS.filter(t => !t.needsRepo || hasRepo);
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "overview": return <OverviewPanel repo={repo} repoLoading={repoLoading} />;
+      case "branches": return hasRepo ? <BranchesPanel /> : null;
+      case "commits": return hasRepo ? <CommitsPanel /> : null;
+      case "prs": return hasRepo ? <PullRequestsPanel /> : null;
+      case "cicd": return hasRepo ? <CICDPanel /> : null;
+      case "files": return hasRepo ? <FileBrowserPanel /> : null;
+      case "files-test": return hasRepo ? <StagingFileBrowserPanel /> : null;
+      case "rollback": return hasRepo ? <RollbackPanel /> : null;
+      case "deploy": return hasRepo ? <DeployPanel /> : null;
+      case "preview": return hasRepo ? <PreviewPanel /> : null;
+      case "dgm": return hasRepo ? <DGMPanel /> : null;
+      case "github": return hasRepo ? <GitHubConnectionPanel /> : null;
+      case "journal": return hasRepo ? <JournalPanel /> : null;
+      case "envvars": return hasRepo ? <EnvVarsPanel /> : null;
+      case "logs": return hasRepo ? <LogsPanel /> : null;
+      case "metrics": return hasRepo ? <MetricsPanel /> : null;
+      case "domains": return hasRepo ? <CustomDomainsPanel /> : null;
+      case "costs": return hasRepo ? <CostsDashboardPanel /> : null;
+      case "events": return hasRepo ? <GitHubEventsPanel /> : null;
+      case "health": return hasRepo ? <HealthChecksPanel /> : null;
+      case "secrets": return hasRepo ? <SecretsManagerPanel /> : null;
+      case "deploy-history": return hasRepo ? <DeployHistoryPanel /> : null;
+      case "notifications": return <NotificationsPanel />;
+      case "plan": return <PlanBillingPanel />;
+      case "chat": return <DevOpsChatPanel currentTab={activeTab} />;
+      case "account": return <MonComptePanel />;
+      default: return <OverviewPanel repo={repo} repoLoading={repoLoading} />;
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#060b14] text-emerald-50 pt-safe" data-testid="devops-max-page">
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#10b98108_1px,transparent_1px),linear-gradient(to_bottom,#10b98108_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-500/6 rounded-full blur-[128px]" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/6 rounded-full blur-[128px]" />
+    <div className="min-h-screen bg-[#0a0e1a] text-cyan-50 font-sans overflow-hidden relative selection:bg-cyan-500/30" data-testid="devops-max-page">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#00d4ff08_1px,transparent_1px),linear-gradient(to_bottom,#00d4ff08_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/8 rounded-full blur-[128px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/8 rounded-full blur-[128px]" />
+      </div>
 
-        <div className="relative max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
-          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-              <Button size="sm" variant="ghost" className="rounded-xl text-muted-foreground shrink-0" onClick={() => setActiveProject(null)} data-testid="button-back-projects">
-                <ArrowLeft className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Projets</span>
-              </Button>
-              <div className="relative min-w-0">
-                <div className="absolute -inset-2 bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-blue-500/20 rounded-2xl blur-lg" />
-                <div className="relative flex items-center gap-2 sm:gap-3 bg-background/80 backdrop-blur-sm rounded-xl px-3 sm:px-4 py-2 border border-white/10 min-w-0">
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center shrink-0">
-                    <Terminal className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <h1 className="text-lg sm:text-2xl font-black tracking-tight bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent truncate" data-testid="text-page-title">
-                      {activeProject?.name || "DevMax"}
-                    </h1>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground font-mono truncate">{repoFull || "Pas de repo"}</p>
-                  </div>
-                </div>
+      <div className="relative z-10 flex flex-col h-screen max-h-screen p-3 gap-3">
+        <header className="flex items-center justify-between h-14 shrink-0 border border-cyan-500/20 bg-black/40 backdrop-blur-md rounded-xl px-5 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-50" />
+
+          <div className="flex items-center gap-3">
+            <button onClick={() => setActiveProject(null)} className="relative w-9 h-9 flex items-center justify-center group" data-testid="button-back-projects">
+              <div className="absolute inset-0 rounded-full border-2 border-cyan-500/50 animate-[spin_4s_linear_infinite]" />
+              <div className="absolute inset-1 rounded-full border border-blue-500/50 animate-[spin_3s_linear_infinite_reverse]" />
+              <Terminal className="w-4 h-4 text-cyan-400" />
+            </button>
+            <div>
+              <h1 className="text-lg font-bold tracking-widest text-cyan-400 uppercase drop-shadow-[0_0_8px_rgba(0,212,255,0.8)]" data-testid="text-page-title">DEVMAX</h1>
+              <div className="text-[9px] font-mono text-cyan-500/70 tracking-widest">INFRASTRUCTURE & DEPLOY</div>
+            </div>
+          </div>
+
+          <div className="hidden md:flex items-center gap-4 font-mono text-xs">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
+                <GitBranch className="w-3 h-3 text-cyan-400" />
+                <span className="text-cyan-300 font-bold">{branches?.length || 0}</span>
+                <span className="text-cyan-400/60 text-[10px]">branches</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30">
+                <GitPullRequest className="w-3 h-3 text-purple-400" />
+                <span className="text-purple-300 font-bold">{pulls?.length || 0}</span>
+                <span className="text-purple-400/60 text-[10px]">PR</span>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-              {repo && (
-                <div className="hidden sm:flex items-center gap-2">
-                  {repo.language && <Badge variant="secondary" className="rounded-lg">{repo.language}</Badge>}
-                  <Badge variant="outline" className="text-xs font-mono rounded-lg">{repo.default_branch || "main"}</Badge>
-                </div>
-              )}
-              {repoUrl && (
-                <a href={repoUrl} target="_blank" rel="noopener noreferrer">
-                  <Button size="sm" variant="outline" className="rounded-xl" data-testid="button-open-github">
-                    <ExternalLink className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">GitHub</span>
-                  </Button>
-                </a>
-              )}
-              <ThemeToggle />
-              <Button size="sm" variant="ghost" className="rounded-xl text-muted-foreground" onClick={logout} data-testid="button-logout-devmax">
-                <LogOut className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Verrouiller</span>
-              </Button>
+          </div>
+
+          <div className="flex items-center gap-4 font-mono">
+            <div className="hidden sm:flex items-center gap-2 px-2 py-1 rounded-lg bg-cyan-950/30 border border-cyan-900/40">
+              <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_4px_rgba(0,212,255,0.5)]" />
+              <span className="text-[10px] text-cyan-400/80 uppercase tracking-wider">{activeProject?.name || "—"}</span>
+              <span className="text-[9px] text-cyan-600 font-mono">{repo?.default_branch || "main"}</span>
             </div>
-          </motion.div>
-
-          {hasRepo && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}>
-                <Card className="bg-gradient-to-br from-emerald-500/10 to-green-500/10 border-emerald-500/20 cursor-pointer hover:border-emerald-400/40 transition-colors" onClick={() => setActiveTab("branches")}>
-                  <CardContent className="p-4 text-center">
-                    <p className="text-2xl font-black">{branches?.length || 0}</p>
-                    <p className="text-xs text-muted-foreground flex items-center justify-center gap-1"><GitBranch className="w-3 h-3" /> Branches</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
-                <Card className="bg-gradient-to-br from-purple-500/10 to-violet-500/10 border-purple-500/20 cursor-pointer hover:border-purple-400/40 transition-colors" onClick={() => setActiveTab("prs")}>
-                  <CardContent className="p-4 text-center">
-                    <p className="text-2xl font-black text-purple-400">{pulls?.length || 0}</p>
-                    <p className="text-xs text-muted-foreground flex items-center justify-center gap-1"><GitPullRequest className="w-3 h-3" /> PRs Ouvertes</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}>
-                <Card className={cn(
-                  "border cursor-pointer hover:shadow-md transition-all",
-                  ciStatus === "success" ? "bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border-emerald-500/20" :
-                  ciStatus === "failure" ? "bg-gradient-to-br from-red-500/10 to-rose-500/10 border-red-500/20" :
-                  ciStatus === "running" ? "bg-gradient-to-br from-amber-500/10 to-orange-500/10 border-amber-500/20" :
-                  "bg-gradient-to-br from-gray-500/10 to-slate-500/10 border-gray-500/20"
-                )} onClick={() => setActiveTab("cicd")}>
-                  <CardContent className="p-4 text-center">
-                    {ciStatus === "success" ? <CheckCircle className="w-6 h-6 mx-auto text-emerald-400 mb-1" /> :
-                     ciStatus === "failure" ? <XCircle className="w-6 h-6 mx-auto text-red-400 mb-1" /> :
-                     ciStatus === "running" ? <Loader2 className="w-6 h-6 mx-auto text-amber-400 animate-spin mb-1" /> :
-                     <Activity className="w-6 h-6 mx-auto text-muted-foreground mb-1" />}
-                    <p className="text-xs text-muted-foreground">CI/CD {ciStatus === "success" ? "OK" : ciStatus === "failure" ? "Echec" : ciStatus === "running" ? "En cours" : "Inactif"}</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-                <Card className="bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border-cyan-500/20 cursor-pointer hover:border-cyan-400/40 transition-colors" onClick={() => setActiveTab("chat")}>
-                  <CardContent className="p-4 text-center">
-                    <Zap className="h-6 w-6 mx-auto text-cyan-400 mb-1" />
-                    <p className="text-xs text-muted-foreground">MaxAI</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
+            <div className="hidden sm:block h-7 w-px bg-cyan-900/50" />
+            <div className="flex items-center gap-2 text-lg tracking-wider text-cyan-100 drop-shadow-[0_0_5px_rgba(0,212,255,0.5)]">
+              <Clock className="w-4 h-4 text-cyan-500" />
+              {time}
             </div>
-          )}
+            <button onClick={logout} className="p-1.5 rounded-lg border border-cyan-900/40 text-cyan-600 hover:text-cyan-300 hover:border-cyan-500/40 transition-all" data-testid="button-logout-devmax">
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </header>
 
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
-                <TabsList className="inline-flex w-max sm:w-full sm:flex-wrap justify-start rounded-xl bg-black/40 border border-emerald-500/20 p-1">
-                  <TabsTrigger value="overview" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-overview">
-                    <Activity className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Vue d'ensemble</span><span className="sm:hidden">Aperçu</span>
-                  </TabsTrigger>
-                  {hasRepo && (
-                    <>
-                      <TabsTrigger value="branches" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-branches">
-                        <GitBranch className="w-3.5 h-3.5" /> Branches
-                      </TabsTrigger>
-                      <TabsTrigger value="commits" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-commits">
-                        <GitCommit className="w-3.5 h-3.5" /> Commits
-                      </TabsTrigger>
-                      <TabsTrigger value="prs" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-prs">
-                        <GitPullRequest className="w-3.5 h-3.5" /> PRs
-                      </TabsTrigger>
-                      <TabsTrigger value="cicd" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-cicd">
-                        <Play className="w-3.5 h-3.5" /> CI/CD
-                      </TabsTrigger>
-                      <TabsTrigger value="files" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-files">
-                        <FileCode className="w-3.5 h-3.5" /> Fichiers
-                      </TabsTrigger>
-                      <TabsTrigger value="files-test" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-files-test">
-                        <FlaskConical className="w-3.5 h-3.5" /> Fichiers-Test
-                      </TabsTrigger>
-                      <TabsTrigger value="rollback" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-rollback">
-                        <RotateCcw className="w-3.5 h-3.5" /> Rollback
-                      </TabsTrigger>
-                      <TabsTrigger value="deploy" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-deploy">
-                        <Rocket className="w-3.5 h-3.5" /> Deploy
-                      </TabsTrigger>
-                      <TabsTrigger value="preview" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-preview">
-                        <Eye className="w-3.5 h-3.5" /> Preview
-                      </TabsTrigger>
-                      <TabsTrigger value="dgm" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-dgm">
-                        <Zap className="w-3.5 h-3.5" /> DGM
-                      </TabsTrigger>
-                      <TabsTrigger value="github" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-github">
-                        <Shield className="w-3.5 h-3.5" /> GitHub
-                      </TabsTrigger>
-                      <TabsTrigger value="journal" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-journal">
-                        <BookOpen className="w-3.5 h-3.5" /> Journal
-                      </TabsTrigger>
-                      <TabsTrigger value="envvars" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-envvars">
-                        <Key className="w-3.5 h-3.5" /> Env Vars
-                      </TabsTrigger>
-                      <TabsTrigger value="logs" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-logs">
-                        <ScrollText className="w-3.5 h-3.5" /> Logs
-                      </TabsTrigger>
-                      <TabsTrigger value="metrics" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-metrics">
-                        <BarChart3 className="w-3.5 h-3.5" /> Métriques
-                      </TabsTrigger>
-                      <TabsTrigger value="domains" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-domains">
-                        <Globe className="w-3.5 h-3.5" /> Domaines
-                      </TabsTrigger>
-                      <TabsTrigger value="costs" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-costs">
-                        <DollarSign className="w-3.5 h-3.5" /> Coûts
-                      </TabsTrigger>
-                      <TabsTrigger value="events" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-events">
-                        <Activity className="w-3.5 h-3.5" /> Events
-                      </TabsTrigger>
-                      <TabsTrigger value="health" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-health">
-                        <HeartPulse className="w-3.5 h-3.5" /> Health
-                      </TabsTrigger>
-                      <TabsTrigger value="secrets" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-secrets">
-                        <KeyRound className="w-3.5 h-3.5" /> Secrets
-                      </TabsTrigger>
-                      <TabsTrigger value="deploy-history" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-deploy-history">
-                        <History className="w-3.5 h-3.5" /> Historique
-                      </TabsTrigger>
-                    </>
-                  )}
-                  <TabsTrigger value="notifications" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-notifications">
-                    <Bell className="w-3.5 h-3.5" /> Notifs
-                  </TabsTrigger>
-                  <TabsTrigger value="plan" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-plan">
-                    <CreditCard className="w-3.5 h-3.5" /> Plan
-                  </TabsTrigger>
-                  <TabsTrigger value="chat" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-devops-chat">
-                    <Bot className="w-3.5 h-3.5" /> MaxAI
-                  </TabsTrigger>
-                  <TabsTrigger value="account" className="text-xs gap-1 sm:gap-1.5 rounded-lg whitespace-nowrap" data-testid="tab-account">
-                    <Settings className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Mon Compte</span><span className="sm:hidden">Compte</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
+        <div className="flex flex-1 gap-3 overflow-hidden">
+          <aside className="w-[140px] shrink-0 overflow-y-auto no-scrollbar pb-2">
+            <div className="grid grid-cols-2 gap-1.5">
+              {visibleTabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    data-testid={`tab-${tab.id}`}
+                    className={cn(
+                      "relative group flex flex-col items-center justify-center gap-1 p-2 rounded-xl border transition-all duration-200",
+                      isActive
+                        ? "border-cyan-500/50 bg-cyan-950/30 shadow-[0_0_15px_rgba(0,212,255,0.15)]"
+                        : "border-cyan-900/20 bg-black/30 hover:border-cyan-700/50 hover:bg-cyan-950/20"
+                    )}
+                  >
+                    <Icon className={cn("w-5 h-5", isActive ? "text-cyan-300" : tab.color)} />
+                    <span className={cn(
+                      "text-[8px] uppercase tracking-wider font-mono leading-tight text-center",
+                      isActive ? "text-cyan-300" : "text-cyan-600 group-hover:text-cyan-400"
+                    )}>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
 
-              <div className="mt-4">
-                <TabsContent value="overview"><OverviewPanel repo={repo} repoLoading={repoLoading} /></TabsContent>
-                {hasRepo && (
-                  <>
-                    <TabsContent value="branches"><BranchesPanel /></TabsContent>
-                    <TabsContent value="commits"><CommitsPanel /></TabsContent>
-                    <TabsContent value="prs"><PullRequestsPanel /></TabsContent>
-                    <TabsContent value="cicd"><CICDPanel /></TabsContent>
-                    <TabsContent value="files"><FileBrowserPanel /></TabsContent>
-                    <TabsContent value="files-test"><StagingFileBrowserPanel /></TabsContent>
-                    <TabsContent value="rollback"><RollbackPanel /></TabsContent>
-                    <TabsContent value="deploy"><DeployPanel /></TabsContent>
-                    <TabsContent value="preview"><PreviewPanel /></TabsContent>
-                    <TabsContent value="dgm"><DGMPanel /></TabsContent>
-                    <TabsContent value="github"><GitHubConnectionPanel /></TabsContent>
-                    <TabsContent value="journal"><JournalPanel /></TabsContent>
-                    <TabsContent value="envvars"><EnvVarsPanel /></TabsContent>
-                    <TabsContent value="logs"><LogsPanel /></TabsContent>
-                    <TabsContent value="metrics"><MetricsPanel /></TabsContent>
-                    <TabsContent value="domains"><CustomDomainsPanel /></TabsContent>
-                    <TabsContent value="costs"><CostsDashboardPanel /></TabsContent>
-                    <TabsContent value="events"><GitHubEventsPanel /></TabsContent>
-                    <TabsContent value="health"><HealthChecksPanel /></TabsContent>
-                    <TabsContent value="secrets"><SecretsManagerPanel /></TabsContent>
-                    <TabsContent value="deploy-history"><DeployHistoryPanel /></TabsContent>
-                  </>
-                )}
-                <TabsContent value="notifications"><NotificationsPanel /></TabsContent>
-                <TabsContent value="plan"><PlanBillingPanel /></TabsContent>
-                <TabsContent value="chat"><DevOpsChatPanel currentTab={activeTab} /></TabsContent>
-                <TabsContent value="account"><MonComptePanel /></TabsContent>
+          <main className="flex-1 flex flex-col relative border border-cyan-500/20 bg-black/40 backdrop-blur-md rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,212,255,0.05)]">
+            <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-cyan-400 rounded-tl-xl" />
+            <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-cyan-400 rounded-tr-xl" />
+            <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-cyan-400 rounded-bl-xl" />
+            <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-cyan-400 rounded-br-xl" />
+
+            <div className="px-4 py-2 border-b border-cyan-500/20 bg-black/30 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                {(() => { const tab = visibleTabs.find(t => t.id === activeTab); const Icon = tab?.icon || Activity; return <Icon className="w-3.5 h-3.5 text-cyan-500" />; })()}
+                <span className="text-xs font-mono text-cyan-400 tracking-wider uppercase">{visibleTabs.find(t => t.id === activeTab)?.label || "APERCU"}</span>
               </div>
-            </Tabs>
-          </motion.div>
+              <div className="flex items-center gap-2 text-[10px] font-mono text-cyan-600">
+                <span>{repoFull || "—"}</span>
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_4px_rgba(0,212,255,0.5)]" />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {renderTabContent()}
+            </div>
+          </main>
+
+          <div className="hidden lg:block">
+            <DevMaxRightPanel />
+          </div>
         </div>
       </div>
     </div>
@@ -350,6 +303,15 @@ export default function DevOpsMaxPage() {
   const [activeProject, setActiveProject] = useState<DevmaxProject | null>(null);
   const [currentUser, setCurrentUser] = useState<DevmaxUser | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const hadDark = root.classList.contains("dark");
+    root.classList.add("dark");
+    return () => {
+      if (!hadDark) root.classList.remove("dark");
+    };
+  }, []);
 
   useEffect(() => {
     const token = getDevmaxToken();
@@ -404,7 +366,7 @@ export default function DevOpsMaxPage() {
 
   if (isValidating) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-zinc-950">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
         <div className="flex flex-col items-center gap-4">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center animate-pulse">
             <Terminal className="w-8 h-8 text-white" />

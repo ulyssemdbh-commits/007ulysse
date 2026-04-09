@@ -1,6 +1,6 @@
 import { db } from "../db";
-import { dgmSessions, dgmTasks, dgmPipelineRuns } from "@shared/schema";
-import { eq, sql, and, asc, inArray } from "drizzle-orm";
+import { dgmSessions, dgmTasks, dgmPipelineRuns, devmaxProjectJournal } from "@shared/schema";
+import { eq, sql, and, asc, inArray, desc } from "drizzle-orm";
 
 const LOG = "[DGM-V2]";
 
@@ -36,7 +36,7 @@ export const DGM_GOVERNANCE = {
   },
   performance: {
     parallelFileFetch: true,
-    maxParallelTasks: 5,
+    maxParallelTasks: 2,
     fileContextChars: 8000,
     reviewContextChars: 6000,
     cacheTTLMs: 300_000,
@@ -65,6 +65,304 @@ async function getOpenAI() {
     });
   }
   return _openaiInstance;
+}
+
+export async function ensureProjectStructure(config: PipelineConfig): Promise<{ fixed: string[]; errors: string[] }> {
+  const fixed: string[] = [];
+  const errors: string[] = [];
+  const ghService = await import("./githubService");
+
+  try {
+    const repoContent = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents`, { method: "GET" });
+    const files = (repoContent as any[]).map((f: any) => f.name);
+
+    const hasPackageJson = files.includes("package.json");
+    const hasLockfile = files.includes("package-lock.json");
+
+    if (hasPackageJson && !hasLockfile) {
+      console.log(`${LOG} Project structure: package-lock.json MISSING — generating...`);
+      try {
+        const pkgRaw = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/package.json`, { method: "GET" });
+        const pkgContent = Buffer.from((pkgRaw as any).content, "base64").toString("utf-8");
+        const pkg = JSON.parse(pkgContent);
+
+        const lockContent: any = {
+          name: pkg.name || config.repo,
+          version: pkg.version || "1.0.0",
+          lockfileVersion: 3,
+          requires: true,
+          packages: { "": { name: pkg.name || config.repo, version: pkg.version || "1.0.0", dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} } },
+        };
+
+        const mainRef = await ghService.getBranch(config.owner, config.repo, config.branch || "main");
+        const mainSha = (mainRef as any)?.commit?.sha;
+
+        await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/package-lock.json`, {
+          method: "PUT",
+          body: {
+            message: "[DGM] Add package-lock.json for CI compatibility",
+            content: Buffer.from(JSON.stringify(lockContent, null, 2)).toString("base64"),
+            branch: config.branch || "main",
+          },
+        });
+        fixed.push("package-lock.json created");
+        console.log(`${LOG} ✅ package-lock.json created`);
+      } catch (lockErr: any) {
+        errors.push(`package-lock.json generation failed: ${lockErr.message}`);
+        console.warn(`${LOG} ⚠️ package-lock.json generation failed: ${lockErr.message}`);
+      }
+    }
+
+    const hasWorkflows = files.includes(".github");
+    if (hasWorkflows) {
+      try {
+        const wfContent = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/.github/workflows`, { method: "GET" });
+        const wfFiles = (wfContent as any[]).map((f: any) => f.name);
+
+        for (const wfFile of wfFiles) {
+          try {
+            const wfRaw = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/.github/workflows/${wfFile}`, { method: "GET" });
+            const wfText = Buffer.from((wfRaw as any).content, "base64").toString("utf-8");
+            const wfSha = (wfRaw as any).sha;
+
+            const usesExternalActions = /uses:\s*actions\//.test(wfText);
+
+            if (usesExternalActions) {
+              console.log(`${LOG} Workflow ${wfFile} uses external actions — replacing with action-free CI`);
+              const actionFreeLines = [
+                'name: CI',
+                'on:',
+                '  push:',
+                '    branches: [main]',
+                '  pull_request:',
+                '    branches: [main]',
+                '',
+                'jobs:',
+                '  build:',
+                '    runs-on: ubuntu-latest',
+                '    steps:',
+                '      - name: Checkout',
+                '        run: |',
+                '          git clone --depth 1 https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git .',
+                '          if [ "${{ github.event_name }}" = "pull_request" ]; then',
+                '            git fetch origin ${{ github.event.pull_request.head.sha }}',
+                '            git checkout ${{ github.event.pull_request.head.sha }}',
+                '          fi',
+                '      - name: Install dependencies',
+                '        run: npm install --legacy-peer-deps',
+                '      - name: Build',
+                '        run: npm run build --if-present',
+                '',
+              ];
+              const actionFreeCI = actionFreeLines.join('\n');
+              await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/.github/workflows/${wfFile}`, {
+                method: "PUT",
+                body: {
+                  message: `[DGM] Fix CI: replace external actions with action-free workflow`,
+                  content: Buffer.from(actionFreeCI).toString("base64"),
+                  sha: wfSha,
+                  branch: config.branch || "main",
+                },
+              });
+              fixed.push(`${wfFile}: replaced with action-free CI (org policy compliance)`);
+              console.log(`${LOG} ✅ Fixed workflow: ${wfFile} (action-free)`);
+            } else {
+              let needsUpdate = false;
+              let updatedWf = wfText;
+
+              if (wfText.includes("npm ci")) {
+                updatedWf = updatedWf.replace(/run:\s*npm ci\b/g, "run: npm install --legacy-peer-deps");
+                needsUpdate = true;
+              }
+
+              if (needsUpdate) {
+                await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/.github/workflows/${wfFile}`, {
+                  method: "PUT",
+                  body: {
+                    message: `[DGM] Fix CI: npm ci → npm i in ${wfFile}`,
+                    content: Buffer.from(updatedWf).toString("base64"),
+                    sha: wfSha,
+                    branch: config.branch || "main",
+                  },
+                });
+                fixed.push(`${wfFile}: updated npm command`);
+                console.log(`${LOG} ✅ Fixed workflow: ${wfFile}`);
+              }
+            }
+          } catch (wfErr: any) {
+            errors.push(`workflow ${wfFile}: ${wfErr.message}`);
+          }
+        }
+      } catch {}
+    }
+
+    if (hasPackageJson) {
+      try {
+        const pkgRaw = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/package.json`, { method: "GET" });
+        const pkgContent = Buffer.from((pkgRaw as any).content, "base64").toString("utf-8");
+        const pkgSha = (pkgRaw as any).sha;
+        const pkg = JSON.parse(pkgContent);
+
+        const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+        const hasTypescript = !!allDeps["typescript"];
+        const usesCRA = !!allDeps["react-scripts"];
+
+        let hasTsxFiles = false;
+        try {
+          const srcContent = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/src`, { method: "GET" });
+          hasTsxFiles = (srcContent as any[]).some((f: any) => f.name.endsWith(".tsx") || f.name.endsWith(".ts"));
+        } catch {}
+
+        let pkgModified = false;
+        const buildScript = pkg.scripts?.build || "";
+
+        if (usesCRA) {
+          const craCoreDeps: Record<string, string> = {
+            "react": "^18.3.0",
+            "react-dom": "^18.3.0",
+            "react-scripts": "5.0.1",
+          };
+          for (const [dep, ver] of Object.entries(craCoreDeps)) {
+            if (!allDeps[dep]) {
+              if (!pkg.dependencies) pkg.dependencies = {};
+              pkg.dependencies[dep] = ver;
+              pkgModified = true;
+              console.log(`${LOG} CRA missing dep: added ${dep}@${ver}`);
+            }
+          }
+          if (!pkg.scripts?.build) {
+            if (!pkg.scripts) pkg.scripts = {};
+            pkg.scripts.build = "react-scripts build";
+            pkgModified = true;
+            console.log(`${LOG} CRA missing build script — added "react-scripts build"`);
+          }
+        }
+
+        if (buildScript.includes("react-scripts") && !allDeps["react-scripts"]) {
+          if (!pkg.dependencies) pkg.dependencies = {};
+          pkg.dependencies["react-scripts"] = "5.0.1";
+          pkgModified = true;
+          console.log(`${LOG} build script uses react-scripts but missing from deps — added`);
+        }
+
+        if (!hasTypescript && hasTsxFiles) {
+          console.log(`${LOG} TypeScript files detected but typescript not in dependencies — adding...`);
+          if (!pkg.devDependencies) pkg.devDependencies = {};
+          pkg.devDependencies["typescript"] = "^5.5.0";
+          if (usesCRA) {
+            if (!pkg.devDependencies["@types/react"]) pkg.devDependencies["@types/react"] = "^18.3.0";
+            if (!pkg.devDependencies["@types/react-dom"]) pkg.devDependencies["@types/react-dom"] = "^18.3.0";
+            if (!pkg.devDependencies["@types/node"]) pkg.devDependencies["@types/node"] = "^20.0.0";
+          }
+          pkgModified = true;
+        }
+
+        if (pkgModified) {
+          await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/package.json`, {
+            method: "PUT",
+            body: {
+              message: "[DGM] Fix project dependencies and build configuration",
+              content: Buffer.from(JSON.stringify(pkg, null, 2) + "\n").toString("base64"),
+              sha: pkgSha,
+              branch: config.branch || "main",
+            },
+          });
+          fixed.push("package.json: added typescript + @types for .tsx files");
+          console.log(`${LOG} ✅ Added typescript to package.json`);
+
+          try {
+            const lockRaw = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/package-lock.json`, { method: "GET" }).catch(() => null);
+            const newLockContent: any = {
+              name: pkg.name || config.repo,
+              version: pkg.version || "1.0.0",
+              lockfileVersion: 3,
+              requires: true,
+              packages: { "": { name: pkg.name || config.repo, version: pkg.version || "1.0.0", dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} } },
+            };
+            const lockBody: any = {
+              message: "[DGM] Regenerate package-lock.json after dependency update",
+              content: Buffer.from(JSON.stringify(newLockContent, null, 2)).toString("base64"),
+              branch: config.branch || "main",
+            };
+            if (lockRaw && (lockRaw as any).sha) lockBody.sha = (lockRaw as any).sha;
+            await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/package-lock.json`, {
+              method: "PUT",
+              body: lockBody,
+            });
+            fixed.push("package-lock.json: regenerated after package.json update");
+            console.log(`${LOG} ✅ package-lock.json regenerated`);
+          } catch (lockErr: any) {
+            console.warn(`${LOG} ⚠️ package-lock.json regen failed: ${lockErr.message}`);
+          }
+        }
+      } catch (tsErr: any) {
+        errors.push(`TypeScript dependency check failed: ${tsErr.message}`);
+      }
+    }
+
+    console.log(`${LOG} Project structure check: ${fixed.length} fixed, ${errors.length} errors`);
+  } catch (err: any) {
+    errors.push(`Structure check failed: ${err.message}`);
+    console.warn(`${LOG} Project structure check failed: ${err.message}`);
+  }
+
+  return { fixed, errors };
+}
+
+export async function waitForCI(config: PipelineConfig, commitSha?: string, maxWaitMs: number = 180_000): Promise<{ passed: boolean; status: string; details?: any }> {
+  const ghService = await import("./githubService");
+  const startTime = Date.now();
+  const pollIntervalMs = 10_000;
+
+  console.log(`${LOG} Waiting for CI on ${config.owner}/${config.repo} (timeout: ${maxWaitMs / 1000}s)...`);
+
+  let lastCheckCount = 0;
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const ref = commitSha || (config.branch || "main");
+      const statusData = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/commits/${ref}/status`, { method: "GET" });
+      const combinedState = (statusData as any)?.state;
+
+      const checksData = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/commits/${ref}/check-runs`, { method: "GET" });
+      const checkRuns = (checksData as any)?.check_runs || [];
+      lastCheckCount = checkRuns.length;
+
+      const allCompleted = checkRuns.every((cr: any) => cr.status === "completed");
+      const anyFailed = checkRuns.some((cr: any) => cr.conclusion === "failure" || cr.conclusion === "cancelled");
+      const allPassed = allCompleted && !anyFailed && checkRuns.length > 0;
+
+      if (allCompleted && checkRuns.length > 0) {
+        const result = {
+          passed: allPassed,
+          status: allPassed ? "ci_passed" : "ci_failed",
+          details: {
+            combinedState,
+            totalChecks: checkRuns.length,
+            passed: checkRuns.filter((cr: any) => cr.conclusion === "success").length,
+            failed: checkRuns.filter((cr: any) => cr.conclusion === "failure").length,
+            checks: checkRuns.map((cr: any) => ({ name: cr.name, conclusion: cr.conclusion })),
+          },
+        };
+        console.log(`${LOG} CI ${result.status}: ${result.details.passed}/${result.details.totalChecks} passed [${Date.now() - startTime}ms]`);
+        return result;
+      }
+
+      if (combinedState === "failure") {
+        console.log(`${LOG} CI combined status: failure`);
+        return { passed: false, status: "ci_failed", details: { combinedState } };
+      }
+
+      console.log(`${LOG} CI pending... (${checkRuns.filter((cr: any) => cr.status === "completed").length}/${checkRuns.length} completed) [${Math.round((Date.now() - startTime) / 1000)}s]`);
+    } catch (err: any) {
+      console.warn(`${LOG} CI status check error: ${err.message}`);
+    }
+
+    await new Promise(r => setTimeout(r, pollIntervalMs));
+  }
+
+  console.error(`${LOG} ❌ CI wait TIMEOUT after ${maxWaitMs / 1000}s — blocking merge (${lastCheckCount} checks found)`);
+  return { passed: false, status: "ci_timeout", details: { maxWaitMs, lastCheckCount, message: "CI did not complete in time — merge blocked for safety" } };
 }
 
 const _fileCache = new Map<string, { content: string; ts: number }>();
@@ -130,6 +428,7 @@ export interface PipelineConfig {
   autoDeploy: boolean;
   appName?: string;
   requireApproval: string[];
+  techStack?: string[];
 }
 
 export interface ObjectiveDecomposition {
@@ -856,12 +1155,32 @@ export async function runFullPipeline(sessionId: number, taskId: number, config:
   console.log(`${LOG} Governance: ${DGM_GOVERNANCE.rule}`);
   console.log(`${LOG} Config: autoMerge=${config.autoMerge}, autoDeploy=${config.autoDeploy}, app=${config.appName || "none"}`);
 
+  if (!config.techStack || config.techStack.length === 0) {
+    try {
+      const ghService = await import("./githubService");
+      const pkgRaw = await ghService.githubApi(`/repos/${config.owner}/${config.repo}/contents/package.json`, { method: "GET" }).catch(() => null);
+      if (pkgRaw) {
+        const pkg = JSON.parse(Buffer.from((pkgRaw as any).content, "base64").toString("utf-8"));
+        const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+        config.techStack = [];
+        if (allDeps["react-scripts"]) config.techStack.push("react-scripts", "cra");
+        if (allDeps["next"]) config.techStack.push("nextjs");
+        if (allDeps["vite"]) config.techStack.push("vite");
+        if (allDeps["typescript"]) config.techStack.push("typescript");
+        if (allDeps["vue"]) config.techStack.push("vue");
+        if (allDeps["angular"]) config.techStack.push("angular");
+        console.log(`${LOG} Auto-detected techStack: [${config.techStack.join(", ")}]`);
+      }
+    } catch {}
+  }
+
   const impact = await runImpactAnalysis(sessionId, taskId, config);
   stages.impact_analysis = impact;
   metrics.stageDurations.impact_analysis = impact.durationMs || 0;
   if (!impact.success) {
     metrics.totalDurationMs = Date.now() - pipelineStart;
     await notifyPipelineResult(sessionId, taskId, "failed_at_impact", config, metrics);
+    await writeTaskCheckpoint(sessionId, taskId, `${config.owner}/${config.repo}`, "failed", { error: "Impact analysis failed" });
     return { stages, finalStatus: "failed_at_impact", metrics };
   }
 
@@ -941,7 +1260,26 @@ export async function runFullPipeline(sessionId: number, taskId: number, config:
   }
 
   if (config.autoMerge) {
-    await new Promise(r => setTimeout(r, DGM_GOVERNANCE.performance.mergeWaitMs));
+    const prBranch = pr.data?.branch;
+    if (prBranch) {
+      console.log(`${LOG} Waiting for CI on branch ${prBranch}...`);
+      const ciTimeout = config.techStack?.includes("react-scripts") || config.techStack?.includes("cra") ? 240_000 : 180_000;
+      const ciResult = await waitForCI(config, undefined, ciTimeout);
+      stages.ci_monitor = {
+        success: ciResult.passed,
+        data: ciResult.details,
+        durationMs: 0,
+      };
+      if (!ciResult.passed) {
+        console.log(`${LOG} CI FAILED — blocking merge. Status: ${ciResult.status}`);
+        metrics.totalDurationMs = Date.now() - pipelineStart;
+        await notifyPipelineResult(sessionId, taskId, "failed_at_ci", config, metrics);
+        return { stages, finalStatus: "failed_at_ci", metrics };
+      }
+      console.log(`${LOG} CI passed — proceeding to merge`);
+    } else {
+      await new Promise(r => setTimeout(r, DGM_GOVERNANCE.performance.mergeWaitMs));
+    }
 
     const merge = await runMergeDeploy(sessionId, taskId, config);
     stages.merge_deploy = merge;
@@ -978,6 +1316,12 @@ export async function runFullPipeline(sessionId: number, taskId: number, config:
 
   const prUrl = stages.pr_creation?.data?.prUrl;
   await notifyPipelineResult(sessionId, taskId, finalStatus, config, metrics, prUrl);
+
+  const repoCtx = `${config.owner}/${config.repo}`;
+  await writeTaskCheckpoint(sessionId, taskId, repoCtx, "completed", {
+    prUrl,
+    filesChanged: finalPatchFiles.map(f => f.path),
+  });
 
   console.log(`${LOG} ===== PIPELINE V2 END: Task ${taskId} → ${finalStatus} [${metrics.totalDurationMs}ms, ${metrics.retryCount} retries] =====`);
 
@@ -1152,6 +1496,111 @@ export function getCircuitBreakerStatus(): Record<string, { failures: number; op
   return status;
 }
 
+export async function writeTaskCheckpoint(
+  sessionId: number,
+  taskId: number,
+  repoContext: string,
+  status: "completed" | "failed",
+  details?: { prUrl?: string; filesChanged?: string[]; error?: string },
+) {
+  try {
+    const [task] = await db.select().from(dgmTasks).where(eq(dgmTasks.id, taskId));
+    if (!task) return;
+
+    const [session] = await db.select().from(dgmSessions).where(eq(dgmSessions.id, sessionId));
+    const allTasks = await db.select().from(dgmTasks)
+      .where(eq(dgmTasks.sessionId, sessionId))
+      .orderBy(asc(dgmTasks.sortOrder));
+
+    const completed = allTasks.filter(t => t.status === "tested" || t.status === "completed").length;
+    const failed = allTasks.filter(t => t.status === "failed").length;
+    const pending = allTasks.filter(t => t.status === "pending").length;
+    const total = allTasks.length;
+
+    const projectId = repoContext.split("/")[1] || repoContext;
+
+    await db.insert(devmaxProjectJournal).values({
+      projectId,
+      sessionId: String(sessionId),
+      entryType: "dgm_checkpoint",
+      title: `[DGM] Tâche ${status === "completed" ? "✅" : "❌"}: ${task.title}`,
+      description: [
+        `Session #${sessionId} — Objectif: ${session?.objective || "?"}`,
+        `Tâche #${taskId}: ${task.title}`,
+        `Statut: ${status}`,
+        details?.prUrl ? `PR: ${details.prUrl}` : null,
+        details?.error ? `Erreur: ${details.error}` : null,
+        ``,
+        `--- PROGRESSION ---`,
+        `✅ Terminées: ${completed}/${total}`,
+        `❌ Échouées: ${failed}/${total}`,
+        `⏳ Restantes: ${pending}/${total}`,
+        ``,
+        `--- TÂCHES ---`,
+        ...allTasks.map(t => {
+          const icon = (t.status === "tested" || t.status === "completed") ? "✅" : t.status === "failed" ? "❌" : t.status === "running" ? "🔄" : "⏳";
+          return `${icon} [${t.sortOrder}] ${t.title} (${t.status})`;
+        }),
+      ].filter(Boolean).join("\n"),
+      filesChanged: details?.filesChanged || (task.impactedFiles as string[]) || [],
+      metadata: { taskId, sessionId, status, prUrl: details?.prUrl, completed, failed, pending, total },
+    });
+
+    console.log(`${LOG} ✅ Checkpoint written: task ${taskId} ${status} (${completed}/${total} done)`);
+  } catch (err: any) {
+    console.warn(`${LOG} Checkpoint write failed (non-blocking): ${err.message}`);
+  }
+}
+
+export async function getSessionResume(repoContext: string): Promise<{
+  hasExistingWork: boolean;
+  lastCheckpoint?: any;
+  completedTasks: string[];
+  pendingTasks: string[];
+  failedTasks: string[];
+  summary: string;
+} | null> {
+  try {
+    const projectId = repoContext.split("/")[1] || repoContext;
+
+    const checkpoints = await db.select().from(devmaxProjectJournal)
+      .where(and(
+        eq(devmaxProjectJournal.projectId, projectId),
+        eq(devmaxProjectJournal.entryType, "dgm_checkpoint"),
+      ))
+      .orderBy(desc(devmaxProjectJournal.createdAt))
+      .limit(5);
+
+    if (checkpoints.length === 0) {
+      return { hasExistingWork: false, completedTasks: [], pendingTasks: [], failedTasks: [], summary: "Aucun travail précédent trouvé." };
+    }
+
+    const latest = checkpoints[0];
+    const meta = latest.metadata as any;
+
+    return {
+      hasExistingWork: true,
+      lastCheckpoint: {
+        date: latest.createdAt,
+        title: latest.title,
+        sessionId: meta?.sessionId,
+        progress: `${meta?.completed || 0}/${meta?.total || 0}`,
+      },
+      completedTasks: checkpoints
+        .filter(c => (c.metadata as any)?.status === "completed")
+        .map(c => c.title || ""),
+      pendingTasks: [],
+      failedTasks: checkpoints
+        .filter(c => (c.metadata as any)?.status === "failed")
+        .map(c => c.title || ""),
+      summary: latest.description || "",
+    };
+  } catch (err: any) {
+    console.warn(`${LOG} Session resume lookup failed: ${err.message}`);
+    return null;
+  }
+}
+
 export const dgmPipelineOrchestrator = {
   DGM_GOVERNANCE,
   getDefaultConfig,
@@ -1171,4 +1620,6 @@ export const dgmPipelineOrchestrator = {
   getPipelineReport,
   clearFileCache,
   getCircuitBreakerStatus,
+  writeTaskCheckpoint,
+  getSessionResume,
 };

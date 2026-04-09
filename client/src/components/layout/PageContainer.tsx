@@ -15,6 +15,7 @@ export function PageContainer({ children, title, action }: PageContainerProps) {
     <div className="min-h-screen bg-background text-foreground flex">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
       <main
+        aria-label="Contenu principal"
         className={`flex-1 p-8 overflow-y-auto transition-all duration-300 ${collapsed ? "ml-16" : "ml-64"}`}
       >
         <div className="max-w-7xl mx-auto space-y-8">
@@ -24,7 +25,7 @@ export function PageContainer({ children, title, action }: PageContainerProps) {
             className="flex items-center justify-between"
           >
             <div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">{title}</h1>
+              <h1 className="text-3xl font-bold text-foreground tracking-tight">{title}</h1>
               <div className="h-1 w-20 bg-gradient-to-r from-primary to-transparent mt-2 rounded-full" />
             </div>
             {action && (
