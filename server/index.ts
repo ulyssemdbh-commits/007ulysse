@@ -13,7 +13,7 @@ import { setupScreenMonitorWs, handleScreenUpgrade } from "./services/screenMoni
 import { setupSecurityMiddleware } from "./middleware/security";
 import { setupScalabilityLayer } from "./middleware/scalability";
 import { perfProfiler } from "./services/perfProfiler";
-import { spawn, ChildProcess } from "child_process";
+import { startPiperTTSService, startSpeakerService, shutdownAllProcesses } from "./services/processSupervisor";
 import path from "path";
 import fs from "fs";
 
@@ -168,156 +168,7 @@ app.use((req, res, next) => {
 // Track API response times, DB queries, external API calls for Ulysse Dev++ insights
 app.use(perfProfiler.expressMiddleware());
 
-// =============================================================================
-// PIPER TTS SERVICE SUPERVISOR
-// =============================================================================
-
-let piperTTSProcess: ChildProcess | null = null;
-let piperRestartAttempts = 0;
-const PIPER_MAX_RESTARTS = 5;
-const PIPER_RESTART_WINDOW_MS = 10 * 60 * 1000;
-let piperFirstCrashTime: number | null = null;
-
-function startPiperTTSService() {
-  if (piperTTSProcess) {
-    console.log("[PiperTTS] Service already running");
-    return;
-  }
-
-  if (piperRestartAttempts >= PIPER_MAX_RESTARTS) {
-    const now = Date.now();
-    if (piperFirstCrashTime && now - piperFirstCrashTime < PIPER_RESTART_WINDOW_MS) {
-      console.error(`[PiperTTS] Too many restart attempts (${piperRestartAttempts}/${PIPER_MAX_RESTARTS}) — paused`);
-      return;
-    } else {
-      piperRestartAttempts = 0;
-      piperFirstCrashTime = null;
-    }
-  }
-
-  try {
-    const pythonPath = process.env.PYTHON_PATH || "python3";
-    piperTTSProcess = spawn(pythonPath, ["piper_tts/tts_service.py"], {
-      env: { ...process.env, PIPER_PORT: "5002", PYTHONUNBUFFERED: "1" },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    piperTTSProcess.stdout?.on("data", (data) => {
-      console.log(`[PiperTTS] ${data.toString().trim()}`);
-    });
-
-    piperTTSProcess.stderr?.on("data", (data) => {
-      const msg = data.toString().trim();
-      if (msg && !msg.includes("WARNING")) {
-        console.log(`[PiperTTS] ${msg}`);
-      }
-    });
-
-    piperTTSProcess.on("close", (code) => {
-      console.log(`[PiperTTS] Service exited with code ${code}`);
-      piperTTSProcess = null;
-      const now = Date.now();
-      if (piperFirstCrashTime === null) piperFirstCrashTime = now;
-      piperRestartAttempts++;
-      if (code !== 0 && piperRestartAttempts <= PIPER_MAX_RESTARTS) {
-        console.log(`[PiperTTS] Restarting in 8s (attempt ${piperRestartAttempts}/${PIPER_MAX_RESTARTS})...`);
-        setTimeout(startPiperTTSService, 8000);
-      }
-    });
-
-    piperTTSProcess.on("error", (err) => {
-      console.error("[PiperTTS] Failed to start:", err.message);
-      piperTTSProcess = null;
-    });
-
-    console.log("[PiperTTS] Service starting on port 5002...");
-  } catch (error: any) {
-    console.error("[PiperTTS] Failed to start:", error.message);
-    piperTTSProcess = null;
-  }
-}
-
-// =============================================================================
-// SPEAKER RECOGNITION SERVICE SUPERVISOR (avec backoff protection)
-// =============================================================================
-
-let speakerServiceProcess: ChildProcess | null = null;
-let speakerRestartAttempts = 0;
-const SPEAKER_MAX_RESTARTS = 5;
-const SPEAKER_RESTART_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-let speakerFirstCrashTime: number | null = null;
-
-function resetSpeakerRestartWindow() {
-  speakerRestartAttempts = 0;
-  speakerFirstCrashTime = null;
-}
-
-function startSpeakerService() {
-  if (speakerServiceProcess) {
-    console.log("[Speaker] Service already running");
-    return;
-  }
-
-  // Backoff protection: max N restarts dans une fenêtre de temps
-  if (speakerRestartAttempts >= SPEAKER_MAX_RESTARTS) {
-    const now = Date.now();
-    if (speakerFirstCrashTime && now - speakerFirstCrashTime < SPEAKER_RESTART_WINDOW_MS) {
-      console.error(
-        `[Speaker] Too many restart attempts (${speakerRestartAttempts}/${SPEAKER_MAX_RESTARTS}) in ${Math.round(SPEAKER_RESTART_WINDOW_MS / 60000)}min. Manual intervention required.`
-      );
-      return;
-    } else {
-      // Fenêtre expirée, on reset
-      resetSpeakerRestartWindow();
-    }
-  }
-
-  try {
-    const pythonPath = process.env.PYTHON_PATH || "python3";
-    speakerServiceProcess = spawn(pythonPath, ["speaker_recognition/speaker_service.py"], {
-      env: { ...process.env, SPEAKER_PORT: "5001" },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    speakerServiceProcess.stdout?.on("data", (data) => {
-      console.log(`[Speaker] ${data.toString().trim()}`);
-    });
-
-    speakerServiceProcess.stderr?.on("data", (data) => {
-      console.error(`[Speaker] ${data.toString().trim()}`);
-    });
-
-    speakerServiceProcess.on("close", (code) => {
-      console.log(`[Speaker] Service exited with code ${code}`);
-      speakerServiceProcess = null;
-
-      // Track crash timing pour backoff
-      const now = Date.now();
-      if (speakerFirstCrashTime === null) {
-        speakerFirstCrashTime = now;
-      }
-      speakerRestartAttempts++;
-
-      // Restart after 5 seconds if it crashes with non-zero code
-      if (code !== 0 && speakerRestartAttempts <= SPEAKER_MAX_RESTARTS) {
-        console.log(`[Speaker] Restarting in 5s (attempt ${speakerRestartAttempts}/${SPEAKER_MAX_RESTARTS})...`);
-        setTimeout(startSpeakerService, 5000);
-      } else if (speakerRestartAttempts > SPEAKER_MAX_RESTARTS) {
-        console.error("[Speaker] Max restart attempts reached. Service disabled until manual restart.");
-      }
-    });
-
-    speakerServiceProcess.on("error", (err) => {
-      console.error("[Speaker] Failed to start service:", err.message);
-      speakerServiceProcess = null;
-    });
-
-    console.log("[Speaker] Recognition service starting on port 5001");
-  } catch (error: any) {
-    console.error("[Speaker] Failed to start service:", error.message);
-    speakerServiceProcess = null;
-  }
-}
+// Process supervisors (Piper TTS, Speaker Recognition) are in ./services/processSupervisor.ts
 
 // =============================================================================
 // CLEAN SHUTDOWN (SIGINT / SIGTERM / exit)
@@ -331,27 +182,8 @@ function shutdown(signal: string) {
 
   console.log(`[Shutdown] Received ${signal}, cleaning up...`);
 
-  // Kill Piper TTS service
-  if (piperTTSProcess) {
-    try {
-      piperTTSProcess.kill("SIGTERM");
-      console.log("[Shutdown] Piper TTS service terminated");
-    } catch (e) {
-      console.error("[Shutdown] Error killing Piper TTS service:", (e as Error).message);
-    }
-  }
+  shutdownAllProcesses();
 
-  // Kill speaker service
-  if (speakerServiceProcess) {
-    try {
-      speakerServiceProcess.kill("SIGTERM");
-      console.log("[Shutdown] Speaker service terminated");
-    } catch (e) {
-      console.error("[Shutdown] Error killing speaker service:", (e as Error).message);
-    }
-  }
-
-  // Stop job scheduler
   try {
     jobScheduler.stop();
     console.log("[Shutdown] Job scheduler stopped");
@@ -359,13 +191,11 @@ function shutdown(signal: string) {
     // Ignore if not started
   }
 
-  // Close HTTP server gracefully
   httpServer.close(() => {
     console.log("[Shutdown] HTTP server closed");
     process.exit(0);
   });
 
-  // Force exit after 10 seconds if graceful shutdown fails
   setTimeout(() => {
     console.error("[Shutdown] Forced exit after timeout");
     process.exit(1);
@@ -418,13 +248,7 @@ process.on("unhandledRejection", (reason: unknown) => {
 });
 process.on("exit", (code) => {
   process.stderr.write(`[Process] EXIT CODE: ${code} at ${new Date().toISOString()}\n`);
-  if (speakerServiceProcess) {
-    try {
-      speakerServiceProcess.kill();
-    } catch (e) {
-      // Ignore
-    }
-  }
+  shutdownAllProcesses();
 });
 
 // =============================================================================
@@ -482,180 +306,13 @@ async function initializeServices() {
   // Initialize Discord Bot with full Ulysse integration
   if (process.env.LIGHT_MODE === "true") {
     console.log("[Startup] LIGHT_MODE: Skipping Discord bot initialization");
-  } else try {
-    const { discordBotService } = await import("./services/discordBotService");
-    const { ulysseCoreEngine } = await import("./services/core/UlysseCoreEngine");
-    const { brainContextService } = await import("./services/brainContextService");
-    const { getPersonaPromptContext, SPEAKER_PERSONA_MAP } = await import("./config/personaMapping");
-    const { db: discordDb } = await import("./db");
-    const { ulysseMemory, conversationThreads, conversationMessages } = await import("@shared/schema");
-    
-    const discordConversations = new Map<string, { conversationId: number; history: Array<{role: string; content: string}> }>();
-    
-    const ulysseHandler = async (messageText: string, discordUserId: string): Promise<string> => {
-      try {
-        console.log(`[DiscordBot] Processing: "${messageText}" from Discord user ${discordUserId}`);
-        const userId = 1;
-        
-        let session = discordConversations.get(discordUserId);
-        if (!session) {
-          const { eq, desc, and, gte } = await import("drizzle-orm");
-          // Look for an existing recent Discord conversation (within last 30 days)
-          const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-          const [existingThread] = await discordDb
-            .select()
-            .from(conversationThreads)
-            .where(and(
-              eq(conversationThreads.userId, userId),
-              eq(conversationThreads.originDevice, 'discord'),
-              gte(conversationThreads.lastMessageAt!, cutoff)
-            ))
-            .orderBy(desc(conversationThreads.lastMessageAt))
-            .limit(1);
-
-          let conversationId: number;
-          let history: Array<{role: string; content: string}> = [];
-
-          if (existingThread) {
-            conversationId = existingThread.id;
-            // Reload last 20 messages from this thread for context
-            const { conversationMessages: convMsgTable } = await import("@shared/schema");
-            const recentMsgs = await discordDb
-              .select()
-              .from(convMsgTable)
-              .where(eq(convMsgTable.threadId, conversationId))
-              .orderBy(desc(convMsgTable.createdAt))
-              .limit(20);
-            history = recentMsgs.reverse().map(m => ({ role: m.role, content: m.content }));
-            console.log(`[DiscordBot] Resumed conversation ${conversationId} (${history.length} messages loaded) for Discord user ${discordUserId}`);
-          } else {
-            const [newConv] = await discordDb.insert(conversationThreads).values({
-              userId,
-              title: `Discord - ${new Date().toLocaleDateString('fr-FR')}`,
-              originDevice: 'discord'
-            }).returning();
-            conversationId = newConv.id;
-            console.log(`[DiscordBot] Created new conversation ${conversationId} for Discord user ${discordUserId}`);
-          }
-
-          session = { conversationId, history };
-          discordConversations.set(discordUserId, session);
-        }
-        
-        // Add user message to history (keep last 10 for context)
-        session.history.push({ role: 'user', content: messageText });
-        if (session.history.length > 20) {
-          session.history = session.history.slice(-20);
-        }
-        
-        await discordDb.insert(conversationMessages).values({
-          threadId: session.conversationId,
-          userId,
-          role: 'user',
-          content: messageText
-        });
-
-        // Update lastMessageAt on the thread so we can resume it after server restart
-        { const { eq: eqUpd } = await import("drizzle-orm");
-          await discordDb.update(conversationThreads)
-            .set({ lastMessageAt: new Date() })
-            .where(eqUpd(conversationThreads.id, session.conversationId)); }
-        
-        // Build rich brain context with persona and memory - Ulysse config for Maurice
-        const personaConfig = SPEAKER_PERSONA_MAP['maurice'] || SPEAKER_PERSONA_MAP['owner'];
-        const personaPrompt = getPersonaPromptContext(personaConfig);
-        
-        // Get brain context (memory, knowledge, patterns)
-        const brainContext = await brainContextService.getContext({
-          userId,
-          query: messageText,
-          persona: 'ulysse',
-          maxTokens: 2000,
-          includeGraph: true
-        });
-        
-        // Build Discord history context from in-memory session (loaded from DB on startup)
-        const discordHistoryBlock = session.history.length > 2
-          ? `HISTORIQUE DISCORD (${session.history.length} messages depuis le début de notre session):\n` +
-            session.history.slice(0, -1).map(m =>
-              `${m.role === 'user' ? 'Maurice' : 'Ulysse'}: ${m.content.substring(0, 300)}`
-            ).join('\n')
-          : '';
-
-        // Build full system prompt
-        const systemPrompt = `${personaPrompt}
-
-Tu es sur Discord, tu discutes avec Maurice. Tu as accès à l'historique complet de notre conversation Discord actuelle.
-Date: ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString('fr-FR')}
-
-${discordHistoryBlock ? `${discordHistoryBlock}\n` : ''}
-${brainContext.contextBlock ? `CONTEXTE MÉMOIRE:\n${brainContext.contextBlock}` : ''}
-
-RÈGLES DISCORD:
-- Réponds de manière concise mais complète
-- Tu peux utiliser des emojis si approprié
-- Si on te demande ce qu'on a dit avant, cite l'historique ci-dessus avec précision
-- Tu retiens cette conversation pour nos futurs échanges`;
-
-        // Process with UlysseCoreEngine with full context
-        const result = await ulysseCoreEngine.process({
-          message: messageText,
-          context: {
-            userId,
-            persona: 'ulysse',
-            hasFamilyAccess: true,
-            conversationId: session.conversationId,
-            messageHistory: session.history.slice(-10),
-            brainContext: systemPrompt
-          }
-        });
-        
-        const response = result.content || "Je n'ai pas compris, peux-tu reformuler ?";
-        
-        await discordDb.insert(conversationMessages).values({
-          threadId: session.conversationId,
-          userId,
-          role: 'assistant',
-          content: response
-        });
-        
-        // Add to history
-        session.history.push({ role: 'assistant', content: response });
-        
-        // Save to memory if significant interaction
-        if (messageText.length > 20) {
-          try {
-            await discordDb.insert(ulysseMemory).values({
-              userId,
-              category: 'interaction',
-              key: `discord_${Date.now()}`,
-              value: `[Discord] User: ${messageText}\nUlysse: ${response.substring(0, 500)}`,
-              source: 'discord',
-              confidence: 50,
-              verified: true
-            });
-          } catch (memError: any) {
-            console.log('[DiscordBot] Memory save skipped:', memError.message);
-          }
-        }
-        
-        console.log(`[DiscordBot] Response (${response.length} chars) saved to conv ${session.conversationId}`);
-        return response;
-        
-      } catch (error: any) {
-        console.error('[DiscordBot] Ulysse processing error:', error.message, error.stack);
-        return "Désolé, une erreur s'est produite. Réessaie dans un moment.";
-      }
-    };
-    
-    const connected = await discordBotService.initialize(ulysseHandler);
-    if (connected) {
-      console.log('[Startup] Discord Bot connected with full memory integration');
-    } else {
-      console.log('[Startup] Discord Bot not configured (no token)');
+  } else {
+    try {
+      const { initializeDiscordBot } = await import("./services/discordInitializer");
+      await initializeDiscordBot();
+    } catch (error: any) {
+      console.error("[Startup] Discord Bot initialization error:", error.message);
     }
-  } catch (error: any) {
-    console.error("[Startup] Discord Bot initialization error:", error.message);
   }
 }
 

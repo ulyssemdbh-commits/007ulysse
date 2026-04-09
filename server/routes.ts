@@ -16,7 +16,7 @@ import path from "path";
 import fs from "fs";
 import yaml from "js-yaml";
 
-function lazyRouter(importFn: () => Promise<{ default: Router } | any>): Router {
+function lazyRouter(importFn: () => Promise<{ default: Router } | Record<string, unknown>>): Router {
   let cached: Router | null = null;
   const handler = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -75,73 +75,43 @@ export async function registerRoutes(
     next();
   });
 
-  // Apply requireAuth middleware to all /api routes EXCEPT /api/auth, V2 routes, and Gmail OAuth setup
+  // Declarative auth bypass registry — routes that use their own authentication
+  // Each entry: prefix to match against req.path (relative to /api)
+  const PUBLIC_ROUTE_PREFIXES: ReadonlyArray<string> = [
+    "/auth",              // Auth routes handled above
+    "/v2",               // JWT-based authentication
+    "/download/",        // Public download routes
+    "/suguval",          // Restaurant checklist (public)
+    "/sugumaillane",     // Restaurant checklist (public)
+    "/sports/cache/predictions", // AI assistant access
+    "/sports/dashboard", // Frontend predictions page
+    "/system/status",    // Monitoring & self-awareness
+    "/code",             // Own secret key authentication
+    "/pronosoft",        // Scraping APIs
+    "/parionssport",     // Scraping APIs
+    "/internal/",        // Own secret key authentication
+    "/devmax",           // PIN-based authentication (x-devmax-token)
+    "/coba",             // Key-based authentication (x-coba-key)
+    "/guest",            // Guest session routes
+    "/health",           // Health check
+  ];
+  const PUBLIC_ROUTE_EXACT: ReadonlyArray<string> = [
+    "/discord/internal-test",
+  ];
+  const PUBLIC_ROUTE_INCLUDES: ReadonlyArray<string> = [
+    "dgm/internal-trigger",
+    "internal/vps-exec",
+  ];
+
   app.use("/api", (req, res, next) => {
-    // Auth routes are already handled above, skip protection
-    if (req.path === "/auth" || req.path.startsWith("/auth/")) {
+    const p = req.path;
+    if (
+      PUBLIC_ROUTE_PREFIXES.some(prefix => p === prefix || p.startsWith(prefix + "/") || p.startsWith(prefix)) ||
+      PUBLIC_ROUTE_EXACT.includes(p) ||
+      PUBLIC_ROUTE_INCLUDES.some(s => p.includes(s))
+    ) {
       return next();
     }
-    // V2 routes have their own JWT-based authentication middleware
-    if (req.path.startsWith("/v2")) {
-      return next();
-    }
-    // Public download routes don't require auth
-    if (req.path.startsWith("/download/")) {
-      return next();
-    }
-    // Suguval restaurant checklist is completely public (no auth)
-    if (req.path.startsWith("/suguval")) {
-      return next();
-    }
-    // SUGU Maillane restaurant checklist is completely public (no auth)
-    if (req.path.startsWith("/sugumaillane")) {
-      return next();
-    }
-    // Sports predictions endpoints are public for AI assistant access (Ulysse/Iris/Alfred)
-    if (req.path.startsWith("/sports/cache/predictions")) {
-      return next();
-    }
-    // Sports dashboard endpoints for frontend predictions page
-    if (req.path.startsWith("/sports/dashboard")) {
-      return next();
-    }
-    // System status endpoint is public for Ulysse self-awareness and monitoring
-    if (req.path.startsWith("/system/status")) {
-      return next();
-    }
-    // Code context endpoint uses its own secret key authentication
-    if (req.path.startsWith("/code")) {
-      return next();
-    }
-    // Pronosoft and ParionsSport scraping APIs are public for development/testing
-    if (req.path.startsWith("/pronosoft") || req.path.startsWith("/parionssport")) {
-      return next();
-    }
-    // Discord internal test endpoint
-    if (req.path === "/discord/internal-test") {
-      return next();
-    }
-    // DGM internal trigger uses its own key authentication
-    if (req.path.includes("dgm/internal-trigger")) {
-      return next();
-    }
-    // Internal VPS exec route with its own key authentication
-    if (req.path.includes("internal/vps-exec")) {
-      return next();
-    }
-    // Internal admin endpoints with their own secret key authentication
-    if (req.path.startsWith("/internal/")) {
-      return next();
-    }
-    // DevMax has its own PIN-based authentication via x-devmax-token header
-    if (req.path.startsWith("/devmax")) {
-      return next();
-    }
-    // COBA API uses its own x-coba-key authentication
-    if (req.path.startsWith("/coba")) {
-      return next();
-    }
-    // For all other API routes, require session-based authentication
     return requireAuth(req, res, next);
   });
 
@@ -183,7 +153,7 @@ export async function registerRoutes(
     res.json({ 
       status: "ok", 
       timestamp: Date.now(),
-      authenticated: !!(req.session as any)?.userId 
+      authenticated: !!(req as Request & { session?: { userId?: number } }).session?.userId
     });
   });
 

@@ -35,7 +35,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [location] = useLocation();
 
   return (
-    <div
+    <aside
+      aria-label="Sidebar"
       className={cn(
         "flex flex-col border-r border-border bg-card/50 backdrop-blur-xl h-screen fixed left-0 top-0 z-30 transition-all duration-300",
         collapsed ? "w-16" : "w-64"
@@ -52,7 +53,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         )}
       </div>
 
-      <nav className="flex-1 px-2 space-y-1 mt-2">
+      <nav aria-label="Navigation principale" className="flex-1 px-2 space-y-1 mt-2">
         {navigation.map((item) => {
           const isActive = location === item.href;
           return (
@@ -94,11 +95,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           onClick={onToggle}
           data-testid="button-sidebar-toggle"
           className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all duration-200"
-          title={collapsed ? "Agrandir la barre" : "Réduire la barre"}
+          aria-label={collapsed ? "Agrandir la barre latérale" : "Réduire la barre latérale"}
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
       </div>
-    </div>
+    </aside>
   );
 }

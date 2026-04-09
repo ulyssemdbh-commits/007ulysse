@@ -1,5 +1,5 @@
 import rateLimit from "express-rate-limit";
-let _helmet: any = null;
+let _helmet: typeof import("helmet").default | null = null;
 async function getHelmet() {
   if (!_helmet) { try { _helmet = (await import("helmet")).default; } catch { console.warn("[Security] helmet not available"); } }
   return _helmet;
@@ -98,7 +98,7 @@ export function auditMiddleware(req: Request, res: Response, next: NextFunction)
   const startTime = Date.now();
   
   res.send = function (body) {
-    const userId = (req.session as any)?.userId || null;
+    const userId = (req as Request & { session?: { userId?: number } }).session?.userId || null;
     const isSensitive = SENSITIVE_ENDPOINTS.some(ep => req.path.startsWith(ep));
     
     if (isSensitive || req.method !== "GET") {
@@ -123,7 +123,7 @@ export function auditMiddleware(req: Request, res: Response, next: NextFunction)
 }
 
 export function setupSecurityMiddleware(app: Express) {
-  let helmetMiddleware: any = null;
+  let helmetMiddleware: ReturnType<typeof import("helmet").default> | null = null;
   const helmetReady = getHelmet().then((h) => {
     if (h) {
       helmetMiddleware = h({
@@ -174,7 +174,7 @@ export function setupSecurityMiddleware(app: Express) {
   }).catch(() => {
     console.warn("[Security] helmet failed to load, skipping CSP headers");
   });
-  app.use((req: any, res: any, next: any) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     if (helmetMiddleware) return helmetMiddleware(req, res, next);
     helmetReady.then(() => {
       if (helmetMiddleware) return helmetMiddleware(req, res, next);
@@ -212,6 +212,10 @@ export function setupSecurityMiddleware(app: Express) {
   app.use("/api/v2/sugu-management", suguFinancialLimiter);
   app.use("/api/v2/sugum-management", suguFinancialLimiter);
   
+  // Sports public endpoints — prevent scraping (30 req / min)
+  app.use("/api/sports/cache/predictions", createLimiter(30, 1, "Trop de requêtes sur les prédictions sportives. Réessayez dans une minute."));
+  app.use("/api/sports/dashboard", createLimiter(30, 1, "Trop de requêtes sur le dashboard sportif. Réessayez dans une minute."));
+
   app.use("/api", generalLimiter);
   
   app.use(blockExternalUsersMiddleware);
@@ -317,7 +321,7 @@ const ALFRED_ALLOWED_STATIC_PATHS = [
 ];
 
 export function blockExternalUsersMiddleware(req: Request, res: Response, next: NextFunction) {
-  const userRole = (req.session as any)?.role;
+  const userRole = (req as Request & { session?: { role?: string } }).session?.role;
   
   if (userRole === "external") {
     // Check API endpoints - strict whitelist
@@ -326,7 +330,7 @@ export function blockExternalUsersMiddleware(req: Request, res: Response, next: 
       if (!isAllowed) {
         console.log(`[Security] External user blocked from API: ${req.path}`);
         logAuditEvent(
-          (req.session as any)?.userId || null,
+          (req as Request & { session?: { userId?: number } }).session?.userId || null,
           "BLOCKED_ACCESS",
           req.path,
           { reason: "external_user_api_restricted", method: req.method },
@@ -339,7 +343,7 @@ export function blockExternalUsersMiddleware(req: Request, res: Response, next: 
     else if (!ALFRED_ALLOWED_STATIC_PATHS.some(r => req.path.startsWith(r))) {
       console.log(`[Security] External user blocked from: ${req.path}`);
       logAuditEvent(
-        (req.session as any)?.userId || null,
+        (req as Request & { session?: { userId?: number } }).session?.userId || null,
         "BLOCKED_ACCESS",
         req.path,
         { reason: "external_user_route_restricted", method: req.method },

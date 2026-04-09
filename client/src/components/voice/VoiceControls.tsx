@@ -44,13 +44,16 @@ export function VoiceControls({
   return (
     <div className={cn("space-y-4", className)}>
       <div className="flex items-center justify-center gap-4">
-        <div
+        <button
+          type="button"
           onClick={!isInCall || disabled ? undefined : onToggleMute}
+          disabled={!isInCall || disabled}
+          aria-label={isMuted ? "Activer le microphone" : "Couper le microphone"}
           className={cn(
-            "w-14 h-14 rounded-full flex items-center justify-center cursor-pointer transition-all hover-elevate active-elevate-2",
+            "w-14 h-14 rounded-full flex items-center justify-center cursor-pointer transition-all hover-elevate active-elevate-2 border-0",
             !isInCall || disabled ? "opacity-50 cursor-not-allowed" : "",
-            isMuted 
-              ? "bg-red-600/20 text-red-400" 
+            isMuted
+              ? "bg-red-600/20 text-red-400"
               : isListening
                 ? "bg-green-600/20 text-green-400"
                 : "bg-gray-800 text-gray-400"
@@ -64,20 +67,23 @@ export function VoiceControls({
               <Mic className="w-6 h-6" />
             </motion.div>
           )}
-        </div>
-        
+        </button>
+
         <motion.div
           whileTap={{ scale: 0.95 }}
           animate={isInCall && isListening ? { boxShadow: ["0 0 0 0 rgba(34, 197, 94, 0.4)", "0 0 0 20px rgba(34, 197, 94, 0)", "0 0 0 0 rgba(34, 197, 94, 0)"] } : {}}
           transition={{ repeat: Infinity, duration: 2 }}
         >
-          <div
+          <button
+            type="button"
             onClick={disabled ? undefined : (isInCall ? onEndCall : onStartCall)}
+            disabled={disabled}
+            aria-label={isInCall ? "Raccrocher" : "Appeler"}
             className={cn(
-              "w-20 h-20 rounded-full flex items-center justify-center text-white shadow-lg cursor-pointer transition-all hover-elevate active-elevate-2",
+              "w-20 h-20 rounded-full flex items-center justify-center text-white shadow-lg cursor-pointer transition-all hover-elevate active-elevate-2 border-0",
               disabled ? "opacity-50 cursor-not-allowed" : "",
-              isInCall 
-                ? "bg-red-600" 
+              isInCall
+                ? "bg-red-600"
                 : "bg-green-600"
             )}
             data-testid={isInCall ? "button-end-call" : "button-start-call"}
@@ -87,16 +93,19 @@ export function VoiceControls({
             ) : (
               <Phone className="w-8 h-8" />
             )}
-          </div>
+          </button>
         </motion.div>
         
-        <div
+        <button
+          type="button"
           onClick={!isInCall || disabled ? undefined : onToggleSpeaker}
+          disabled={!isInCall || disabled}
+          aria-label={isSpeakerMuted ? "Activer le haut-parleur" : "Couper le haut-parleur"}
           className={cn(
-            "w-14 h-14 rounded-full flex items-center justify-center cursor-pointer transition-all hover-elevate active-elevate-2",
+            "w-14 h-14 rounded-full flex items-center justify-center cursor-pointer transition-all hover-elevate active-elevate-2 border-0",
             !isInCall || disabled ? "opacity-50 cursor-not-allowed" : "",
-            isSpeakerMuted 
-              ? "bg-red-600/20 text-red-400" 
+            isSpeakerMuted
+              ? "bg-red-600/20 text-red-400"
               : isSpeaking
                 ? "bg-purple-600/20 text-purple-400"
                 : "bg-gray-800 text-gray-400"
@@ -110,7 +119,7 @@ export function VoiceControls({
               <Volume2 className="w-6 h-6" />
             </motion.div>
           )}
-        </div>
+        </button>
       </div>
       
       {isInCall && isSpeaking && (
@@ -147,6 +156,7 @@ export function VoiceControls({
           variant="ghost"
           size="icon"
           onClick={onOpenSettings}
+          aria-label="Paramètres vocaux"
           data-testid="button-voice-settings"
         >
           <Settings className="w-4 h-4" />

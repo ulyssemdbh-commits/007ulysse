@@ -26,12 +26,10 @@ export function getSessionToken(req: Request): string | null {
 }
 
 export function setSessionCookie(res: Response, token: string): void {
-  // Use sameSite: "none" to allow cross-origin requests from ulysseproject.org
-  // secure: true is required when sameSite is "none"
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: true, // Required for sameSite: "none"
-    sameSite: "none", // Allow cross-origin requests
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days with rolling refresh
     path: "/",
   });
@@ -40,8 +38,8 @@ export function setSessionCookie(res: Response, token: string): void {
 export function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE_NAME, {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
     path: "/",
   });
 }
