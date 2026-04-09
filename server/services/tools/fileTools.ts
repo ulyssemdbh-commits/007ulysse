@@ -115,7 +115,7 @@ QUAND L'UTILISER:
                 required: ["invoice_report"]
             }
         }
-    ,
+    },
     {
         type: "function",
         function: {

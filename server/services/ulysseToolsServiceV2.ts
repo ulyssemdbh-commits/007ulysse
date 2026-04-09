@@ -1123,290 +1123,196 @@ function generateErrorRecoveryHint(toolName: string, error: string, args: Record
   return hints.join(" ");
 }
 
+// Tool handler type for the registry pattern
+type ToolHandler = (args: Record<string, any>, userId: number) => Promise<string>;
+
+// Registry mapping tool names to their handlers — organized by domain
+const toolHandlerRegistry: Record<string, ToolHandler> = {
+  // Data tools
+  query_suguval_history: (args) => executeSuguvalQuery(args),
+  get_suguval_checklist: (args) => executeGetSuguvalChecklist(args),
+  send_suguval_shopping_list: (args) => executeSendSuguvalShoppingList(args),
+  query_sports_data: (args) => executeSportsQuery(args),
+  query_match_intelligence: (args) => executeMatchIntelligence(args),
+  query_matchendirect: (args) => executeMatchEndirectQuery(args),
+  query_football_db: (args) => executeFootballDbQuery(args),
+  query_brain: (args, userId) => executeBrainQuery(args, userId),
+  query_stock_data: (args) => executeStockQuery(args),
+
+  // Calendar tools
+  calendar_list_events: (args, userId) => executeCalendarList(args, userId),
+  calendar_create_event: (args, userId) => executeCalendarCreate(args, userId),
+
+  // Email tools
+  email_list_inbox: (args) => executeEmailList(args),
+  email_read_message: (args) => executeEmailRead(args),
+  email_reply: async (args) => {
+    try {
+      const { googleMailService } = await import('./googleMailService');
+      const connected = await googleMailService.isConnected();
+      if (!connected) {
+        return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
+      }
+      const result = await googleMailService.sendReply({
+        to: args.to, subject: args.subject, body: args.body,
+        inReplyTo: args.in_reply_to, originalBody: args.original_body,
+        originalFrom: args.original_from, originalDate: args.original_date,
+      });
+      return JSON.stringify({ type: 'email_replied', success: true, from: 'ulyssemdbh@gmail.com', to: args.to, messageId: result.messageId });
+    } catch (err: any) {
+      console.error(`[EmailReply] Error: ${err.message}`);
+      return JSON.stringify({ error: `Échec de la réponse Gmail: ${err.message}` });
+    }
+  },
+  email_forward: async (args) => {
+    try {
+      const { googleMailService } = await import('./googleMailService');
+      const connected = await googleMailService.isConnected();
+      if (!connected) {
+        return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
+      }
+      const result = await googleMailService.sendForward({
+        to: args.to, subject: args.subject, forwardNote: args.forward_note,
+        originalFrom: args.original_from, originalDate: args.original_date, originalBody: args.original_body,
+      });
+      return JSON.stringify({ type: 'email_forwarded', success: true, from: 'ulyssemdbh@gmail.com', to: args.to, messageId: result.messageId });
+    } catch (err: any) {
+      console.error(`[EmailForward] Error: ${err.message}`);
+      return JSON.stringify({ error: `Échec du transfert Gmail: ${err.message}` });
+    }
+  },
+  email_send: (args) => executeEmailSend(args),
+
+  // Smart home tools
+  smarthome_control: (args, userId) => executeSmartHomeControl(args, userId),
+
+  // Location & weather tools
+  location_get_weather: (args) => executeWeatherGet(args),
+
+  // Web search tools
+  web_search: (args) => executeWebSearch(args),
+  read_url: (args) => executeReadUrl(args),
+
+  // Spotify tools
+  spotify_control: (args, userId) => executeSpotifyControl(args, userId),
+
+  // Discord tools
+  discord_send_message: (args, userId) => executeDiscordSendMessage(args, userId),
+  discord_status: (_args, userId) => executeDiscordStatus(userId),
+  discord_add_reaction: (args, userId) => executeDiscordAddReaction(args, userId),
+  discord_remove_reaction: (args, userId) => executeDiscordRemoveReaction(args, userId),
+  discord_delete_message: (args, userId) => executeDiscordDeleteMessage(args, userId),
+  discord_send_file: (args, userId) => executeDiscordSendFile(args, userId),
+  discord_create_invitation: (args, userId) => executeDiscordCreateInvitation(args, userId),
+  discord_voice_status: (_args, userId) => executeDiscordVoiceStatus(userId),
+
+  // Memory tools
+  memory_save: (args, userId) => executeMemorySave(args, userId),
+
+  // SuperChat intelligence
+  superchat_search: (args, userId) => executeSuperChatSearch(args, userId),
+
+  // Image tools
+  image_generate: (args, userId) => executeImageGenerate(args, userId),
+
+  // Todoist tools
+  todoist_create_task: (args, userId) => executeTodoistCreateTask(args, userId),
+  todoist_list_tasks: (args) => executeTodoistListTasks(args),
+  todoist_complete_task: (args) => executeTodoistCompleteTask(args),
+
+  // Kanban tools
+  kanban_create_task: (args, userId) => executeKanbanCreateTask(args, userId),
+  task_queue_manage: (args, userId) => executeTaskQueueManage(args, userId),
+  work_journal_manage: (args, userId) => executeWorkJournalManage(args, userId),
+
+  // DevOps tools
+  devops_intelligence: (args, userId) => executeDevOpsIntelligence(args, userId),
+  dgm_manage: (args, userId) => executeDgmManage(args, userId),
+  devmax_db: (args) => executeDevmaxDb(args),
+  dashboard_screenshot: (args) => executeDashboardScreenshot(args),
+
+  // Universal file analysis tools
+  analyze_file: (args, userId) => executeAnalyzeFile(args, userId),
+  analyze_invoice: (args, userId) => executeAnalyzeInvoice(args, userId),
+
+  // Universal file generation tools
+  generate_file: (args, userId) => executeGenerateFile(args, userId),
+  manage_3d_file: (args, userId) => executeManage3DFile(args, userId),
+  export_analysis: (args, userId) => executeExportAnalysis(args, userId),
+  export_invoice_excel: (args, userId) => executeExportInvoiceExcel(args, userId),
+  generate_invoice_pdf: (args, userId) => executeGenerateInvoicePdf(args, userId),
+
+  // Notion & Drive tools
+  notion_manage: (args) => executeNotionManage(args),
+  drive_manage: (args) => executeDriveManage(args),
+
+  // Video analysis
+  analyze_video: (args) => executeVideoAnalysis(args),
+
+  // Navigation & Monitoring
+  navigation_manage: (args, userId) => executeNavigationManage(args, userId),
+  monitoring_manage: (args) => executeMonitoringManage(args),
+
+  // Trading
+  trading_alerts: (args, userId) => executeTradingAlerts(args, userId),
+
+  // SUGU management tools
+  manage_sugu_bank: (args) => executeSuguBankManagement(args),
+  manage_sugu_purchases: (args) => executeSuguPurchasesManagement(args),
+  manage_sugu_expenses: (args) => executeSuguExpensesManagement(args),
+  manage_sugu_files: (args) => executeSuguFilesManagement(args),
+  manage_sugu_employees: (args) => executeSuguEmployeesManagement(args),
+  manage_sugu_payroll: (args) => executeSuguPayrollManagement(args),
+  search_sugu_data: (args) => executeSearchSuguData(args),
+  sugu_full_overview: (args) => executeSuguFullOverview(args),
+
+  // Business intelligence tools
+  compute_business_health: (args) => executeBusinessHealth(args),
+  detect_anomalies: (args) => executeDetectAnomalies(args),
+  query_hubrise: (args) => executeQueryHubrise(args),
+  manage_feature_flags: (args) => executeManageFeatureFlags(args),
+
+  // Location tools
+  search_nearby_places: (args, userId) => executeSearchNearbyPlaces(args, userId),
+  geocode_address: (args) => executeGeocodeAddress(args),
+
+  // Analytics tools
+  query_bets_tracker: (args, userId) => executeBetsTrackerQuery(args, userId),
+  query_sugu_analytics: (args) => executeSuguAnalyticsQuery(args),
+  query_daily_summary: (args, userId) => executeDailySummaryQuery(args, userId),
+
+  // Commax — Community Management (Iris)
+  commax_manage: (args, userId) => executeCommaxManage(args, userId),
+
+  // Screen Monitor — Vision + Prise en main bureau (Ulysse)
+  screen_monitor_manage: (args, userId) => executeScreenMonitorManage(args, userId),
+
+  // Automation features
+  generate_morning_briefing: (args) => executeGenerateMorningBriefing(args),
+  generate_financial_report: (args) => executeGenerateFinancialReport(args),
+  analyze_document_image: (args) => executeAnalyzeDocumentImage(args),
+  import_bank_statement: (args) => executeImportBankStatement(args),
+  manage_telegram_bot: (args) => executeManageTelegramBot(args),
+  query_app_data: (args) => executeQueryAppData(args),
+  query_apptoorder: (args) => executeQueryAppToOrder(args),
+  query_coba: (args) => executeQueryCoba(args),
+  coba_business: (args) => executeCobaBusinessTool(args),
+  sensory_hub: (args, userId) => executeSensoryHub(args, userId),
+  generate_self_reflection: (_args, userId) => executeGenerateSelfReflection(userId),
+  manage_ai_system: (args, userId) => executeManageAISystem(args, userId),
+  app_navigate: (args, userId) => executeAppNavigate(args, userId),
+  devops_github: (args) => executeDevopsGithub(args),
+  devops_server: (args) => executeDevopsServer(args),
+  pdf_master: (args) => executePdfMaster(args),
+};
+
 // Exported for ActionHubBridge integration
 export async function executeToolCallV2Internal(toolName: string, args: Record<string, any>, userId: number): Promise<string> {
-  switch (toolName) {
-    // Data tools
-    case "query_suguval_history":
-      return await executeSuguvalQuery(args);
-    case "get_suguval_checklist":
-      return await executeGetSuguvalChecklist(args);
-    case "send_suguval_shopping_list":
-      return await executeSendSuguvalShoppingList(args);
-    case "query_sports_data":
-      return await executeSportsQuery(args);
-    case "query_match_intelligence":
-      return await executeMatchIntelligence(args);
-    case "query_matchendirect":
-      return await executeMatchEndirectQuery(args);
-    case "query_football_db":
-      return await executeFootballDbQuery(args);
-    case "query_brain":
-      return await executeBrainQuery(args, userId);
-    case "query_stock_data":
-      return await executeStockQuery(args);
-
-    // Calendar tools
-    case "calendar_list_events":
-      return await executeCalendarList(args, userId);
-    case "calendar_create_event":
-      return await executeCalendarCreate(args, userId);
-
-    // Email tools
-    case "email_list_inbox":
-      return await executeEmailList(args);
-    case "email_read_message":
-      return await executeEmailRead(args);
-    case "email_reply": {
-      try {
-        const { googleMailService } = await import('./googleMailService');
-        const connected = await googleMailService.isConnected();
-        if (!connected) {
-          return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
-        }
-        const result = await googleMailService.sendReply({
-          to: args.to,
-          subject: args.subject,
-          body: args.body,
-          inReplyTo: args.in_reply_to,
-          originalBody: args.original_body,
-          originalFrom: args.original_from,
-          originalDate: args.original_date,
-        });
-        return JSON.stringify({ type: 'email_replied', success: true, from: 'ulyssemdbh@gmail.com', to: args.to, messageId: result.messageId });
-      } catch (err: any) {
-        console.error(`[EmailReply] Error: ${err.message}`);
-        return JSON.stringify({ error: `Échec de la réponse Gmail: ${err.message}` });
-      }
-    }
-    case "email_forward": {
-      try {
-        const { googleMailService } = await import('./googleMailService');
-        const connected = await googleMailService.isConnected();
-        if (!connected) {
-          return JSON.stringify({ error: "Gmail non connecté. Reconnecte l'intégration Google Mail." });
-        }
-        const result = await googleMailService.sendForward({
-          to: args.to,
-          subject: args.subject,
-          forwardNote: args.forward_note,
-          originalFrom: args.original_from,
-          originalDate: args.original_date,
-          originalBody: args.original_body,
-        });
-        return JSON.stringify({ type: 'email_forwarded', success: true, from: 'ulyssemdbh@gmail.com', to: args.to, messageId: result.messageId });
-      } catch (err: any) {
-        console.error(`[EmailForward] Error: ${err.message}`);
-        return JSON.stringify({ error: `Échec du transfert Gmail: ${err.message}` });
-      }
-    }
-    case "email_send":
-      return await executeEmailSend(args);
-
-    // Smart home tools
-    case "smarthome_control":
-      return await executeSmartHomeControl(args, userId);
-
-    // Location & weather tools
-    case "location_get_weather":
-      return await executeWeatherGet(args);
-
-    // Web search tools
-    case "web_search":
-      return await executeWebSearch(args);
-    case "read_url":
-      return await executeReadUrl(args);
-
-    // Spotify tools
-    case "spotify_control":
-      return await executeSpotifyControl(args, userId);
-
-    // Discord tools (Action-First execution)
-    case "discord_send_message":
-      return await executeDiscordSendMessage(args, userId);
-    case "discord_status":
-      return await executeDiscordStatus(userId);
-    case "discord_add_reaction":
-      return await executeDiscordAddReaction(args, userId);
-    case "discord_remove_reaction":
-      return await executeDiscordRemoveReaction(args, userId);
-    case "discord_delete_message":
-      return await executeDiscordDeleteMessage(args, userId);
-    case "discord_send_file":
-      return await executeDiscordSendFile(args, userId);
-    case "discord_create_invitation":
-      return await executeDiscordCreateInvitation(args, userId);
-    case "discord_voice_status":
-      return await executeDiscordVoiceStatus(userId);
-
-    // Memory tools
-    case "memory_save":
-      return await executeMemorySave(args, userId);
-
-    // SuperChat intelligence
-    case "superchat_search":
-      return await executeSuperChatSearch(args, userId);
-
-    // Image tools
-    case "image_generate":
-      return await executeImageGenerate(args, userId);
-
-    // Todoist tools (Action-First execution)
-    case "todoist_create_task":
-      return await executeTodoistCreateTask(args, userId);
-    case "todoist_list_tasks":
-      return await executeTodoistListTasks(args);
-    case "todoist_complete_task":
-      return await executeTodoistCompleteTask(args);
-
-    // Kanban tools
-    case "kanban_create_task":
-      return await executeKanbanCreateTask(args, userId);
-
-    case "task_queue_manage":
-      return await executeTaskQueueManage(args, userId);
-
-    case "work_journal_manage":
-      return await executeWorkJournalManage(args, userId);
-
-    case "devops_intelligence":
-      return await executeDevOpsIntelligence(args, userId);
-
-    case "dgm_manage":
-      return await executeDgmManage(args, userId);
-
-    case "devmax_db":
-      return await executeDevmaxDb(args);
-
-    case "dashboard_screenshot":
-      return await executeDashboardScreenshot(args);
-
-    // Universal file analysis tools
-    case "analyze_file":
-      return await executeAnalyzeFile(args, userId);
-    case "analyze_invoice":
-      return await executeAnalyzeInvoice(args, userId);
-    
-    // Universal file generation tools
-    case "generate_file":
-      return await executeGenerateFile(args, userId);
-    case "manage_3d_file":
-      return await executeManage3DFile(args, userId);
-    case "export_analysis":
-      return await executeExportAnalysis(args, userId);
-    case "export_invoice_excel":
-      return await executeExportInvoiceExcel(args, userId);
-    case "generate_invoice_pdf":
-      return await executeGenerateInvoicePdf(args, userId);
-
-    // Notion & Drive tools
-    case "notion_manage":
-      return await executeNotionManage(args);
-    case "drive_manage":
-      return await executeDriveManage(args);
-
-    // Video analysis
-    case "analyze_video":
-      return await executeVideoAnalysis(args);
-
-    // Navigation & Monitoring
-    case "navigation_manage":
-      return await executeNavigationManage(args, userId);
-    case "monitoring_manage":
-      return await executeMonitoringManage(args);
-
-    // Trading
-    case "trading_alerts":
-      return await executeTradingAlerts(args, userId);
-
-    // SUGU management tools
-    case "manage_sugu_bank":
-      return await executeSuguBankManagement(args);
-    case "manage_sugu_purchases":
-      return await executeSuguPurchasesManagement(args);
-    case "manage_sugu_expenses":
-      return await executeSuguExpensesManagement(args);
-    case "manage_sugu_files":
-      return await executeSuguFilesManagement(args);
-    case "manage_sugu_employees":
-      return await executeSuguEmployeesManagement(args);
-    case "manage_sugu_payroll":
-      return await executeSuguPayrollManagement(args);
-    case "search_sugu_data":
-      return await executeSearchSuguData(args);
-    case "sugu_full_overview":
-      return await executeSuguFullOverview(args);
-
-    // Business intelligence tools
-    case "compute_business_health":
-      return await executeBusinessHealth(args);
-    case "detect_anomalies":
-      return await executeDetectAnomalies(args);
-    case "query_hubrise":
-      return await executeQueryHubrise(args);
-    case "manage_feature_flags":
-      return await executeManageFeatureFlags(args);
-
-    // Location tools
-    case "search_nearby_places":
-      return await executeSearchNearbyPlaces(args as any, userId);
-    case "geocode_address":
-      return await executeGeocodeAddress(args as any);
-
-    // Analytics tools
-    case "query_bets_tracker":
-      return await executeBetsTrackerQuery(args, userId);
-    case "query_sugu_analytics":
-      return await executeSuguAnalyticsQuery(args);
-    case "query_daily_summary":
-      return await executeDailySummaryQuery(args, userId);
-
-    // Commax — Community Management (Iris)
-    case "commax_manage":
-      return await executeCommaxManage(args, userId);
-
-    // Screen Monitor — Vision + Prise en main bureau (Ulysse)
-    case "screen_monitor_manage":
-      return await executeScreenMonitorManage(args, userId);
-
-    // === AUTOMATION FEATURES ===
-    case "generate_morning_briefing":
-      return await executeGenerateMorningBriefing(args);
-    case "generate_financial_report":
-      return await executeGenerateFinancialReport(args);
-    case "analyze_document_image":
-      return await executeAnalyzeDocumentImage(args);
-    case "import_bank_statement":
-      return await executeImportBankStatement(args);
-    case "manage_telegram_bot":
-      return await executeManageTelegramBot(args);
-    case "query_app_data":
-      return await executeQueryAppData(args);
-    case "query_apptoorder":
-      return await executeQueryAppToOrder(args);
-    case "query_coba":
-      return await executeQueryCoba(args);
-    case "coba_business":
-      return await executeCobaBusinessTool(args);
-    case "sensory_hub":
-      return await executeSensoryHub(args, userId);
-    case "generate_self_reflection":
-      return await executeGenerateSelfReflection(userId);
-    case "manage_ai_system":
-      return await executeManageAISystem(args, userId);
-    case "app_navigate":
-      return await executeAppNavigate(args, userId);
-    case "devops_github":
-      return await executeDevopsGithub(args);
-    case "devops_server":
-      return await executeDevopsServer(args);
-
-    case "pdf_master":
-      return await executePdfMaster(args);
-
-    default:
-      return JSON.stringify({ error: `Fonction inconnue: ${toolName}` });
+  const handler = toolHandlerRegistry[toolName];
+  if (handler) {
+    return handler(args, userId);
   }
+  return JSON.stringify({ error: `Fonction inconnue: ${toolName}` });
 }
 
 // === TOOL IMPLEMENTATIONS ===
