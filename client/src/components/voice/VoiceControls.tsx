@@ -165,7 +165,7 @@ export function VoiceControls({
       
       {isInCall && (
         <div className="flex justify-center">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-800/50 text-xs text-gray-400">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-800/50 text-xs text-gray-400" role="status" aria-live="polite">
             <motion.span
               className={cn(
                 "w-2 h-2 rounded-full",

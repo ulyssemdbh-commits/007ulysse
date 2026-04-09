@@ -66,7 +66,7 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
   return (
     <>
       <Card className="w-full lg:flex-1 min-w-0 max-w-full glass-card border-white/10 mb-4 md:mb-6 z-10 overflow-hidden">
-        <div className="h-[400px] md:h-[500px] overflow-y-auto scroll-smooth" ref={scrollRef}>
+        <div className="h-[400px] md:h-[500px] overflow-y-auto scroll-smooth" ref={scrollRef} role="log" aria-label="Messages de conversation" aria-live="polite">
           <div className="p-4 md:p-5 space-y-3 w-full" style={{ maxWidth: '100%', boxSizing: 'border-box' }}>
             {lastMessages.length === 0 && !streamingContent && (
               <p className="text-center text-muted-foreground text-sm py-8">
@@ -95,6 +95,7 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
                         }
                       }}
                       className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/80 hover:bg-red-500 rounded-full flex items-center justify-center md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                      aria-label="Supprimer le message"
                       data-testid="button-delete-message"
                     >
                       <X className="w-3 h-3 text-white" />
@@ -133,6 +134,7 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
                           setTimeout(() => setCopiedMsgIdx(null), 2000);
                         }}
                         title="Copier"
+                        aria-label={copiedMsgIdx === idx ? "Message copié" : "Copier le message"}
                         data-testid={`button-copy-message-${idx}`}
                       >
                         {copiedMsgIdx === idx ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
@@ -143,7 +145,7 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
               </div>
             ))}
             {isStreaming && !streamingContent && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-sm p-2 md:p-3 rounded-lg ai-bubble mr-4 md:mr-8">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-sm p-2 md:p-3 rounded-lg ai-bubble mr-4 md:mr-8" role="status" aria-label={`${personaName} est en train de réfléchir`}>
                 <p className="text-xs text-muted-foreground mb-1">{personaName}</p>
                 <div className="flex items-center gap-2 py-2">
                   <motion.div className="w-8 h-1 bg-primary/40 rounded-full" animate={{ width: ["32px", "48px", "32px"] }} transition={{ duration: 1.2, repeat: Infinity }} />

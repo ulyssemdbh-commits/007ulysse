@@ -15,6 +15,7 @@ export function PageContainer({ children, title, action }: PageContainerProps) {
     <div className="min-h-screen bg-background text-foreground flex">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
       <main
+        aria-label="Contenu principal"
         className={`flex-1 p-8 overflow-y-auto transition-all duration-300 ${collapsed ? "ml-16" : "ml-64"}`}
       >
         <div className="max-w-7xl mx-auto space-y-8">

@@ -91,7 +91,7 @@ export function createRateLimiter(config: Partial<RateLimitConfig> & { name?: st
     message: config.message ?? "Trop de requêtes, veuillez réessayer plus tard",
     skipSuccessfulRequests: config.skipSuccessfulRequests ?? false,
     keyGenerator: config.keyGenerator ?? ((req) => {
-      const userId = (req.session as any)?.userId;
+      const userId = (req as Request & { session?: { userId?: number } }).session?.userId;
       if (userId) return `user:${userId}`;
       return `ip:${req.ip || req.socket.remoteAddress || "unknown"}`;
     })
@@ -161,7 +161,7 @@ export const v2Limiter = createRateLimiter({
   maxRequests: 60,
   message: "API rate limit exceeded",
   keyGenerator: (req) => {
-    const deviceId = (req as any).deviceId;
+    const deviceId = (req as Request & { deviceId?: string }).deviceId;
     if (deviceId) return `device:${deviceId}`;
     return `ip:${req.ip || "unknown"}`;
   }
