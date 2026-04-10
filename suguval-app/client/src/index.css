@@ -1,0 +1,406 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 224 71% 4%;
+  
+  --card: 0 0% 98%;
+  --card-foreground: 224 71% 4%;
+  
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 71% 4%;
+  
+  --primary: 226 70% 55%;
+  --primary-foreground: 210 40% 98%;
+  
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 224 71% 4%;
+  
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 46%;
+  
+  --accent: 243 75% 59%;
+  --accent-foreground: 210 40% 98%;
+  
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 226 70% 55%;
+  
+  --radius: 0.75rem;
+
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* AI accent colors */
+  --ai-gradient-from: 226 70% 55%;
+  --ai-gradient-to: 243 75% 59%;
+  --ai-glow: 226 70% 55%;
+}
+
+.dark {
+  --background: 222 47% 6%;
+  --foreground: 210 40% 96%;
+  
+  --card: 222 47% 9%;
+  --card-foreground: 210 40% 96%;
+  
+  --popover: 222 47% 8%;
+  --popover-foreground: 210 40% 96%;
+  
+  --primary: 226 70% 55%;
+  --primary-foreground: 210 40% 98%;
+  
+  --secondary: 222 47% 14%;
+  --secondary-foreground: 210 40% 96%;
+  
+  --muted: 222 47% 12%;
+  --muted-foreground: 215 20% 60%;
+  
+  --accent: 243 75% 59%;
+  --accent-foreground: 210 40% 98%;
+  
+  --destructive: 0 63% 45%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 222 30% 18%;
+  --input: 222 30% 18%;
+  --ring: 226 70% 55%;
+  
+  /* AI accent colors - brighter in dark mode */
+  --ai-gradient-from: 226 75% 60%;
+  --ai-gradient-to: 243 80% 65%;
+  --ai-glow: 226 75% 60%;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    @apply tracking-tight font-bold;
+  }
+  
+  code, pre {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500;
+  }
+  
+  .ai-gradient {
+    @apply bg-gradient-to-r from-blue-500 to-indigo-600;
+  }
+  
+  .ai-gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400;
+  }
+  
+  /* Glassmorphism cards — Safari needs -webkit-backdrop-filter */
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+    -webkit-backdrop-filter: blur(24px);
+  }
+  
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-xl border border-white/10 shadow-xl rounded-xl;
+    -webkit-backdrop-filter: blur(24px);
+  }
+  
+  .glass-panel {
+    @apply bg-card/60 backdrop-blur-2xl border border-white/5 shadow-2xl;
+    -webkit-backdrop-filter: blur(40px);
+  }
+  
+  .glass-input {
+    @apply bg-white/5 backdrop-blur-lg border border-white/10 focus:border-primary/50;
+    -webkit-backdrop-filter: blur(16px);
+  }
+  
+  .glass-button {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 hover:bg-white/15 transition-all;
+    -webkit-backdrop-filter: blur(16px);
+  }
+  
+  /* AI message bubble - elegant glassmorphism */
+  .ai-bubble {
+    @apply bg-secondary/80 dark:bg-white/5;
+    @apply backdrop-blur-2xl border border-border/40 dark:border-white/10;
+    -webkit-backdrop-filter: blur(40px);
+    @apply rounded-2xl text-foreground;
+    @apply shadow-sm dark:shadow-lg dark:shadow-black/20;
+  }
+  
+  /* Blockquotes inside AI bubbles - black text for readability */
+  .ai-bubble .prose blockquote {
+    @apply bg-white/90 dark:bg-white/90 rounded-lg p-3 my-2 border-l-4 border-primary;
+  }
+  
+  .ai-bubble .prose blockquote p,
+  .ai-bubble .prose blockquote {
+    @apply text-gray-900 dark:text-gray-900;
+  }
+  
+  /* User message bubble - premium gradient */
+  .user-bubble {
+    @apply bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600;
+    @apply rounded-2xl shadow-lg shadow-indigo-500/25;
+    @apply text-white;
+  }
+
+  .glow {
+    @apply shadow-[0_0_30px_-5px_rgba(59,130,246,0.5)];
+  }
+  
+  .glow-sm {
+    @apply shadow-[0_0_15px_-3px_rgba(59,130,246,0.4)];
+  }
+  
+  .touch-target {
+    @apply min-w-[44px] min-h-[44px];
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 16px);
+  }
+  
+  @media (max-width: 640px) {
+    .safe-area-bottom {
+      padding-bottom: calc(env(safe-area-inset-bottom, 24px) + 20px);
+    }
+  }
+  
+  .safe-area-top {
+    padding-top: max(env(safe-area-inset-top, 0px), 12px);
+  }
+  
+  @media (max-width: 640px) {
+    .safe-area-top {
+      padding-top: max(env(safe-area-inset-top, 20px), 24px);
+    }
+  }
+  
+  /* iOS notch/dynamic island - enhanced header spacing */
+  .ios-header-safe {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 4px);
+  }
+  
+  @media (max-width: 640px) {
+    .ios-header-safe {
+      padding-top: calc(env(safe-area-inset-top, 8px) + 4px);
+    }
+  }
+  
+  /* Smooth panel transitions */
+  .panel-slide {
+    @apply transition-all duration-300 ease-out;
+  }
+  
+  /* Floating action button */
+  .fab {
+    @apply fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-xl shadow-primary/30 flex items-center justify-center z-50;
+  }
+  
+  /* Bottom nav */
+  .bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 bg-card/90 backdrop-blur-xl border-t border-white/10 safe-area-bottom;
+    -webkit-backdrop-filter: blur(24px);
+  }
+  
+  .nav-item {
+    @apply flex flex-col items-center justify-center py-2 px-3 text-muted-foreground transition-colors;
+  }
+  
+  .nav-item.active {
+    @apply text-primary;
+  }
+}
+
+@supports (height: 100dvh) {
+  .h-screen {
+    height: 100dvh;
+  }
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}
+
+@layer base {
+  button, a, [role="button"] {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  
+  input, textarea, select {
+    font-size: 16px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  
+  * {
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+@layer utilities {
+  .ios-scroll {
+    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  
+  .ios-fixed {
+    position: fixed;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .ios-momentum-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+  
+  .no-select {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  
+  .safe-area-inset {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  
+  .px-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+  
+  @media (max-width: 430px) {
+    .iphone-pro-touch {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+}
+
+/* Safari global -webkit-backdrop-filter support for all Tailwind backdrop-blur classes */
+@supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) {
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
+  }
+  .backdrop-blur-sm { -webkit-backdrop-filter: blur(4px); }
+  .backdrop-blur { -webkit-backdrop-filter: blur(8px); }
+  .backdrop-blur-md { -webkit-backdrop-filter: blur(12px); }
+  .backdrop-blur-lg { -webkit-backdrop-filter: blur(16px); }
+  .backdrop-blur-xl { -webkit-backdrop-filter: blur(24px); }
+  .backdrop-blur-2xl { -webkit-backdrop-filter: blur(40px); }
+  .backdrop-blur-3xl { -webkit-backdrop-filter: blur(64px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Leaflet Routing Machine - Dark mode styling */
+.leaflet-routing-container {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.leaflet-routing-container h2,
+.leaflet-routing-container h3 {
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.leaflet-routing-alt {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.leaflet-routing-alt table {
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.leaflet-routing-alt td {
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.leaflet-routing-alt-minimized {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.leaflet-routing-geocoders input {
+  background-color: hsl(var(--input)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.leaflet-routing-collapse-btn {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* PIN pad shake animation */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
