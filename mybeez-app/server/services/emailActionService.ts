@@ -1,5 +1,5 @@
 /**
- * Email Service — Stub for standalone SUGUVal.
+ * Email Service — Stub for myBeez.
  * Replace with your actual email provider (nodemailer, SendGrid, etc.)
  */
 export const emailActionService = {

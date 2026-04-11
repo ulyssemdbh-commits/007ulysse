@@ -1,5 +1,5 @@
 /**
- * OpenAI Client — Standalone SUGUVal.
+ * OpenAI Client — myBeez.
  * Uses OPENAI_API_KEY from environment.
  */
 import OpenAI from "openai";

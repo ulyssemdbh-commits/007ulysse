@@ -230,7 +230,7 @@ function SortableItem({
 
 export default function SuguvalAdmin() {
   usePageManifest({
-    title: "Admin SUGUVal",
+    title: "Admin myBeez",
     manifestPath: "/manifest-suguval-edit.json",
     themeColor: "#b45309",
     appleTitle: "Admin"

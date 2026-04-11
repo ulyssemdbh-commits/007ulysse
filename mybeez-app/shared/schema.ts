@@ -1,5 +1,5 @@
 /**
- * SUGUVal Standalone — Schema re-export
+ * myBeez — Schema re-export
  */
 export * from "./schema/sugu";
 export * from "./schema/suguMaillane";

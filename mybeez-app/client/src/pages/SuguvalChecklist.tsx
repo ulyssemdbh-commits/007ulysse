@@ -377,10 +377,10 @@ export default function SuguvalChecklist() {
 
   // PWA manifest for Suguval
   usePageManifest({
-    title: "Courses SUGUVal",
+    title: "Courses myBeez",
     manifestPath: "/manifest-suguval.json",
     themeColor: "#b45309",
-    appleTitle: "SUGUVal"
+    appleTitle: "myBeez"
   });
 
   const { data: categories, isLoading: categoriesLoading } = useQuery<SuguvalCategory[]>({

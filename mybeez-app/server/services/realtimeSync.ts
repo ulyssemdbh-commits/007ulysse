@@ -1,5 +1,5 @@
 /**
- * Realtime Sync — Stub for standalone SUGUVal.
+ * Realtime Sync — Stub for myBeez.
  * Replace with WebSocket/SSE implementation for live updates.
  */
 export function emitSuguChecklistUpdated(_userId?: number): void {

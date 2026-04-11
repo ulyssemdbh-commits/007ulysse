@@ -1,5 +1,5 @@
 /**
- * Auth Middleware — Standalone SUGUVal.
+ * Auth Middleware — myBeez.
  * Simplified session-based auth. Replace with your own auth system.
  */
 import { Request, Response, NextFunction } from "express";

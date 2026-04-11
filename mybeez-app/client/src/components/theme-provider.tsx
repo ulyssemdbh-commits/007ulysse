@@ -17,7 +17,7 @@ const ThemeContext = createContext<ThemeContextType>({ theme: "dark", setTheme: 
 export function ThemeProvider({ children, defaultTheme = "dark" }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("suguval-theme") as Theme) || defaultTheme;
+      return (localStorage.getItem("mybeez-theme") as Theme) || defaultTheme;
     }
     return defaultTheme;
   });
@@ -33,7 +33,7 @@ export function ThemeProvider({ children, defaultTheme = "dark" }: ThemeProvider
       root.classList.add(theme);
     }
 
-    localStorage.setItem("suguval-theme", theme);
+    localStorage.setItem("mybeez-theme", theme);
   }, [theme]);
 
   return (

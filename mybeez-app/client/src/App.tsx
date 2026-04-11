@@ -30,7 +30,7 @@ function Home() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center text-foreground">
       <div className="text-center space-y-6 max-w-md">
-        <h1 className="text-4xl font-bold">SUGUVal</h1>
+        <h1 className="text-4xl font-bold">myBeez</h1>
         <p className="text-muted-foreground">Gestion des checklists et inventaires restaurant</p>
         <div className="grid grid-cols-2 gap-3">
           <a href="/suguval" className="bg-primary/10 border border-primary/30 rounded-lg p-4 hover:bg-primary/20 transition-colors">
@@ -75,7 +75,7 @@ export default function App() {
           <Switch>
             <Route path="/" component={Home} />
 
-            {/* SUGUVal (Valentine) */}
+            {/* myBeez Valentine */}
             <Route path="/suguval">
               <LazyPage><SuguvalChecklist /></LazyPage>
             </Route>
@@ -89,7 +89,7 @@ export default function App() {
               <LazyPage><SuguValManagement /></LazyPage>
             </Route>
 
-            {/* SUGUMaillane */}
+            {/* myBeez Maillane */}
             <Route path="/sugumaillane">
               <LazyPage><SugumaillaneChecklist /></LazyPage>
             </Route>

@@ -1,5 +1,5 @@
 /**
- * SuguChatWidget — Standalone SUGUVal.
+ * SuguChatWidget — myBeez.
  * Minimal chat widget stub. Replace with full AI chat implementation.
  */
 import { useState } from "react";

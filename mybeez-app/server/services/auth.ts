@@ -1,5 +1,5 @@
 /**
- * Auth Service — Standalone SUGUVal.
+ * Auth Service — myBeez.
  * Simplified auth. Replace with your own authentication system.
  */
 export const authService = {

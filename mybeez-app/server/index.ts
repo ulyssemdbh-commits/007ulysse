@@ -1,5 +1,5 @@
 /**
- * SUGUVal Standalone — Server Entry Point
+ * myBeez Standalone — Server Entry Point
  */
 import express from "express";
 import compression from "compression";
@@ -10,10 +10,10 @@ import { createServer } from "http";
 import path from "path";
 import fs from "fs";
 
-console.log(`[SUGUVal] Starting — PID=${process.pid}, NODE_ENV=${process.env.NODE_ENV || "development"}`);
+console.log(`[myBeez] Starting — PID=${process.pid}, NODE_ENV=${process.env.NODE_ENV || "development"}`);
 
 if (!process.env.DATABASE_URL) {
-  console.error("[SUGUVal] WARNING: DATABASE_URL is not set");
+  console.error("[myBeez] WARNING: DATABASE_URL is not set");
 }
 
 process.on("uncaughtException", (err) => {
@@ -42,7 +42,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Session
 app.use(session({
-  secret: process.env.SESSION_SECRET || "suguval-standalone-secret",
+  secret: process.env.SESSION_SECRET || "mybeez-standalone-secret",
   resave: false,
   saveUninitialized: false,
   cookie: { secure: process.env.NODE_ENV === "production", maxAge: 24 * 60 * 60 * 1000 },
@@ -58,7 +58,7 @@ async function registerRoutes() {
 
   // Health check
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", service: "suguval", uptime: process.uptime() });
+    res.json({ status: "ok", service: "mybeez", uptime: process.uptime() });
   });
 }
 
@@ -68,7 +68,7 @@ function serveStatic() {
   const indexHtml = path.resolve(distPath, "index.html");
 
   if (!fs.existsSync(distPath)) {
-    console.warn(`[SUGUVal] Build directory not found: ${distPath}`);
+    console.warn(`[myBeez] Build directory not found: ${distPath}`);
     return;
   }
 
@@ -97,10 +97,10 @@ registerRoutes()
 
     const server = createServer(app);
     server.listen(PORT, "0.0.0.0", () => {
-      console.log(`[SUGUVal] Server running on port ${PORT}`);
+      console.log(`[myBeez] Server running on port ${PORT}`);
     });
   })
   .catch((err) => {
-    console.error("[SUGUVal] Failed to start:", err);
+    console.error("[myBeez] Failed to start:", err);
     process.exit(1);
   });

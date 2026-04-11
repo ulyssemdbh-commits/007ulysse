@@ -1,5 +1,5 @@
 /**
- * Google Calendar Service — Stub for standalone SUGUVal.
+ * Google Calendar Service — Stub for myBeez.
  * Replace with googleapis integration if needed.
  */
 export const calendarService = {

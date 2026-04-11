@@ -54,7 +54,7 @@ interface CategoryWithItems {
 
 export default function SuguvalHistory() {
   usePageManifest({
-    title: "Historique SUGUVal",
+    title: "Historique myBeez",
     manifestPath: "/manifest-suguval-history.json",
     themeColor: "#b45309",
     appleTitle: "Historique"

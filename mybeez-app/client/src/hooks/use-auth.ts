@@ -1,5 +1,5 @@
 /**
- * Auth Hook — Standalone SUGUVal.
+ * Auth Hook — myBeez.
  * Simplified auth for standalone deployment.
  */
 import { useState } from "react";

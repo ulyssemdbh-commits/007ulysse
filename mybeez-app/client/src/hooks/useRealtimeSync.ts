@@ -1,5 +1,5 @@
 /**
- * Realtime Sync Hook — Standalone SUGUVal.
+ * Realtime Sync Hook — myBeez.
  * Stub — replace with WebSocket/SSE client for live checklist updates.
  */
 import { useEffect } from "react";
