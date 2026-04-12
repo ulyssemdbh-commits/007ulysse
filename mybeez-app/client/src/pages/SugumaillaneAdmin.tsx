@@ -119,8 +119,9 @@ export default function SugumaillaneAdmin() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-green-50 to-emerald-50 dark:from-zinc-900 dark:to-zinc-800 flex items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-green-500" />
+      <div className="min-h-screen bg-gradient-to-b from-green-50 to-emerald-50 dark:from-zinc-900 dark:to-zinc-800 flex items-center justify-center" role="status">
+        <Loader2 className="h-12 w-12 animate-spin text-green-500" aria-hidden="true" />
+        <span className="sr-only">Chargement des traductions</span>
       </div>
     );
   }
@@ -130,12 +131,12 @@ export default function SugumaillaneAdmin() {
       <header className="sticky top-0 z-50 bg-green-700 dark:bg-green-800 text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
-            <Link href="/courses/sugumaillane">
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" data-testid="button-back">
+            <Link href="/sugumaillane">
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" aria-label="Retour a la checklist" data-testid="button-back">
                 <ArrowLeft className="h-6 w-6" />
               </Button>
             </Link>
-            <ChefHat className="h-8 w-8" />
+            <ChefHat className="h-8 w-8" aria-hidden="true" />
             <div>
               <h1 className="text-xl font-bold">SUGU Maillane — Traductions</h1>
               <p className="text-green-100 text-sm">
@@ -147,7 +148,7 @@ export default function SugumaillaneAdmin() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Card>
             <CardContent className="pt-4 text-center">
               <div className="text-2xl font-bold">{totalItems}</div>
@@ -209,9 +210,9 @@ export default function SugumaillaneAdmin() {
                             className="h-8 px-2"
                             onClick={() => autoTranslate(item.name, "vi")}
                             disabled={isTranslating.vi}
-                            title="Traduire automatiquement"
+                            aria-label="Traduire en vietnamien"
                           >
-                            {isTranslating.vi ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+                            {isTranslating.vi ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : <Languages className="h-3 w-3" aria-hidden="true" />}
                           </Button>
                         </div>
                         <div className="flex items-center gap-2">
@@ -229,9 +230,9 @@ export default function SugumaillaneAdmin() {
                             className="h-8 px-2"
                             onClick={() => autoTranslate(item.name, "th")}
                             disabled={isTranslating.th}
-                            title="Traduire automatiquement"
+                            aria-label="Traduire en thailandais"
                           >
-                            {isTranslating.th ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+                            {isTranslating.th ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : <Languages className="h-3 w-3" aria-hidden="true" />}
                           </Button>
                         </div>
                         <div className="flex gap-2">

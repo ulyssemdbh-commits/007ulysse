@@ -205,9 +205,9 @@ export default function SugumaillaneHistory() {
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Link href="/courses/sugumaillane">
-                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" data-testid="button-back">
-                  <ArrowLeft className="h-5 w-5" />
+              <Link href="/sugumaillane">
+                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" aria-label="Retour a la checklist" data-testid="button-back">
+                  <ArrowLeft className="h-5 w-5" aria-hidden="true" />
                 </Button>
               </Link>
               <div className="flex items-center gap-2">
@@ -241,11 +241,11 @@ export default function SugumaillaneHistory() {
               <div className="flex items-center justify-between">
                 <span className="text-white font-medium capitalize">{getMonthLabel()}</span>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8" onClick={prevMonth} data-testid="button-prev-month">
-                    <ChevronLeft className="h-4 w-4" />
+                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8" onClick={prevMonth} aria-label="Mois precedent" data-testid="button-prev-month">
+                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8" onClick={nextMonth} data-testid="button-next-month">
-                    <ChevronRight className="h-4 w-4" />
+                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8" onClick={nextMonth} aria-label="Mois suivant" data-testid="button-next-month">
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -295,8 +295,8 @@ export default function SugumaillaneHistory() {
             <CardHeader className="py-3 bg-green-100 dark:bg-green-900/30">
               <CardTitle className="flex items-center justify-between text-base">
                 <span className="capitalize">{formatDate(selectedDate)}</span>
-                <Button variant="ghost" size="icon" onClick={closeDetailView} className="h-8 w-8" data-testid="button-close-detail">
-                  <X className="h-4 w-4" />
+                <Button variant="ghost" size="icon" onClick={closeDetailView} className="h-8 w-8" aria-label="Fermer le detail" data-testid="button-close-detail">
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </CardTitle>
             </CardHeader>
@@ -338,8 +338,8 @@ export default function SugumaillaneHistory() {
                   <Plus className="h-4 w-4" />
                   <span className="capitalize">{formatDate(selectedDate)}</span>
                 </div>
-                <Button variant="ghost" size="icon" onClick={closeDetailView} className="h-8 w-8" data-testid="button-close-future">
-                  <X className="h-4 w-4" />
+                <Button variant="ghost" size="icon" onClick={closeDetailView} className="h-8 w-8" aria-label="Fermer la planification" data-testid="button-close-future">
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </CardTitle>
             </CardHeader>

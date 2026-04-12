@@ -193,78 +193,106 @@ function PinProtection({ onUnlock }: { onUnlock: () => void }) {
     setError("");
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key >= '0' && e.key <= '9') {
+      handlePinEntry(e.key);
+    } else if (e.key === 'Backspace' || e.key === 'Delete') {
+      handleDelete();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-700 to-emerald-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-xs">
-        <div className="flex flex-col items-center">
+      <div className="w-full max-w-xs" role="main">
+        <fieldset
+          className="flex flex-col items-center border-0 p-0 m-0"
+          onKeyDown={handleKeyDown}
+          aria-label={isBlocked ? "Saisie du code de deblocage" : "Saisie du code PIN"}
+        >
+          <legend className="sr-only">
+            {isBlocked ? "Entrez le code de deblocage a 6 chiffres" : "Entrez le code PIN a 4 chiffres"}
+          </legend>
+
           <div className="mb-6 w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center">
             {isBlocked ? (
-              <Lock className="w-10 h-10 text-red-600" />
+              <Lock className="w-10 h-10 text-red-600" aria-hidden="true" />
             ) : (
-              <Unlock className="w-10 h-10 text-emerald-700" />
+              <Unlock className="w-10 h-10 text-emerald-700" aria-hidden="true" />
             )}
           </div>
-          
+
           <h1 className="text-white text-2xl font-semibold mb-2">
-            {isBlocked ? "Accès Bloqué" : "SUGU Maillane"}
+            {isBlocked ? "Acces Bloque" : "myBeez Maillane"}
           </h1>
-          <p className="text-emerald-100 text-sm mb-8">
-            {isBlocked 
-              ? "Entrez le code de déblocage"
+          <p className="text-emerald-100 text-sm mb-8" id="pin-instructions-maillane">
+            {isBlocked
+              ? "Entrez le code de deblocage"
               : "Entrez le code PIN"
             }
           </p>
 
-          <div className={`flex gap-4 mb-4 ${shake ? 'animate-shake' : ''}`}>
+          <div
+            className={`flex gap-4 mb-4 ${shake ? 'animate-shake' : ''}`}
+            role="status"
+            aria-live="polite"
+            aria-label={`${pin.length} chiffre${pin.length > 1 ? 's' : ''} saisi${pin.length > 1 ? 's' : ''} sur ${requiredLength}`}
+          >
             {Array.from({ length: requiredLength }).map((_, i) => (
               <div
                 key={i}
                 className={`w-4 h-4 rounded-full border-2 transition-all ${
-                  pin.length > i 
-                    ? "bg-white border-white" 
+                  pin.length > i
+                    ? "bg-white border-white"
                     : "bg-transparent border-emerald-200"
                 }`}
+                aria-hidden="true"
               />
             ))}
           </div>
 
           {error && (
-            <p className="text-red-300 text-sm mb-4 text-center">{error}</p>
+            <p className="text-red-300 text-sm mb-4 text-center" role="alert">{error}</p>
           )}
 
-          <div className="grid grid-cols-3 gap-4 mt-4">
+          <div className="grid grid-cols-3 gap-4 mt-4" role="group" aria-label="Pave numerique">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
               <button
                 key={num}
+                type="button"
                 onClick={() => handlePinEntry(String(num))}
-                className="w-18 h-18 md:w-20 md:h-20 rounded-full bg-emerald-800/60 text-white text-2xl font-light 
+                className="w-18 h-18 md:w-20 md:h-20 rounded-full bg-emerald-800/60 text-white text-2xl font-light
                   flex items-center justify-center hover:bg-emerald-700/60 active:bg-emerald-600/60 transition-colors
-                  aspect-square"
+                  aspect-square focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-800"
+                aria-label={`${num}`}
                 data-testid={`pin-${num}`}
               >
                 {num}
               </button>
             ))}
-            <div />
+            <div aria-hidden="true" />
             <button
+              type="button"
               onClick={() => handlePinEntry("0")}
-              className="w-18 h-18 md:w-20 md:h-20 rounded-full bg-emerald-800/60 text-white text-2xl font-light 
+              className="w-18 h-18 md:w-20 md:h-20 rounded-full bg-emerald-800/60 text-white text-2xl font-light
                 flex items-center justify-center hover:bg-emerald-700/60 active:bg-emerald-600/60 transition-colors
-                aspect-square"
+                aspect-square focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-800"
+              aria-label="0"
               data-testid="pin-0"
             >
               0
             </button>
             <button
+              type="button"
               onClick={handleDelete}
               className="w-18 h-18 md:w-20 md:h-20 flex items-center justify-center text-white hover:text-emerald-200 transition-colors
-                aspect-square"
+                aspect-square focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-800 rounded-full"
+              aria-label="Effacer le dernier chiffre"
               data-testid="pin-delete"
             >
-              <X className="h-7 w-7" />
+              <X className="h-7 w-7" aria-hidden="true" />
             </button>
           </div>
-        </div>
+        </fieldset>
       </div>
     </div>
   );
@@ -465,7 +493,7 @@ export default function SugumaillaneChecklist() {
         }
         setShowCategoryEditor(true);
       } else if (pendingAction === "translations") {
-        window.location.href = "/courses/sugumaillane/edit";
+        window.location.href = "/sugumaillane/admin";
       }
       
       setPendingAction(null);
@@ -579,7 +607,7 @@ export default function SugumaillaneChecklist() {
               </Button>
 
               {/* Calendar button */}
-              <Link href="/courses/sugumaillane/history">
+              <Link href="/sugumaillane/history">
                 <Button 
                   variant="ghost" 
                   size="icon" 
@@ -616,7 +644,7 @@ export default function SugumaillaneChecklist() {
                 data-testid="button-close"
                 onClick={() => {
                   localStorage.removeItem(STORAGE_KEY_AUTH);
-                  window.location.href = "/courses/sugumaillane";
+                  window.location.href = "/sugumaillane";
                 }}
               >
                 <X className="h-4 w-4" />
@@ -864,7 +892,7 @@ export default function SugumaillaneChecklist() {
                             }
                             setShowCategoryEditor(true);
                           } else if (pendingAction === "translations") {
-                            window.location.href = "/courses/sugumaillane/edit";
+                            window.location.href = "/sugumaillane/admin";
                           }
                           setPendingAction(null);
                         }, 200);
@@ -894,7 +922,7 @@ export default function SugumaillaneChecklist() {
                           }
                           setShowCategoryEditor(true);
                         } else if (pendingAction === "translations") {
-                          window.location.href = "/courses/sugumaillane/edit";
+                          window.location.href = "/sugumaillane/admin";
                         }
                         setPendingAction(null);
                       }, 200);

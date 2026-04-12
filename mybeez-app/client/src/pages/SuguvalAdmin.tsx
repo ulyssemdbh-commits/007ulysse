@@ -138,10 +138,10 @@ function SortableItem({
                       size="icon"
                       onClick={() => onTranslate("vi")}
                       disabled={isTranslating.vi || !editValues.name}
-                      title="Traduire automatiquement"
+                      aria-label="Traduire en vietnamien"
                       data-testid={`translate-vi-${item.id}`}
                     >
-                      {isTranslating.vi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
+                      {isTranslating.vi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Languages className="h-4 w-4" aria-hidden="true" />}
                     </Button>
                   </div>
                 </div>
@@ -159,10 +159,10 @@ function SortableItem({
                       size="icon"
                       onClick={() => onTranslate("th")}
                       disabled={isTranslating.th || !editValues.name}
-                      title="Traduire automatiquement"
+                      aria-label="Traduire en thailandais"
                       data-testid={`translate-th-${item.id}`}
                     >
-                      {isTranslating.th ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
+                      {isTranslating.th ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Languages className="h-4 w-4" aria-hidden="true" />}
                     </Button>
                   </div>
                 </div>
@@ -183,14 +183,14 @@ function SortableItem({
                 <Button variant="outline" onClick={onCancel}>
                   Annuler
                 </Button>
-                <Button 
-                  variant="destructive" 
+                <Button
+                  variant="destructive"
                   size="icon"
                   onClick={onDelete}
-                  title="Supprimer l'article"
+                  aria-label="Supprimer l'article"
                   data-testid={`delete-${item.id}`}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             </div>
@@ -200,9 +200,13 @@ function SortableItem({
                 {...attributes}
                 {...listeners}
                 className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded touch-none"
+                role="button"
+                aria-roledescription="bouton de deplacement"
+                aria-label={`Deplacer ${item.name}`}
+                tabIndex={0}
                 data-testid={`drag-handle-${item.id}`}
               >
-                <GripVertical className="h-5 w-5 text-muted-foreground" />
+                <GripVertical className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
               </div>
               <div 
                 className="flex-1 flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors"
@@ -471,8 +475,9 @@ export default function SuguvalAdmin() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-orange-50 to-amber-50 dark:from-zinc-900 dark:to-zinc-800 flex items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-orange-500" />
+      <div className="min-h-screen bg-gradient-to-b from-orange-50 to-amber-50 dark:from-zinc-900 dark:to-zinc-800 flex items-center justify-center" role="status">
+        <Loader2 className="h-12 w-12 animate-spin text-orange-500" aria-hidden="true" />
+        <span className="sr-only">Chargement des categories</span>
       </div>
     );
   }
@@ -482,12 +487,12 @@ export default function SuguvalAdmin() {
       <header className="sticky top-0 z-50 bg-orange-600 dark:bg-orange-700 text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
-            <Link href="/courses/suguval">
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
+            <Link href="/suguval">
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" aria-label="Retour a la checklist">
                 <ArrowLeft className="h-6 w-6" />
               </Button>
             </Link>
-            <ChefHat className="h-8 w-8" />
+            <ChefHat className="h-8 w-8" aria-hidden="true" />
             <div>
               <h1 className="text-xl font-bold">SUGU Valentine - Edition</h1>
               <p className="text-orange-100 text-sm">Maintenir pour deplacer</p>
@@ -559,10 +564,10 @@ export default function SuguvalAdmin() {
                       setNewItemCategoryId(category.id);
                       setShowNewItemDialog(true);
                     }}
-                    title="Ajouter un article"
+                    aria-label={`Ajouter un article a ${category.name}`}
                     data-testid={`add-item-${category.id}`}
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-4 w-4" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="destructive"
@@ -572,10 +577,10 @@ export default function SuguvalAdmin() {
                         deleteCategoryMutation.mutate(category.id);
                       }
                     }}
-                    title="Supprimer la categorie"
+                    aria-label={`Supprimer la categorie ${category.name}`}
                     data-testid={`delete-category-${category.id}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
