@@ -50,11 +50,8 @@ app.use(session({
 
 // ── API Routes ──
 async function registerRoutes() {
-  const { registerSuguvalRoutes } = await import("./routes/suguval");
-  registerSuguvalRoutes(app);
-
-  const { registerSugumaillaneRoutes } = await import("./routes/sugumaillane");
-  registerSugumaillaneRoutes(app);
+  const { registerChecklistRoutes } = await import("./routes/checklist");
+  registerChecklistRoutes(app);
 
   // Health check
   app.get("/api/health", (_req, res) => {

@@ -1,6 +1,9 @@
 import { db } from "../db";
-import { suguvalItems, suguvalChecks, suguvalCategories, sugumaillaneItems, sugumaillaneChecks, sugumaillaneCategories, suguAnalytics, type InsertSuguAnalytics } from "@shared/schema";
+import { items, checks, categories, analytics } from "@shared/schema/checklist";
+import { getBySlug } from "@shared/restaurants";
+import { getTenantDb } from "../tenantDb";
 import { eq, and, gte, lte, desc, sql, count } from "drizzle-orm";
+import type { InsertAnalytics } from "@shared/schema/checklist";
 
 interface RotationAnalysis {
   itemId: number;
@@ -77,29 +80,24 @@ const ZONE_NAMES: Record<number, string> = {
 class SuguAnalyticsService {
 
   async analyzeRotation(store: "suguval" | "sugumaillane", days: number = 30): Promise<RotationAnalysis[]> {
+    const config = getBySlug(store)!;
+    const tdb = getTenantDb(config.id);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const items = store === "suguval"
-      ? await db.select().from(suguvalItems).where(eq(suguvalItems.isActive, true))
-      : await db.select().from(sugumaillaneItems).where(eq(sugumaillaneItems.isActive, true));
+    const allItems = await tdb.select().from(items).where(eq(items.isActive, true));
+    const allCategories = await tdb.select().from(categories);
 
-    const categories = store === "suguval"
-      ? await db.select().from(suguvalCategories)
-      : await db.select().from(sugumaillaneCategories);
+    const categoryMap = new Map(allCategories.map(c => [c.id, c.name]));
 
-    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
-
-    const checksTable = store === "suguval" ? suguvalChecks : sugumaillaneChecks;
-    
     const results: RotationAnalysis[] = [];
 
-    for (const item of items) {
-      const checks = await db.select()
-        .from(checksTable)
+    for (const item of allItems) {
+      const itemChecks = await tdb.select()
+        .from(checks)
         .where(and(
-          eq(checksTable.itemId, item.id),
-          gte(checksTable.checkDate, startDate.toISOString().split("T")[0])
+          eq(checks.itemId, item.id),
+          gte(checks.checkDate, startDate.toISOString().split("T")[0])
         ));
 
       const checkCount = checks.filter(c => c.isChecked).length;

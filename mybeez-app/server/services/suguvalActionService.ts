@@ -1,7 +1,7 @@
-import { suguvalService } from "./suguvalService";
-import { sugumaillaneService } from "./sugumaillaneService";
-import { db } from "../db";
-import { suguvalEmailLogs, sugumaillaneEmailLogs } from "@shared/schema";
+import { getChecklistService } from "./checklistService";
+import { getBySlug } from "@shared/restaurants";
+import { emailLogs } from "@shared/schema/checklist";
+import { getTenantDb } from "../tenantDb";
 import { desc } from "drizzle-orm";
 
 type Restaurant = 'suguval' | 'sugumaillane';
@@ -328,7 +328,8 @@ class SuguvalActionService {
 
   private async executeConsultAction(action: SuguConsultAction): Promise<SuguConsultResult> {
     try {
-      const service = action.restaurant === 'suguval' ? suguvalService : sugumaillaneService;
+      const config = getBySlug(action.restaurant)!;
+      const service = getChecklistService(config.id);
       const restaurantName = action.restaurant === 'suguval' ? 'SUGU Valentine' : 'SUGU Maillane';
       
       console.log(`[SuguvalAction] Consulting ${restaurantName} cart...`);
@@ -389,7 +390,8 @@ class SuguvalActionService {
 
   private async executeEmailAction(action: SuguEmailAction): Promise<SuguEmailResult> {
     try {
-      const service = action.restaurant === 'suguval' ? suguvalService : sugumaillaneService;
+      const config = getBySlug(action.restaurant)!;
+      const service = getChecklistService(config.id);
       const restaurantName = action.restaurant === 'suguval' ? 'SUGU Valentine' : 'SUGU Maillane';
       
       console.log(`[SuguvalAction] Sending email for ${restaurantName}...`);
@@ -425,15 +427,16 @@ class SuguvalActionService {
   private async executeHistoryAction(action: SuguHistoryAction): Promise<SuguHistoryResult> {
     try {
       const restaurantName = action.restaurant === 'suguval' ? 'SUGU Valentine' : 'SUGU Maillane';
-      const table = action.restaurant === 'suguval' ? suguvalEmailLogs : sugumaillaneEmailLogs;
+      const config = getBySlug(action.restaurant)!;
+      const tenantDb = getTenantDb(config.id);
       const limit = action.limit || 10;
-      
+
       console.log(`[SuguvalAction] Getting history for ${restaurantName} (limit: ${limit})...`);
-      
-      const logs = await db
+
+      const logs = await tenantDb
         .select()
-        .from(table)
-        .orderBy(desc(table.sentAt))
+        .from(emailLogs)
+        .orderBy(desc(emailLogs.sentAt))
         .limit(limit);
       
       let summary = `**${restaurantName} - Historique des ${logs.length} derniers paniers**\n\n`;
@@ -499,7 +502,7 @@ class SuguvalActionService {
   private async executeListItemsAction(action: SuguListItemsAction): Promise<SuguManageResult> {
     try {
       console.log(`[SuguvalAction] Listing all items for management...`);
-      const categories = await suguvalService.getCategoriesWithItems();
+      const categories = await getChecklistService('val').getCategoriesWithItems();
       
       let summary = `**Liste des articles Suguval (pour modification)**\n\n`;
       let totalItems = 0;
@@ -534,7 +537,7 @@ class SuguvalActionService {
   private async executeListCategoriesAction(action: SuguListCategoriesAction): Promise<SuguManageResult> {
     try {
       console.log(`[SuguvalAction] Listing categories for management...`);
-      const categories = await suguvalService.getCategories();
+      const categories = await getChecklistService('val').getCategories();
       
       let summary = `**Catégories Suguval**\n\n`;
       for (const cat of categories) {
@@ -568,7 +571,7 @@ class SuguvalActionService {
         return { success: false, type: 'edit_item', restaurant: 'suguval', error: 'Aucune modification spécifiée' };
       }
       
-      await suguvalService.updateItem(action.itemId, updates);
+      await getChecklistService('val').updateItem(action.itemId, updates);
       
       return {
         success: true,
@@ -585,7 +588,7 @@ class SuguvalActionService {
   private async executeRenameCategoryAction(action: SuguRenameCategoryAction): Promise<SuguManageResult> {
     try {
       console.log(`[SuguvalAction] Renaming category ${action.categoryId} to "${action.name}"...`);
-      await suguvalService.updateCategory(action.categoryId, { name: action.name });
+      await getChecklistService('val').updateCategory(action.categoryId, { name: action.name });
       
       return {
         success: true,
@@ -602,7 +605,7 @@ class SuguvalActionService {
   private async executeReorderCategoriesAction(action: SuguReorderCategoriesAction): Promise<SuguManageResult> {
     try {
       console.log(`[SuguvalAction] Reordering categories: ${action.ids.join(', ')}...`);
-      await suguvalService.reorderCategories(action.ids);
+      await getChecklistService('val').reorderCategories(action.ids);
       
       return {
         success: true,
@@ -621,14 +624,14 @@ class SuguvalActionService {
       console.log(`[SuguvalAction] Adding item "${action.name}" to category "${action.categoryName}"...`);
       
       // Find category by name
-      const categories = await suguvalService.getCategories();
+      const categories = await getChecklistService('val').getCategories();
       const category = categories.find(c => c.name.toLowerCase() === action.categoryName.toLowerCase());
       
       if (!category) {
         return { success: false, type: 'add_item', restaurant: 'suguval', error: `Catégorie "${action.categoryName}" introuvable` };
       }
       
-      const newItem = await suguvalService.addItem({
+      const newItem = await getChecklistService('val').addItem({
         categoryId: category.id,
         name: action.name,
         nameVi: action.nameVi || null,
@@ -651,7 +654,7 @@ class SuguvalActionService {
   private async executeDeleteItemAction(action: SuguDeleteItemAction): Promise<SuguManageResult> {
     try {
       console.log(`[SuguvalAction] Deleting item ${action.itemId}...`);
-      await suguvalService.deleteItem(action.itemId);
+      await getChecklistService('val').deleteItem(action.itemId);
       
       return {
         success: true,
@@ -668,7 +671,7 @@ class SuguvalActionService {
   private async executeAddCategoryAction(action: SuguAddCategoryAction): Promise<SuguManageResult> {
     try {
       console.log(`[SuguvalAction] Adding category "${action.name}" in zone ${action.zone}...`);
-      const newCategory = await suguvalService.addCategory(action.name, action.zone);
+      const newCategory = await getChecklistService('val').addCategory(action.name, action.zone);
       
       return {
         success: true,
@@ -688,11 +691,11 @@ class SuguvalActionService {
       console.log(`[SuguvalAction] Deleting category ${action.categoryId}...`);
       
       // Get category info before deletion for message
-      const categories = await suguvalService.getCategories();
+      const categories = await getChecklistService('val').getCategories();
       const category = categories.find(c => c.id === action.categoryId);
       const categoryName = category?.name || `ID ${action.categoryId}`;
       
-      await suguvalService.deleteCategory(action.categoryId);
+      await getChecklistService('val').deleteCategory(action.categoryId);
       
       return {
         success: true,
@@ -711,14 +714,14 @@ class SuguvalActionService {
       console.log(`[SuguvalAction] Moving item ${action.itemId} to category ${action.toCategoryId}...`);
       
       // Get category name for message
-      const categories = await suguvalService.getCategories();
+      const categories = await getChecklistService('val').getCategories();
       const targetCategory = categories.find(c => c.id === action.toCategoryId);
       
       if (!targetCategory) {
         return { success: false, type: 'move_item', restaurant: 'suguval', error: `Catégorie ID ${action.toCategoryId} introuvable` };
       }
       
-      await suguvalService.updateItem(action.itemId, { categoryId: action.toCategoryId });
+      await getChecklistService('val').updateItem(action.itemId, { categoryId: action.toCategoryId });
       
       return {
         success: true,
