@@ -316,22 +316,8 @@ function parseRechercheOperations(rawText: string): { entries: ParsedBankEntry[]
     }
 
 
-    // ── Business rule: REMISE CB is ALWAYS a credit (positive) ──
-    for (const entry of entries) {
-        if (/remise\s*cb/i.test(entry.label) && entry.amount < 0) {
-            console.warn(`[BankParser-RECH] Correcting negative REMISE CB: ${entry.label} ${entry.amount} → ${-entry.amount}`);
-            entry.amount = -entry.amount;
-            entry.category = "encaissement_cb";
-        }
-    }
-
-    // ── Business rule: CARTE X\d+ (carte bancaire fournisseur) is ALWAYS a debit (negative) ──
-    for (const entry of entries) {
-        if (/carte\s*x\d+/i.test(entry.label) && entry.amount > 0) {
-            console.warn(`[BankParser-RECH] Correcting positive CARTE entry: ${entry.label} ${entry.amount} → ${-entry.amount}`);
-            entry.amount = -entry.amount;
-        }
-    }
+    // ── Business rules: force correct debit/credit direction ──
+    fixEntryDirections(entries, "[BankParser-RECH]");
 
     // Sort by date
     entries.sort((a, b) => a.entryDate.localeCompare(b.entryDate));
@@ -733,6 +719,7 @@ function parseLines(rawText: string): { entries: ParsedBankEntry[]; meta: Partia
         label: string;
         absAmount: number; // always positive
         guessIsCredit: boolean; // initial keyword-based guess
+        locked: boolean; // true = subset-sum must NOT flip this entry
         category: string;
     }
     const rawEntries: RawEntry[] = [];
@@ -769,12 +756,14 @@ function parseLines(rawText: string): { entries: ParsedBankEntry[]; meta: Partia
         if (cleanDesc.length > 200) cleanDesc = cleanDesc.substring(0, 200);
 
         const guessIsCredit = detectCredit(cleanDesc, block.operDate);
+        const locked = isLockedDirection(cleanDesc);
 
         rawEntries.push({
             entryDate: convertDate(block.operDate),
             label: cleanDesc,
             absAmount: Math.round(mainAmount * 100) / 100,
             guessIsCredit,
+            locked,
             category: "",
         });
     }
@@ -784,6 +773,15 @@ function parseLines(rawText: string): { entries: ParsedBankEntry[]; meta: Partia
     // Phase 3: Assign debit/credit signs using TOTAUX DES MOUVEMENTS from the PDF
     // This is much more reliable than keyword-based detection
     let isCredit: boolean[] = rawEntries.map(e => e.guessIsCredit);
+
+    // Build locked indices: entries whose direction must NOT be flipped by subset-sum
+    const lockedIndices = new Set<number>();
+    for (let i = 0; i < rawEntries.length; i++) {
+        if (rawEntries[i].locked) lockedIndices.add(i);
+    }
+    if (lockedIndices.size > 0) {
+        console.log(`[BankParser] ${lockedIndices.size} entries locked (VIR EMIS/RECU, REMISE CB, CARTE): will not be flipped by subset-sum`);
+    }
 
     if (totalDebits > 0 && totalCredits > 0) {
         // We know the exact totals — use subset-sum to find correct assignment
@@ -799,25 +797,39 @@ function parseLines(rawText: string): { entries: ParsedBankEntry[]; meta: Partia
         if (!debitOk || !creditOk) {
             console.log(`[BankParser] Keyword-based guess is wrong, using totals-based correction...`);
 
-            // Try to find subset of amounts that sums to totalCredits
-            // (typically fewer credits than debits in a restaurant account)
-            const found = findSubsetSum(amounts, totalCredits);
-            if (found) {
-                isCredit = new Array(amounts.length).fill(false);
-                for (const idx of found) isCredit[idx] = true;
-                const verifyDebits = amounts.filter((a, i) => !isCredit[i]).reduce((s, a) => s + a, 0);
-                const verifyCredits = amounts.filter((a, i) => isCredit[i]).reduce((s, a) => s + a, 0);
-                console.log(`[BankParser] ✅ Subset-sum found: debits=${verifyDebits.toFixed(2)} credits=${verifyCredits.toFixed(2)}`);
-            } else {
-                // Subset for credits didn't work, try finding subset for debits
-                const foundDebits = findSubsetSum(amounts, totalDebits);
-                if (foundDebits) {
-                    isCredit = new Array(amounts.length).fill(true);
-                    for (const idx of foundDebits) isCredit[idx] = false;
-                    console.log(`[BankParser] ✅ Subset-sum (debits) found`);
+            // Pre-compute locked sums to subtract from targets
+            let lockedCreditSum = 0;
+            let lockedDebitSum = 0;
+            for (const idx of lockedIndices) {
+                if (isCredit[idx]) lockedCreditSum += amounts[idx];
+                else lockedDebitSum += amounts[idx];
+            }
+
+            // Build unlocked amounts for subset-sum
+            const unlockedIndices = amounts.map((_, i) => i).filter(i => !lockedIndices.has(i));
+            const unlockedAmounts = unlockedIndices.map(i => amounts[i]);
+            const targetUnlockedCredits = totalCredits - lockedCreditSum;
+
+            if (unlockedAmounts.length > 0 && targetUnlockedCredits >= 0) {
+                const found = findSubsetSum(unlockedAmounts, targetUnlockedCredits);
+                if (found) {
+                    // Reset only unlocked entries
+                    for (const ui of unlockedIndices) isCredit[ui] = false;
+                    for (const fi of found) isCredit[unlockedIndices[fi]] = true;
+                    const verifyDebits = amounts.filter((a, i) => !isCredit[i]).reduce((s, a) => s + a, 0);
+                    const verifyCredits = amounts.filter((a, i) => isCredit[i]).reduce((s, a) => s + a, 0);
+                    console.log(`[BankParser] ✅ Subset-sum found (locked respected): debits=${verifyDebits.toFixed(2)} credits=${verifyCredits.toFixed(2)}`);
                 } else {
-                    console.warn(`[BankParser] ⚠️ Subset-sum failed, falling back to keyword-based guess`);
-                    errors.push("⚠️ Classification débit/crédit automatique impossible — vérifier manuellement les montants");
+                    const targetUnlockedDebits = totalDebits - lockedDebitSum;
+                    const foundDebits = targetUnlockedDebits >= 0 ? findSubsetSum(unlockedAmounts, targetUnlockedDebits) : null;
+                    if (foundDebits) {
+                        for (const ui of unlockedIndices) isCredit[ui] = true;
+                        for (const fi of foundDebits) isCredit[unlockedIndices[fi]] = false;
+                        console.log(`[BankParser] ✅ Subset-sum (debits, locked respected) found`);
+                    } else {
+                        console.warn(`[BankParser] ⚠️ Subset-sum failed, falling back to keyword-based guess (locked entries preserved)`);
+                        errors.push("⚠️ Classification débit/crédit automatique impossible — vérifier manuellement les montants");
+                    }
                 }
             }
         } else {
@@ -839,22 +851,8 @@ function parseLines(rawText: string): { entries: ParsedBankEntry[]; meta: Partia
     }
 
 
-    // ── Business rule: REMISE CB is ALWAYS a credit (positive) ──
-    for (const entry of entries) {
-        if (/remise\s*cb/i.test(entry.label) && entry.amount < 0) {
-            console.warn(`[BankParser] Correcting negative REMISE CB: ${entry.label} ${entry.amount} → ${-entry.amount}`);
-            entry.amount = -entry.amount;
-            entry.category = "encaissement_cb";
-        }
-    }
-
-    // ── Business rule: CARTE X\d+ (paiement CB fournisseur) is ALWAYS a debit (negative) ──
-    for (const entry of entries) {
-        if (/carte\s*x\d+/i.test(entry.label) && entry.amount > 0) {
-            console.warn(`[BankParser] Correcting positive CARTE entry: ${entry.label} ${entry.amount} → ${-entry.amount}`);
-            entry.amount = -entry.amount;
-        }
-    }
+    // ── Business rules: force correct debit/credit direction ──
+    fixEntryDirections(entries, "[BankParser]");
 
     // Sort by date
     entries.sort((a, b) => a.entryDate.localeCompare(b.entryDate));
@@ -938,6 +936,61 @@ function findSubsetSum(amounts: number[], target: number): number[] | null {
         return result.map(sortedIdx => indexed[sortedIdx].i);
     }
     return null;
+}
+
+/**
+ * Post-parse correction: enforce hard business rules on entry direction.
+ * VIR EMIS = always debit (negative), VIR RECU = always credit (positive),
+ * REMISE CB = always credit, CARTE X = always debit.
+ */
+function fixEntryDirections(entries: ParsedBankEntry[], tag: string): void {
+    for (const entry of entries) {
+        const d = entry.label.toLowerCase();
+
+        // REMISE CB = always credit (positive)
+        if ((d.includes("remise cb") || d.includes("remisecb")) && entry.amount < 0) {
+            console.warn(`${tag} Correcting negative REMISE CB: ${entry.label} ${entry.amount} → ${-entry.amount}`);
+            entry.amount = -entry.amount;
+            entry.category = "encaissement_cb";
+        }
+
+        // CARTE X\d+ = always debit (negative)
+        if (/carte\s*x\d+/i.test(entry.label) && entry.amount > 0) {
+            console.warn(`${tag} Correcting positive CARTE: ${entry.label} ${entry.amount} → ${-entry.amount}`);
+            entry.amount = -entry.amount;
+        }
+
+        // VIR EMIS / VIR INSTANTANE EMIS / VIR EUROPEEN EMIS = always debit (negative)
+        if ((d.match(/vir\s+\w*\s*emis/i) || d.includes("vir instantane emis") || d.includes("vir europeen emis") || d.includes("virinstantaneemis") || d.includes("vireuropeenemis")) && entry.amount > 0) {
+            console.warn(`${tag} Correcting positive VIR EMIS → debit: ${entry.label} ${entry.amount} → ${-entry.amount}`);
+            entry.amount = -entry.amount;
+            entry.category = categorizeEntry(entry.label, entry.amount);
+        }
+
+        // VIR RECU / VIR INSTANTANE RECU / VIR EUROPEEN RECU = always credit (positive)
+        if ((d.includes("vir recu") || d.includes("virrecu") || d.includes("vir reçu") || d.includes("vir instantane recu") || d.includes("vir europeen recu") || d.match(/vir\s+\w*\s*recu/i) || d.match(/vir\s+\w*\s*reçu/i)) && entry.amount < 0) {
+            console.warn(`${tag} Correcting negative VIR RECU → credit: ${entry.label} ${entry.amount} → ${-entry.amount}`);
+            entry.amount = -entry.amount;
+            entry.category = categorizeEntry(entry.label, entry.amount);
+        }
+    }
+}
+
+/**
+ * Determine if a transaction's direction is LOCKED and must not be flipped
+ * by the subset-sum algorithm. VIR EMIS = always debit, VIR RECU = always credit.
+ */
+function isLockedDirection(desc: string): boolean {
+    const d = desc.toLowerCase();
+    if (d.includes("remise cb") || d.includes("remisecb")) return true;
+    if (/carte\s*x\d+/i.test(d)) return true;
+    if (d.includes("vir recu") || d.includes("virrecu") || d.includes("vir reçu")) return true;
+    if (d.includes("vir instantane recu") || d.includes("vir europeen recu")) return true;
+    if (d.match(/vir\s+\w*\s*recu/i) || d.match(/vir\s+\w*\s*reçu/i)) return true;
+    if (d.includes("vir europeen emis") || d.includes("vireuropeenemis")) return true;
+    if (d.includes("vir instantane emis") || d.includes("virinstantaneemis")) return true;
+    if (d.match(/vir\s+\w*\s*emis/i) || d.match(/vir\s+\w*\s*émis/i)) return true;
+    return false;
 }
 
 /**
@@ -1326,14 +1379,8 @@ export function parseBankStatementCSV(csvText: string): BankStatementParseResult
     }
 
 
-    // ── Business rule: REMISE CB is ALWAYS a credit (positive) ──
-    for (const entry of entries) {
-        if (/remise\s*cb/i.test(entry.label) && entry.amount < 0) {
-            console.warn(`[BankParser] Correcting negative REMISE CB: ${entry.label} ${entry.amount} → ${-entry.amount}`);
-            entry.amount = -entry.amount;
-            entry.category = "encaissement_cb";
-        }
-    }
+    // ── Business rules: force correct debit/credit direction ──
+    fixEntryDirections(entries, "[BankParser-CSV]");
 
     // Sort by date
     entries.sort((a, b) => a.entryDate.localeCompare(b.entryDate));
