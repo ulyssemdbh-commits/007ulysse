@@ -367,14 +367,17 @@ async function processPayrollImportAsync(
                 match = existingEmps.find(e => {
                     const eLast = e.lastName.toUpperCase().trim();
                     const eFirst = e.firstName.toUpperCase().trim();
-                    if (eLast === pLast) return true;
+                    if (eLast === pLast && eFirst === pFirst) return true;
                     if (eFirst === pLast && eLast === pFirst) return true;
                     const pFull = `${pFirst} ${pLast}`;
                     const eFull = `${eFirst} ${eLast}`;
-                    if (pFull.includes(eLast) && pFull.includes(eFirst)) return true;
-                    if (eFull.includes(pLast) || pFull.includes(eLast)) return true;
+                    if (pFull.includes(eLast) && pFull.includes(eFirst) && eLast.length >= 3 && eFirst.length >= 2) return true;
+                    if (eFull.includes(pLast) && eFull.includes(pFirst) && pLast.length >= 3 && pFirst.length >= 2) return true;
                     return false;
                 }) || null;
+                if (match) {
+                    console.log(`[SUGU] Fuzzy match: parsed "${pFirst} ${pLast}" → existing "${match.firstName} ${match.lastName}" (ID ${match.id})`);
+                }
             }
 
             if (match) {
@@ -492,6 +495,9 @@ async function processPayrollImportAsync(
                 period: parsed.period,
                 grossSalary: parsed.grossSalary,
                 netSalary: parsed.netSalary,
+                socialCharges: parsed.socialCharges || 0,
+                employerCharges: parsed.employerCharges || null,
+                congesRestants: parsed.congesRestants || null,
             },
             actions: { employeeCreated, employeeId, payrollCreated },
             confidence: result.confidence,

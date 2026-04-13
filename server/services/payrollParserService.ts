@@ -282,16 +282,18 @@ function coreParsePayroll(text: string, fileName?: string): ParsedPayrollData {
   const employeePatterns = [
     /(?:Salari[ée]|Employ[ée])\s*:?\s*(?:M\.|Mme|Mr|Mlle)\s+([A-ZÀ-Ü][A-ZÀ-Ü\-]+)\s+([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü\-\s]+?)(?:\n|$)/m,
     /(?:M\.|Mme|Mr|Mlle)\s+([A-ZÀ-Ü][A-ZÀ-Ü\-]+)\s+([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü\-\s]+?)(?:\n|$)/m,
-    /(?:M\.|Mme|Mr|Mlle)\s+([A-ZÀ-Ü][A-ZÀ-Ü\-]+)\s+([A-ZÀ-Ü][A-ZÀ-Ü\-]+)/m,
-    /Nom\s*:?\s*([A-ZÀ-Ü]+)\s+Pr[ée]nom\s*:?\s*([A-ZÀ-Üa-zà-ü]+)/i,
-    /Salari[ée]\s*:?\s*([A-ZÀ-Ü]+)\s+([A-ZÀ-Üa-zà-ü]+)/i,
-    /NOM\s*:?\s*([A-ZÀ-Ü\-]+)\s+([A-ZÀ-Üa-zà-ü\-]+)/,
+    /(?:M\.|Mme|Mr|Mlle)\s+([A-ZÀ-Ü][A-ZÀ-Ü\-]+)\s+([A-ZÀ-Ü][A-ZÀ-Ü\-\s]+[A-ZÀ-Ü])/m,
+    /Nom\s*:?\s*([A-ZÀ-Ü]+)\s+Pr[ée]nom\s*:?\s*([A-ZÀ-Üa-zà-ü\s]+)/i,
+    /Salari[ée]\s*:?\s*([A-ZÀ-Ü]+)\s+([A-ZÀ-Üa-zà-ü\s]+)/i,
+    /NOM\s*:?\s*([A-ZÀ-Ü\-]+)\s+([A-ZÀ-Üa-zà-ü\-\s]+)/,
   ];
   for (const pat of employeePatterns) {
     const m = text.match(pat);
     if (m) {
       const candidateLN = m[1].trim();
-      const candidateFN = m[2].trim().replace(/\s+.*/, "");
+      const rawFN = m[2].trim();
+      const fnWords = rawFN.split(/\s+/).filter(w => w.length > 0 && !INVALID_EMPLOYEE_NAMES.has(w.toUpperCase()));
+      const candidateFN = fnWords.length > 0 ? fnWords.join(" ") : rawFN.replace(/\s+.*/, "");
       if (isValidEmployeeName(candidateLN, candidateFN)) {
         data.employee.lastName = candidateLN;
         data.employee.firstName = candidateFN;
@@ -303,18 +305,27 @@ function coreParsePayroll(text: string, fileName?: string): ParsedPayrollData {
   }
 
   if (fileName) {
-    const fnMatch = fileName.match(/BS\s*\d{4}\s+(.+?)\.pdf/i);
+    const fnMatch = fileName.match(/BS[\s_]*\d{2,4}[\s_]+(.+?)(?:[\s_]\d{10,})?\.pdf/i);
     if (fnMatch) {
-      const parts = fnMatch[1].trim().split(/\s+/);
+      const parts = fnMatch[1].trim().split(/[\s_]+/).filter(p => p.length > 0);
       if (parts.length >= 2) {
-        const fnLastName = parts[0].toUpperCase();
-        const fnFirstName = parts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
+        const allUpper = parts.map(p => p.toUpperCase());
+        const fnLastName = allUpper[allUpper.length - 1];
+        const fnFirstName = allUpper.slice(0, -1).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
         if (!data.employee.lastName || !isValidEmployeeName(data.employee.lastName, data.employee.firstName)) {
           data.employee.lastName = fnLastName;
           data.employee.firstName = fnFirstName;
           console.log(`[PayrollParser:Core] Employee from filename: ${data.employee.lastName} ${data.employee.firstName}`);
-        } else if (data.employee.lastName && fnLastName !== data.employee.lastName.toUpperCase()) {
-          console.log(`[PayrollParser:Core] Filename name (${fnLastName} ${fnFirstName}) differs from parsed (${data.employee.lastName} ${data.employee.firstName})`);
+        } else {
+          const parsedFull = `${data.employee.firstName} ${data.employee.lastName}`.toUpperCase();
+          const fileFull = allUpper.join(" ");
+          if (fileFull.length > parsedFull.length && fileFull.includes(data.employee.lastName.toUpperCase())) {
+            data.employee.lastName = fnLastName;
+            data.employee.firstName = fnFirstName;
+            console.log(`[PayrollParser:Core] Filename has more complete name: ${data.employee.lastName} ${data.employee.firstName} (was: ${parsedFull})`);
+          } else if (fnLastName !== data.employee.lastName.toUpperCase()) {
+            console.log(`[PayrollParser:Core] Filename name (${fnLastName} ${fnFirstName}) differs from parsed (${data.employee.lastName} ${data.employee.firstName})`);
+          }
         }
       }
     }
