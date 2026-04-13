@@ -205,7 +205,31 @@ export const aiRouter = {
         throw geminiError;
       }
     } else {
-      return this.streamOpenAI(messages, config.model || DEFAULT_OPENAI_MODEL, onChunk, signal);
+      try {
+        return await this.streamOpenAI(messages, config.model || DEFAULT_OPENAI_MODEL, onChunk, signal);
+      } catch (openaiError: any) {
+        const isQuotaOrRate = openaiError?.status === 429 || openaiError?.code === 'insufficient_quota' || openaiError?.type === 'insufficient_quota';
+        if (isQuotaOrRate) {
+          console.warn("[AIRouter] OpenAI quota/rate exceeded, falling back...");
+          if (isGeminiAvailable()) {
+            console.log("[AIRouter] Falling back to Gemini");
+            try {
+              return await this.streamGemini(messages, DEFAULT_GEMINI_MODEL, onChunk, signal);
+            } catch (geminiError) {
+              console.error("[AIRouter] Gemini fallback also failed:", geminiError);
+              if (isGrokAvailable()) {
+                console.log("[AIRouter] Falling back to Grok");
+                return await this.streamGrok(messages, DEFAULT_GROK_MODEL, onChunk, signal);
+              }
+              throw geminiError;
+            }
+          } else if (isGrokAvailable()) {
+            console.log("[AIRouter] Falling back to Grok");
+            return await this.streamGrok(messages, DEFAULT_GROK_MODEL, onChunk, signal);
+          }
+        }
+        throw openaiError;
+      }
     }
   },
 
@@ -471,12 +495,57 @@ export const aiRouter = {
         throw geminiError;
       }
     } else {
-      const response = await openaiClient.chat.completions.create({
-        model: config.model || DEFAULT_OPENAI_MODEL,
-        messages: messages as any,
-        max_completion_tokens: 8192,
-      });
-      return response.choices[0]?.message?.content || "";
+      try {
+        const response = await openaiClient.chat.completions.create({
+          model: config.model || DEFAULT_OPENAI_MODEL,
+          messages: messages as any,
+          max_completion_tokens: 8192,
+        });
+        return response.choices[0]?.message?.content || "";
+      } catch (openaiError: any) {
+        const isQuotaOrRate = openaiError?.status === 429 || openaiError?.code === 'insufficient_quota' || openaiError?.type === 'insufficient_quota';
+        if (isQuotaOrRate) {
+          console.warn("[AIRouter] OpenAI quota/rate exceeded (non-streaming), falling back...");
+          if (isGeminiAvailable()) {
+            console.log("[AIRouter] Non-streaming fallback to Gemini");
+            try {
+              const geminiClient = getGeminiClient();
+              if (!geminiClient) throw new Error("Gemini not available");
+              const geminiMessages = convertMessagesToGemini(messages);
+              const response = await geminiClient.models.generateContent({
+                model: DEFAULT_GEMINI_MODEL,
+                contents: geminiMessages,
+              });
+              return response.text || "";
+            } catch (geminiError) {
+              console.error("[AIRouter] Gemini fallback also failed:", geminiError);
+              if (isGrokAvailable()) {
+                console.log("[AIRouter] Non-streaming fallback to Grok");
+                const grokClient = getGrokClient();
+                if (!grokClient) throw new Error("Grok not available");
+                const grokResp = await grokClient.chat.completions.create({
+                  model: DEFAULT_GROK_MODEL,
+                  messages: messages as any,
+                  max_tokens: 8192,
+                });
+                return grokResp.choices[0]?.message?.content || "";
+              }
+              throw geminiError;
+            }
+          } else if (isGrokAvailable()) {
+            console.log("[AIRouter] Non-streaming fallback to Grok");
+            const grokClient = getGrokClient();
+            if (!grokClient) throw new Error("Grok not available");
+            const grokResp = await grokClient.chat.completions.create({
+              model: DEFAULT_GROK_MODEL,
+              messages: messages as any,
+              max_tokens: 8192,
+            });
+            return grokResp.choices[0]?.message?.content || "";
+          }
+        }
+        throw openaiError;
+      }
     }
   },
 

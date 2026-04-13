@@ -360,7 +360,8 @@ export function RHTab({ restricted }: { restricted?: boolean } = {}) {
     const [showPayrollForm, setShowPayrollForm] = useState(false);
     const [showAbsenceForm, setShowAbsenceForm] = useState(false);
     const [empForm, setEmpForm] = useState<Partial<Employee>>({ contractType: "CDI", isActive: true, startDate: new Date().toISOString().substring(0, 10) });
-    const [payForm, setPayForm] = useState<Partial<Payroll>>({ period: new Date().toISOString().substring(0, 7) });
+    const [payForm, setPayForm] = useState<Partial<Payroll & { newEmployeeFirstName?: string; newEmployeeLastName?: string; newEmployeeRole?: string; newEmployeeContractType?: string }>>({ period: new Date().toISOString().substring(0, 7) });
+    const [payFormNewEmployee, setPayFormNewEmployee] = useState(false);
     const [absForm, setAbsForm] = useState<Partial<Absence>>({ type: "conge", isApproved: false, startDate: new Date().toISOString().substring(0, 10) });
     const [rhSearch, setRhSearch] = useState("");
     const [contractFilter, setContractFilter] = useState<string>("all");
@@ -419,7 +420,19 @@ export function RHTab({ restricted }: { restricted?: boolean } = {}) {
             };
             return apiRequest("POST", "/api/v2/sugu-management/payroll", normalized);
         },
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/v2/sugu-management/payroll"] }); setShowPayrollForm(false); setPayForm({ period: new Date().toISOString().substring(0, 7) }); toast({ title: "Fiche de paie ajoutée" }); },
+        onSuccess: (_data: any) => {
+            qc.invalidateQueries({ queryKey: ["/api/v2/sugu-management/payroll"] });
+            qc.invalidateQueries({ queryKey: ["/api/v2/sugu-management/employees"] });
+            setShowPayrollForm(false);
+            setPayForm({ period: new Date().toISOString().substring(0, 7) });
+            setPayFormNewEmployee(false);
+            const resp = _data as any;
+            if (resp?.employeeCreated) {
+                toast({ title: "Fiche de paie ajoutée + Employé créé", description: "L'employé a été automatiquement ajouté à la liste" });
+            } else {
+                toast({ title: "Fiche de paie ajoutée" });
+            }
+        },
         onError: (err: any) => { toast({ title: "Erreur", description: err?.message || "Impossible d'ajouter la fiche de paie", variant: "destructive" }); }
     });
     const createAbsMut = useMutation({
@@ -940,25 +953,71 @@ export function RHTab({ restricted }: { restricted?: boolean } = {}) {
                 </button>
             </FormModal>
 
-            <FormModal title="Nouvelle Fiche de Paie" open={showPayrollForm} onClose={() => setShowPayrollForm(false)}>
+            <FormModal title="Nouvelle Fiche de Paie" open={showPayrollForm} onClose={() => { setShowPayrollForm(false); setPayFormNewEmployee(false); }}>
                 <Field label="Employé">
-                    <FormSelect aria-label="Employé" className={ic} value={payForm.employeeId ?? ""} onChange={e => setPayForm({ ...payForm, employeeId: parseInt(e.target.value) })}>
-                        <option value="">-- Sélectionner --</option>
-                        {activeEmps.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
-                    </FormSelect>
+                    {!payFormNewEmployee ? (
+                        <div className="space-y-2">
+                            <FormSelect aria-label="Employé" className={ic} value={payForm.employeeId ?? ""} onChange={e => {
+                                const val = e.target.value;
+                                if (val === "__new__") {
+                                    setPayFormNewEmployee(true);
+                                    setPayForm({ ...payForm, employeeId: undefined });
+                                } else {
+                                    setPayForm({ ...payForm, employeeId: parseInt(val) });
+                                }
+                            }} data-testid="select-payroll-employee">
+                                <option value="">-- Sélectionner --</option>
+                                {activeEmps.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
+                                <option value="__new__">+ Nouvel employé...</option>
+                            </FormSelect>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs ${dk ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                                <Users className="w-3.5 h-3.5" />
+                                <span>Nouvel employé — sera créé automatiquement</span>
+                                <button onClick={() => { setPayFormNewEmployee(false); setPayForm({ ...payForm, newEmployeeFirstName: undefined, newEmployeeLastName: undefined, newEmployeeRole: undefined, newEmployeeContractType: undefined }); }} className="ml-auto hover:opacity-70" data-testid="btn-cancel-new-employee">
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className={`text-xs font-medium mb-1 block ${dk ? "text-white/60" : "text-slate-500"}`}>Prénom</label>
+                                    <input aria-label="Prénom nouvel employé" className={ic} value={payForm.newEmployeeFirstName || ""} onChange={e => setPayForm({ ...payForm, newEmployeeFirstName: e.target.value })} placeholder="Prénom" data-testid="input-new-emp-firstname" />
+                                </div>
+                                <div>
+                                    <label className={`text-xs font-medium mb-1 block ${dk ? "text-white/60" : "text-slate-500"}`}>Nom *</label>
+                                    <input aria-label="Nom nouvel employé" className={ic} value={payForm.newEmployeeLastName || ""} onChange={e => setPayForm({ ...payForm, newEmployeeLastName: e.target.value })} placeholder="Nom de famille" data-testid="input-new-emp-lastname" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className={`text-xs font-medium mb-1 block ${dk ? "text-white/60" : "text-slate-500"}`}>Poste</label>
+                                    <input aria-label="Poste nouvel employé" className={ic} value={payForm.newEmployeeRole || ""} onChange={e => setPayForm({ ...payForm, newEmployeeRole: e.target.value })} placeholder="Ex: Serveur, Cuisinier..." data-testid="input-new-emp-role" />
+                                </div>
+                                <div>
+                                    <label className={`text-xs font-medium mb-1 block ${dk ? "text-white/60" : "text-slate-500"}`}>Contrat</label>
+                                    <FormSelect aria-label="Type contrat nouvel employé" className={ic} value={payForm.newEmployeeContractType || "CDI"} onChange={e => setPayForm({ ...payForm, newEmployeeContractType: e.target.value })} data-testid="select-new-emp-contract">
+                                        {CONTRACT_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </FormSelect>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </Field>
-                <Field label="Période (YYYY-MM)"><input aria-label="Période (YYYY-MM)" type="text" pattern="\d{4}-\d{2}" className={ic} value={payForm.period || ""} onChange={e => setPayForm({ ...payForm, period: e.target.value })} placeholder="2026-01" /></Field>
+                <Field label="Période (YYYY-MM)"><input aria-label="Période (YYYY-MM)" type="text" pattern="\d{4}-\d{2}" className={ic} value={payForm.period || ""} onChange={e => setPayForm({ ...payForm, period: e.target.value })} placeholder="2026-01" data-testid="input-payroll-period" /></Field>
                 <div className="grid grid-cols-2 gap-4">
-                    <Field label="Salaire brut (€)"><input aria-label="Salaire brut (€)" type="number" step="0.01" className={ic} value={payForm.grossSalary ?? ""} onChange={e => setPayForm({ ...payForm, grossSalary: e.target.value === "" ? undefined : safeFloat(e.target.value) })} /></Field>
-                    <Field label="Salaire net (€)"><input aria-label="Salaire net (€)" type="number" step="0.01" className={ic} value={payForm.netSalary ?? ""} onChange={e => setPayForm({ ...payForm, netSalary: e.target.value === "" ? undefined : safeFloat(e.target.value) })} /></Field>
+                    <Field label="Salaire brut (€)"><input aria-label="Salaire brut (€)" type="number" step="0.01" className={ic} value={payForm.grossSalary ?? ""} onChange={e => setPayForm({ ...payForm, grossSalary: e.target.value === "" ? undefined : safeFloat(e.target.value) })} data-testid="input-payroll-gross" /></Field>
+                    <Field label="Salaire net (€)"><input aria-label="Salaire net (€)" type="number" step="0.01" className={ic} value={payForm.netSalary ?? ""} onChange={e => setPayForm({ ...payForm, netSalary: e.target.value === "" ? undefined : safeFloat(e.target.value) })} data-testid="input-payroll-net" /></Field>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                     <Field label="Charges sociales (€)"><input aria-label="Charges sociales (€)" type="number" step="0.01" className={ic} value={payForm.socialCharges ?? ""} onChange={e => setPayForm({ ...payForm, socialCharges: e.target.value === "" ? undefined : safeFloat(e.target.value) })} /></Field>
                     <Field label="Primes (€)"><input aria-label="Primes (€)" type="number" step="0.01" className={ic} value={payForm.bonus ?? ""} onChange={e => setPayForm({ ...payForm, bonus: e.target.value === "" ? undefined : safeFloat(e.target.value) })} /></Field>
                     <Field label="Heures sup. (€)"><input aria-label="Heures sup. (€)" type="number" step="0.01" className={ic} value={payForm.overtime ?? ""} onChange={e => setPayForm({ ...payForm, overtime: e.target.value === "" ? undefined : safeFloat(e.target.value) })} /></Field>
                 </div>
-                <button onClick={() => createPayMut.mutate(payForm)} className={btnPrimary + " w-full justify-center"} disabled={!payForm.employeeId || !payForm.grossSalary || createPayMut.isPending}>
-                    {createPayMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Enregistrer
+                <button onClick={() => createPayMut.mutate(payForm)} className={btnPrimary + " w-full justify-center"} disabled={(!payForm.employeeId && !payForm.newEmployeeLastName) || !payForm.grossSalary || createPayMut.isPending} data-testid="button-submit-payroll">
+                    {createPayMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {payFormNewEmployee ? "Créer employé + Enregistrer fiche" : "Enregistrer"}
                 </button>
             </FormModal>
 

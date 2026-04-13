@@ -135,43 +135,95 @@ router.post("/payroll", async (req: Request, res: Response) => {
     console.log("[SUGU] POST /payroll body:", JSON.stringify(req.body));
     try {
         await tablesReady;
-        let parsed: any;
-        try {
-            parsed = insertSuguPayrollSchema.parse(req.body);
-        } catch (zodErr: any) {
-            console.error("[SUGU] Payroll Zod validation failed:", zodErr?.issues || zodErr?.message || zodErr);
-            const b = req.body || {};
-            parsed = {
-                employeeId: typeof b.employeeId === "number" ? b.employeeId : parseInt(b.employeeId) || 0,
-                period: b.period || new Date().toISOString().substring(0, 7),
-                grossSalary: typeof b.grossSalary === "number" ? b.grossSalary : parseFloat(b.grossSalary) || 0,
-                netSalary: typeof b.netSalary === "number" ? b.netSalary : parseFloat(b.netSalary) || 0,
-                socialCharges: typeof b.socialCharges === "number" ? b.socialCharges : b.socialCharges ? parseFloat(b.socialCharges) : 0,
-                bonus: typeof b.bonus === "number" ? b.bonus : b.bonus ? parseFloat(b.bonus) : 0,
-                overtime: typeof b.overtime === "number" ? b.overtime : b.overtime ? parseFloat(b.overtime) : 0,
-                isPaid: b.isPaid === true || b.isPaid === "true",
-                paidDate: b.paidDate || null,
-                notes: b.notes || null,
-            };
-            console.log("[SUGU] Using manual fallback for payroll:", JSON.stringify(parsed));
+        const b = req.body || {};
+        let employeeId = typeof b.employeeId === "number" ? b.employeeId : b.employeeId ? parseInt(b.employeeId) : null;
+        let employeeCreated = false;
+
+        if ((!employeeId || employeeId <= 0) && b.newEmployeeLastName) {
+            const firstName = (b.newEmployeeFirstName || "").trim() || "Inconnu";
+            const lastName = (b.newEmployeeLastName || "").trim();
+            console.log(`[SUGU] Auto-creating employee: ${firstName} ${lastName}`);
+
+            const existingEmps = await db.select().from(suguEmployees);
+            const match = existingEmps.find(e =>
+                e.lastName.toLowerCase() === lastName.toLowerCase() &&
+                e.firstName.toLowerCase() === firstName.toLowerCase()
+            );
+
+            if (match) {
+                employeeId = match.id;
+                console.log(`[SUGU] Employee already exists: ${match.firstName} ${match.lastName} (ID ${match.id})`);
+                if (b.grossSalary && (!match.monthlySalary || match.monthlySalary === 0)) {
+                    await db.update(suguEmployees).set({ monthlySalary: parseFloat(b.grossSalary) }).where(eq(suguEmployees.id, match.id));
+                }
+            } else {
+                try {
+                    const [newEmp] = await db.insert(suguEmployees).values({
+                        firstName,
+                        lastName,
+                        role: b.newEmployeeRole || "Non précisé",
+                        contractType: b.newEmployeeContractType || "CDI",
+                        monthlySalary: b.grossSalary ? parseFloat(b.grossSalary) : null,
+                        hourlyRate: null,
+                        weeklyHours: 35,
+                        startDate: new Date().toISOString().substring(0, 10),
+                        isActive: true,
+                    }).returning();
+                    employeeId = newEmp.id;
+                    employeeCreated = true;
+                    console.log(`[SUGU] Created new employee: ${firstName} ${lastName} (ID ${newEmp.id})`);
+                    emitSuguEmployeesUpdated();
+                } catch (empErr: any) {
+                    console.error("[SUGU] Failed to auto-create employee:", empErr?.message);
+                    const result = await db.execute(sql`
+                        INSERT INTO sugu_employees (first_name, last_name, role, contract_type, monthly_salary, weekly_hours, start_date, is_active)
+                        VALUES (${firstName}, ${lastName}, ${b.newEmployeeRole || 'Non précisé'}, ${b.newEmployeeContractType || 'CDI'}, ${b.grossSalary ? parseFloat(b.grossSalary) : null}, ${35}, ${new Date().toISOString().substring(0, 10)}, ${true})
+                        RETURNING *
+                    `);
+                    const row = (result as any).rows?.[0] || (result as any)[0];
+                    if (row) {
+                        employeeId = row.id;
+                        employeeCreated = true;
+                        console.log(`[SUGU] Created employee via raw SQL: ${firstName} ${lastName} (ID ${row.id})`);
+                        emitSuguEmployeesUpdated();
+                    }
+                }
+            }
         }
+
+        if (!employeeId || employeeId <= 0) {
+            return res.status(400).json({ error: "Employé requis: sélectionnez un employé existant ou remplissez le nom du nouvel employé" });
+        }
+
+        const parsed = {
+            employeeId,
+            period: b.period || new Date().toISOString().substring(0, 7),
+            grossSalary: typeof b.grossSalary === "number" ? b.grossSalary : parseFloat(b.grossSalary) || 0,
+            netSalary: typeof b.netSalary === "number" ? b.netSalary : parseFloat(b.netSalary) || 0,
+            socialCharges: typeof b.socialCharges === "number" ? b.socialCharges : b.socialCharges ? parseFloat(b.socialCharges) : 0,
+            bonus: typeof b.bonus === "number" ? b.bonus : b.bonus ? parseFloat(b.bonus) : 0,
+            overtime: typeof b.overtime === "number" ? b.overtime : b.overtime ? parseFloat(b.overtime) : 0,
+            isPaid: b.isPaid === true || b.isPaid === "true",
+            paidDate: b.paidDate || null,
+            notes: b.notes || null,
+        };
 
         try {
             const [result] = await db.insert(suguPayroll).values(parsed).returning();
-            console.log("[SUGU] Payroll created via Drizzle:", result?.id);
-            res.json(result);
+            console.log("[SUGU] Payroll created via Drizzle:", result?.id, employeeCreated ? "(+ new employee)" : "");
+            res.json({ ...result, employeeCreated, employeeId });
             emitSuguPayrollUpdated();
             return;
         } catch (drizzleErr: any) {
             console.error("[SUGU] Drizzle insert failed for payroll:", drizzleErr?.message || drizzleErr);
             const result = await db.execute(sql`
                 INSERT INTO sugu_payroll (employee_id, period, gross_salary, net_salary, social_charges, employer_charges, total_employer_cost, bonus, overtime, is_paid, paid_date, notes)
-                VALUES (${parsed.employeeId}, ${parsed.period}, ${parsed.grossSalary}, ${parsed.netSalary}, ${parsed.socialCharges || 0}, ${parsed.employerCharges || null}, ${parsed.totalEmployerCost || null}, ${parsed.bonus || 0}, ${parsed.overtime || 0}, ${parsed.isPaid || false}, ${parsed.paidDate}, ${parsed.notes})
+                VALUES (${parsed.employeeId}, ${parsed.period}, ${parsed.grossSalary}, ${parsed.netSalary}, ${parsed.socialCharges || 0}, ${null}, ${null}, ${parsed.bonus || 0}, ${parsed.overtime || 0}, ${parsed.isPaid || false}, ${parsed.paidDate}, ${parsed.notes})
                 RETURNING *
             `);
             const row = (result as any).rows?.[0] || (result as any)[0];
-            console.log("[SUGU] Payroll created via raw SQL:", row?.id);
-            res.json(row);
+            console.log("[SUGU] Payroll created via raw SQL:", row?.id, employeeCreated ? "(+ new employee)" : "");
+            res.json({ ...row, employeeCreated, employeeId });
             emitSuguPayrollUpdated();
             return;
         }
