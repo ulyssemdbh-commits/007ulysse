@@ -389,16 +389,7 @@ router.get("/cash", async (req: Request, res: Response) => {
 
 const ticketImageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
-async function parseTicketWithGemini(base64Data: string, mimeType: string) {
-    const { GoogleGenAI } = await import("@google/genai");
-    const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Gemini API key not configured");
-    const geminiOpts: any = { apiKey };
-    if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
-        geminiOpts.httpOptions = { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL };
-    }
-    const gemini = new GoogleGenAI(geminiOpts);
-    const prompt = `Tu es un expert en lecture de tickets Z de caisse de restaurant en France.
+const TICKET_Z_PROMPT = `Tu es un expert en lecture de tickets Z de caisse de restaurant en France.
 Analyse cette photo d'un ticket Z (clôture de caisse) et extrait les montants exacts.
 
 Le ticket Z (appelé "FLASH" ou "CLOTURE CAISSE TOTALITE") contient :
@@ -427,17 +418,7 @@ Réponds UNIQUEMENT avec un JSON valide sans markdown, sans backticks :
 Si un champ n'est pas présent sur le ticket, mets null ou 0.
 Ne devine jamais un montant — utilise uniquement ce qui est lisible sur le ticket.`;
 
-    const response = await gemini.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{
-            role: "user",
-            parts: [
-                { text: prompt },
-                { inlineData: { mimeType, data: base64Data } },
-            ],
-        }],
-    });
-    const raw = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+function parseTicketResponse(raw: string) {
     const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
     let parsed: any;
     try {
@@ -464,12 +445,69 @@ Ne devine jamais un montant — utilise uniquement ce qui est lisible sur le tic
     };
 }
 
+async function parseTicketWithOpenAI(base64Data: string, mimeType: string) {
+    const OpenAI = (await import("openai")).default;
+    const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error("OpenAI API key not configured");
+    const opts: any = { apiKey };
+    if (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) opts.baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    const openai = new OpenAI(opts);
+    const dataUrl = `data:${mimeType};base64,${base64Data}`;
+    const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        max_tokens: 1000,
+        messages: [{
+            role: "user",
+            content: [
+                { type: "text", text: TICKET_Z_PROMPT },
+                { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
+            ],
+        }],
+    });
+    const raw = response.choices?.[0]?.message?.content || "";
+    console.log("[SUGU] Ticket Z parsed via OpenAI GPT-4o");
+    return parseTicketResponse(raw);
+}
+
+async function parseTicketWithGemini(base64Data: string, mimeType: string) {
+    const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Gemini API key not configured");
+    const { GoogleGenAI } = await import("@google/genai");
+    const geminiOpts: any = { apiKey };
+    if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
+        geminiOpts.httpOptions = { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL };
+    }
+    const gemini = new GoogleGenAI(geminiOpts);
+    const response = await gemini.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{
+            role: "user",
+            parts: [
+                { text: TICKET_Z_PROMPT },
+                { inlineData: { mimeType, data: base64Data } },
+            ],
+        }],
+    });
+    const raw = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    console.log("[SUGU] Ticket Z parsed via Gemini");
+    return parseTicketResponse(raw);
+}
+
+async function parseTicketVision(base64Data: string, mimeType: string) {
+    try {
+        return await parseTicketWithGemini(base64Data, mimeType);
+    } catch (geminiErr: any) {
+        console.warn("[SUGU] Gemini ticket parsing failed, falling back to OpenAI:", geminiErr.message?.substring(0, 120));
+        return await parseTicketWithOpenAI(base64Data, mimeType);
+    }
+}
+
 router.post("/cash/parse-ticket", hybridUpload({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }), async (req: Request, res: Response) => {
     try {
         if (!req.file) return res.status(400).json({ error: "No image file provided" });
         const base64Data = req.file.buffer.toString("base64");
         const mimeType = req.file.mimetype || "image/jpeg";
-        const result = await parseTicketWithGemini(base64Data, mimeType);
+        const result = await parseTicketVision(base64Data, mimeType);
         return res.json(result);
     } catch (err: any) {
         console.error("[SUGU] parse-ticket error:", err);
@@ -483,7 +521,7 @@ router.post("/cash/parse-ticket-base64", async (req: Request, res: Response) => 
         if (!image) return res.status(400).json({ error: "No image data provided" });
         const base64Data = image.replace(/^data:[^;]+;base64,/, "");
         const mime = mimeType || "image/jpeg";
-        const result = await parseTicketWithGemini(base64Data, mime);
+        const result = await parseTicketVision(base64Data, mime);
         return res.json(result);
     } catch (err: any) {
         console.error("[SUGU] parse-ticket-base64 error:", err);
