@@ -74,22 +74,22 @@ export function PeriodFilter({ periodKey, setPeriod, customFrom, setCustomFrom, 
     : dk ? "bg-white/5 text-white/60 hover:bg-white/10" : "bg-slate-100 text-slate-600 hover:bg-slate-200";
 
   return (
-    <div className="flex flex-wrap items-center gap-2" data-testid="period-filter">
+    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2" data-testid="period-filter">
       {tabs.map(t => (
         <button
           key={t.key}
           data-testid={`btn-period-${t.key}`}
           onClick={() => setPeriod(t.key)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${active(t.key)}`}
+          className={`px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition-all ${active(t.key)}`}
         >
           {t.icon ? <CalendarRange className="w-3.5 h-3.5" /> : t.label}
         </button>
       ))}
       {periodKey === "custom" && (
-        <div className="flex items-center gap-1.5">
-          <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className={`px-2 py-1 rounded-lg border text-xs ${dk ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-800"}`} data-testid="input-period-from" />
+        <div className="flex items-center gap-1.5 w-full sm:w-auto mt-1 sm:mt-0">
+          <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className={`px-2 py-1 rounded-lg border text-xs flex-1 sm:flex-none ${dk ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-800"}`} data-testid="input-period-from" />
           <span className={`text-xs ${dk ? "text-white/40" : "text-slate-400"}`}>→</span>
-          <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className={`px-2 py-1 rounded-lg border text-xs ${dk ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-800"}`} data-testid="input-period-to" />
+          <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className={`px-2 py-1 rounded-lg border text-xs flex-1 sm:flex-none ${dk ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-800"}`} data-testid="input-period-to" />
         </div>
       )}
     </div>
@@ -173,12 +173,12 @@ export function Card({ title, icon: Icon, children, action, cardId, defaultColla
 
     return (
         <div className={dk ? "bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm" : "bg-white border border-slate-200 rounded-2xl shadow-sm"}>
-            <div className={`flex items-center justify-between px-5 py-4 border-b ${dk ? "border-white/10" : "border-slate-200"}`}>
-                <div className="flex items-center gap-2">
-                    <Icon className="w-5 h-5 text-orange-500" />
-                    <h2 className={`font-semibold ${dk ? "text-white" : "text-slate-800"}`}>{title}</h2>
+            <div className={`flex items-center justify-between px-3 sm:px-5 py-3 sm:py-4 border-b ${dk ? "border-white/10" : "border-slate-200"} gap-2`}>
+                <div className="flex items-center gap-2 min-w-0">
+                    <Icon className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                    <h2 className={`font-semibold text-sm sm:text-base truncate ${dk ? "text-white" : "text-slate-800"}`}>{title}</h2>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                     {action}
                     <button
                         onClick={() => setCollapsed(v => !v)}
@@ -190,7 +190,7 @@ export function Card({ title, icon: Icon, children, action, cardId, defaultColla
                     </button>
                 </div>
             </div>
-            {!collapsed && <div className="p-5">{children}</div>}
+            {!collapsed && <div className="p-3 sm:p-5">{children}</div>}
         </div>
     );
 }
@@ -254,13 +254,13 @@ export function FormModal({ title, open, onClose, children }: { title: string; o
     const dk = useSuguDark();
     if (!open) return null;
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={onClose}>
-            <div className={`${dk ? "bg-slate-900 border-white/10" : "bg-white border-slate-200"} border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
-                <div className={`flex items-center justify-between px-5 py-4 border-b ${dk ? "border-white/10" : "border-slate-200"}`}>
-                    <h3 className={`font-semibold ${dk ? "text-white" : "text-slate-800"}`}>{title}</h3>
-                    <button onClick={onClose} className={`p-1 rounded-lg ${dk ? "hover:bg-white/10" : "hover:bg-slate-100"}`} title="Fermer"><X className="w-5 h-5" /></button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+            <div className={`${dk ? "bg-slate-900 border-white/10" : "bg-white border-slate-200"} border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] overflow-y-auto pb-safe`} onClick={e => e.stopPropagation()}>
+                <div className={`flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b ${dk ? "border-white/10" : "border-slate-200"} sticky top-0 ${dk ? "bg-slate-900" : "bg-white"} z-10`}>
+                    <h3 className={`font-semibold text-sm sm:text-base ${dk ? "text-white" : "text-slate-800"}`}>{title}</h3>
+                    <button onClick={onClose} className={`p-1.5 rounded-lg ${dk ? "hover:bg-white/10" : "hover:bg-slate-100"}`} title="Fermer"><X className="w-5 h-5" /></button>
                 </div>
-                <div className="p-5 space-y-4">{children}</div>
+                <div className="p-4 sm:p-5 space-y-4">{children}</div>
             </div>
         </div>
     );

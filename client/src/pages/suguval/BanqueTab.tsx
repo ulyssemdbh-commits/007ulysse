@@ -294,10 +294,10 @@ export function BanqueTab({ compactCards, setCompactCards, restricted }: { compa
                 <StatCard label="Non rapprochées" value={String(unreconciledCount)} icon={AlertTriangle} color="orange" compact={compactCards} />
             </div>
             {/* Search + Filters */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-2 items-center">
-                <div className={`flex items-center gap-2 ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-lg px-3 py-2 lg:col-span-2`}>
-                    <Search className={`w-4 h-4 ${dk ? "text-white/40" : "text-slate-400"}`} />
-                    <input value={bankSearch} onChange={e => setBankSearch(e.target.value)} placeholder="Rechercher libellé, banque, notes..." className="bg-transparent w-full text-sm focus:outline-none" />
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 items-center">
+                <div className={`col-span-2 flex items-center gap-2 ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-lg px-3 py-2`}>
+                    <Search className={`w-4 h-4 flex-shrink-0 ${dk ? "text-white/40" : "text-slate-400"}`} />
+                    <input value={bankSearch} onChange={e => setBankSearch(e.target.value)} placeholder="Rechercher libellé, banque..." className="bg-transparent w-full text-sm focus:outline-none" />
                 </div>
                 <FormSelect title="Filtrer par rapprochement" className={ic} value={reconciledFilter} onChange={e => setReconciledFilter(e.target.value as any)}>
                     <option value="all">Toutes écritures</option>
@@ -306,10 +306,10 @@ export function BanqueTab({ compactCards, setCompactCards, restricted }: { compa
                 </FormSelect>
                 <FormSelect title="Filtrer par flux" className={ic} value={bankFlowFilter} onChange={e => setBankFlowFilter(e.target.value as any)}>
                     <option value="all">Crédits + Débits</option>
-                    <option value="credit">Crédits uniquement</option>
-                    <option value="debit">Débits uniquement</option>
+                    <option value="credit">Crédits</option>
+                    <option value="debit">Débits</option>
                 </FormSelect>
-                <button onClick={exportBankCSV} className={`px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 ${dk ? "text-white" : "text-slate-800"} whitespace-nowrap`}>Export CSV</button>
+                <button onClick={exportBankCSV} className={`col-span-2 sm:col-span-1 px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 ${dk ? "text-white" : "text-slate-800"} whitespace-nowrap`}>Export CSV</button>
                 <button onClick={() => setShowRapprochement(v => !v)} data-testid="button-toggle-rapprochement" className={`px-3 py-2 text-sm rounded-lg border font-medium transition whitespace-nowrap ${showRapprochement ? "bg-orange-500/20 border-orange-500/40 text-orange-400" : dk ? "border-white/20 text-white/60 hover:bg-white/5" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}>
                     🔗 Rapprochement {unreconciledCount > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-orange-500/30 text-orange-300 text-xs">{unreconciledCount}</span>}
                 </button>
@@ -701,13 +701,14 @@ export function BanqueTab({ compactCards, setCompactCards, restricted }: { compa
             {/* Bank Entries */}
             <Card title="Relevé Bancaire" icon={Landmark}
                 action={
-                    !restricted ? <div className="flex gap-2">
+                    !restricted ? <div className="flex flex-wrap gap-1.5 sm:gap-2">
                         <input ref={fileInputRef} type="file" accept=".pdf,.csv" onChange={handleFileImport} className="hidden" aria-label="Importer fichier PDF ou CSV" />
                         <button onClick={() => fileInputRef.current?.click()} className={btnPrimary} disabled={importing} title="Importer un relevé PDF ou CSV">
                             {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                            {importing ? "Import..." : "Importer PDF/CSV"}
+                            <span className="hidden sm:inline">{importing ? "Import..." : "Importer PDF/CSV"}</span>
+                            <span className="sm:hidden">{importing ? "..." : "Import"}</span>
                         </button>
-                        <button onClick={() => setShowBankForm(true)} className={btnPrimary}><Plus className="w-4 h-4" /> Nouvelle Écriture</button>
+                        <button onClick={() => setShowBankForm(true)} className={btnPrimary}><Plus className="w-4 h-4" /> <span className="hidden sm:inline">Nouvelle Écriture</span><span className="sm:hidden">+</span></button>
                     </div> : undefined
                 }>
                 {bankEntries.length === 0 ? (
@@ -764,17 +765,17 @@ export function BanqueTab({ compactCards, setCompactCards, restricted }: { compa
                                 ))}
                             </tbody>
                         </table>
-                        <div className={`flex items-center justify-between py-3 text-sm ${dk ? "text-white/70" : "text-slate-700"}`}>
-                            <span className="flex items-center gap-2">{displayEntries.length} écritures • Page {bankCurrentPage} / {bankTotalPages}
+                        <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 py-3 text-xs sm:text-sm ${dk ? "text-white/70" : "text-slate-700"}`}>
+                            <span className="flex items-center gap-2 flex-wrap">{displayEntries.length} écritures • Page {bankCurrentPage}/{bankTotalPages}
                                 <select value={bankPageSize} onChange={e => { setBankPageSize(Number(e.target.value)); setBankPage(1); }} className={`px-2 py-0.5 rounded-lg border text-xs ${dk ? "bg-[#1e1e2e] border-white/10 text-white/70" : "bg-white border-slate-200 text-slate-700"}`} style={dk ? { colorScheme: "dark" } : undefined}>
                                     <option value={25}>25</option><option value={50}>50</option><option value={100}>100</option>
                                 </select>/page
                             </span>
-                            <div className="flex gap-2">
-                                <button disabled={bankPage <= 1} onClick={() => setBankPage(1)} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E4;</button>
-                                <button disabled={bankPage <= 1} onClick={() => setBankPage(p => Math.max(1, p - 1))} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Préc.</button>
-                                <button disabled={bankPage >= bankTotalPages} onClick={() => setBankPage(p => Math.min(bankTotalPages, p + 1))} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Suiv.</button>
-                                <button disabled={bankPage >= bankTotalPages} onClick={() => setBankPage(bankTotalPages)} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E5;</button>
+                            <div className="flex gap-1.5 sm:gap-2">
+                                <button disabled={bankPage <= 1} onClick={() => setBankPage(1)} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E4;</button>
+                                <button disabled={bankPage <= 1} onClick={() => setBankPage(p => Math.max(1, p - 1))} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Préc.</button>
+                                <button disabled={bankPage >= bankTotalPages} onClick={() => setBankPage(p => Math.min(bankTotalPages, p + 1))} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Suiv.</button>
+                                <button disabled={bankPage >= bankTotalPages} onClick={() => setBankPage(bankTotalPages)} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E5;</button>
                             </div>
                         </div>
                     </div>

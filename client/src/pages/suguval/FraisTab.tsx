@@ -245,9 +245,9 @@ export function FraisTab({ compactCards, setCompactCards, restricted }: { compac
                 <StatCard label="Échéances < 30j" value={String(stats.dueSoonCount)} icon={Clock} color="blue" compact={compactCards} />
                 <StatCard label="En retard" value={String(stats.overdueCount)} icon={AlertTriangle} color="red" compact={compactCards} />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-2 items-center">
-                <div className={`flex items-center gap-2 ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-lg px-3 py-2`}>
-                    <Search className={`w-4 h-4 ${dk ? "text-white/40" : "text-slate-400"}`} />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 items-center">
+                <div className={`col-span-2 lg:col-span-1 flex items-center gap-2 ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-lg px-3 py-2`}>
+                    <Search className={`w-4 h-4 flex-shrink-0 ${dk ? "text-white/40" : "text-slate-400"}`} />
                     <input
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -389,13 +389,13 @@ export function FraisTab({ compactCards, setCompactCards, restricted }: { compac
                                 </tr>
                             </tfoot>
                         </table>
-                        <div className={`flex items-center justify-between py-3 text-sm ${dk ? "text-white/70" : "text-slate-700"}`}>
-                            <span className="flex items-center gap-2">{filtered.length} lignes • Page {page} / {totalPages}<select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className={`px-2 py-0.5 rounded-lg border text-xs ${dk ? "bg-[#1e1e2e] border-white/10 text-white/70" : "bg-white border-slate-200 text-slate-700"}`} style={dk ? { colorScheme: "dark" } : undefined}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select>/page</span>
-                            <div className="flex gap-2">
-                                <button disabled={page <= 1} onClick={() => setPage(1)} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E4;</button>
-                                <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Préc.</button>
-                                <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Suiv.</button>
-                                <button disabled={page >= totalPages} onClick={() => setPage(totalPages)} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E5;</button>
+                        <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 py-3 text-xs sm:text-sm ${dk ? "text-white/70" : "text-slate-700"}`}>
+                            <span className="flex items-center gap-2 flex-wrap">{filtered.length} lignes • Page {page}/{totalPages}<select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className={`px-2 py-0.5 rounded-lg border text-xs ${dk ? "bg-[#1e1e2e] border-white/10 text-white/70" : "bg-white border-slate-200 text-slate-700"}`} style={dk ? { colorScheme: "dark" } : undefined}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select>/page</span>
+                            <div className="flex gap-1.5 sm:gap-2">
+                                <button disabled={page <= 1} onClick={() => setPage(1)} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E4;</button>
+                                <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Préc.</button>
+                                <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Suiv.</button>
+                                <button disabled={page >= totalPages} onClick={() => setPage(totalPages)} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E5;</button>
                             </div>
                         </div>
                     </div>

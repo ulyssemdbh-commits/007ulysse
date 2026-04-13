@@ -163,7 +163,7 @@ export function AchatsTab({ compactCards, setCompactCards, restricted }: { compa
                 <span className="font-medium text-slate-400 text-[16px]">Chiffres clés</span>
                 <CardSizeToggle compact={compactCards} setCompact={setCompactCards} />
             </div>
-            <div className={`grid ${compactCards ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-6" : "grid-cols-2 md:grid-cols-6"} gap-3`}>
+            <div className={`grid ${compactCards ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-6"} gap-2 sm:gap-3`}>
                 <StatCard label="Total TTC" value={fmt(filteredTotalTTC)} icon={ShoppingCart} color="orange" compact={compactCards} />
                 <StatCard label="Total TVA" value={fmt(filteredTotalTVA)} icon={Receipt} color="blue" compact={compactCards} />
                 <StatCard label="Impayés" value={fmt(filtered.filter(p => !p.isPaid).reduce((s, p) => s + p.amount, 0))} icon={AlertTriangle} color="red" compact={compactCards} />
@@ -173,13 +173,13 @@ export function AchatsTab({ compactCards, setCompactCards, restricted }: { compa
             </div>
             {/* Search + Filters */}
             <div className="space-y-2">
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-2 items-center">
-                    <div className={`flex items-center gap-2 ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-lg px-3 py-2 lg:col-span-2`}>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 items-center">
+                    <div className={`col-span-2 flex items-center gap-2 ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-lg px-3 py-2`}>
                         <Search className={`w-4 h-4 flex-shrink-0 ${dk ? "text-white/40" : "text-slate-400"}`} />
                         <input data-testid="input-search-achats" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Rechercher fournisseur, n° facture..." className="bg-transparent w-full text-sm focus:outline-none" />
                     </div>
                     <FormSelect data-testid="select-category-achats" title="Filtrer par catégorie" className={ic} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
-                        <option value="all">Toutes les catégories</option>
+                        <option value="all">Toutes catégories</option>
                         {PURCHASE_CATEGORIES.map(c => <option key={c} value={c}>{catLabel(c)}</option>)}
                     </FormSelect>
                     <FormSelect data-testid="select-paid-achats" title="Filtrer par statut de paiement" className={ic} value={paidFilter} onChange={e => setPaidFilter(e.target.value as any)}>
@@ -187,11 +187,11 @@ export function AchatsTab({ compactCards, setCompactCards, restricted }: { compa
                         <option value="unpaid">Impayés</option>
                         <option value="paid">Payés</option>
                     </FormSelect>
-                    <div className="flex gap-2">
-                        <button data-testid="button-toggle-advanced-filters" onClick={() => setShowAdvancedFilters(v => !v)} className={`px-3 py-2 text-sm rounded-lg border ${showAdvancedFilters ? "bg-orange-500/20 border-orange-500/40 text-orange-400" : dk ? "bg-white/5 border-white/10" : "bg-white border-slate-200"} flex items-center gap-1.5 whitespace-nowrap`}>
+                    <div className="col-span-2 sm:col-span-1 flex gap-2">
+                        <button data-testid="button-toggle-advanced-filters" onClick={() => setShowAdvancedFilters(v => !v)} className={`flex-1 sm:flex-none px-3 py-2 text-sm rounded-lg border ${showAdvancedFilters ? "bg-orange-500/20 border-orange-500/40 text-orange-400" : dk ? "bg-white/5 border-white/10" : "bg-white border-slate-200"} flex items-center justify-center gap-1.5 whitespace-nowrap`}>
                             <Filter className="w-3.5 h-3.5" /> Filtres {(supplierFilter !== "all" || amountMin || amountMax) ? <span className="w-2 h-2 rounded-full bg-orange-400" /> : null}
                         </button>
-                        <button onClick={exportCSV} className={`px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white whitespace-nowrap`}>Export CSV</button>
+                        <button onClick={exportCSV} className={`flex-1 sm:flex-none px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white whitespace-nowrap text-center`}>Export CSV</button>
                     </div>
                 </div>
                 {showAdvancedFilters && (
@@ -314,13 +314,13 @@ export function AchatsTab({ compactCards, setCompactCards, restricted }: { compa
                                 </tr>
                             </tfoot>
                         </table>
-                        <div className={`flex items-center justify-between py-3 text-sm ${dk ? "text-white/70" : "text-slate-700"}`}>
-                            <span className="flex items-center gap-2">{filtered.length} lignes • Page {page} / {totalPages}<select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className={`px-2 py-0.5 rounded-lg border text-xs ${dk ? "bg-[#1e1e2e] border-white/10 text-white/70" : "bg-white border-slate-200 text-slate-700"}`} style={dk ? { colorScheme: "dark" } : undefined}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select>/page</span>
-                            <div className="flex gap-2">
-                                <button disabled={page <= 1} onClick={() => setPage(1)} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E4;</button>
-                                <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Préc.</button>
-                                <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Suiv.</button>
-                                <button disabled={page >= totalPages} onClick={() => setPage(totalPages)} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E5;</button>
+                        <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 py-3 text-xs sm:text-sm ${dk ? "text-white/70" : "text-slate-700"}`}>
+                            <span className="flex items-center gap-2 flex-wrap">{filtered.length} lignes • Page {page}/{totalPages}<select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className={`px-2 py-0.5 rounded-lg border text-xs ${dk ? "bg-[#1e1e2e] border-white/10 text-white/70" : "bg-white border-slate-200 text-slate-700"}`} style={dk ? { colorScheme: "dark" } : undefined}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select>/page</span>
+                            <div className="flex gap-1.5 sm:gap-2">
+                                <button disabled={page <= 1} onClick={() => setPage(1)} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E4;</button>
+                                <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Préc.</button>
+                                <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Suiv.</button>
+                                <button disabled={page >= totalPages} onClick={() => setPage(totalPages)} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E5;</button>
                             </div>
                         </div>
                     </div>

@@ -135,7 +135,7 @@ export function DashboardTab({ onNavigate, onOpenUpload, onOpenNewCaisse, restri
                 <span className={`text-xs font-medium ${dk ? "text-white/40" : "text-slate-400"}`}>Indicateurs clés</span>
                 <CardSizeToggle compact={compactCards} setCompact={setCompactCards} />
             </div>
-            <div className={`grid ${compactCards ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-6" : "grid-cols-2 md:grid-cols-4 lg:grid-cols-6"} gap-3`}>
+            <div className={`grid ${compactCards ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"} gap-2 sm:gap-3`}>
                 {/* Health Score */}
                 {compactCards ? (
                     <div className={`bg-gradient-to-br ${healthBg} border rounded-lg px-3 py-2 flex items-center gap-2 cursor-pointer hover:opacity-90 transition`} onClick={() => onNavigate("audit")}>
@@ -174,43 +174,43 @@ export function DashboardTab({ onNavigate, onOpenUpload, onOpenNewCaisse, restri
                     compact={compactCards} />
             </div>
             {/* Quick Actions Panel */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <button onClick={onOpenUpload} className={`flex items-center gap-3 p-3 rounded-xl border ${dk ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"} transition shadow-sm`} data-testid="action-add-purchase">
-                    <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-500"><Plus className="w-5 h-5" /></div>
-                    <div className="text-left">
-                        <p className={`text-sm font-semibold ${dk ? "text-white" : "text-slate-800"}`}>Ajout Achat / Frais</p>
-                        <p className={`text-[10px] ${dk ? "text-white/40" : "text-slate-500"}`}>Documents & archives</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
+                <button onClick={onOpenUpload} className={`flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-xl border ${dk ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"} transition shadow-sm`} data-testid="action-add-purchase">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-500 flex-shrink-0"><Plus className="w-4 h-4 sm:w-5 sm:h-5" /></div>
+                    <div className="text-left min-w-0">
+                        <p className={`text-xs sm:text-sm font-semibold ${dk ? "text-white" : "text-slate-800"} truncate`}>Ajout Achat / Frais</p>
+                        <p className={`text-[9px] sm:text-[10px] ${dk ? "text-white/40" : "text-slate-500"} truncate`}>Documents & archives</p>
                     </div>
                 </button>
-                <button onClick={onOpenNewCaisse} className={`flex items-center gap-3 p-3 rounded-xl border ${dk ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"} transition shadow-sm`} data-testid="action-add-caisse">
-                    <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center text-green-500"><CreditCard className="w-5 h-5" /></div>
-                    <div className="text-left">
-                        <p className={`text-sm font-semibold ${dk ? "text-white" : "text-slate-800"}`}>Saisir caisse</p>
-                        <p className={`text-[10px] ${dk ? "text-white/40" : "text-slate-500"}`}>CA quotidien</p>
+                <button onClick={onOpenNewCaisse} className={`flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-xl border ${dk ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"} transition shadow-sm`} data-testid="action-add-caisse">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-green-500/20 flex items-center justify-center text-green-500 flex-shrink-0"><CreditCard className="w-4 h-4 sm:w-5 sm:h-5" /></div>
+                    <div className="text-left min-w-0">
+                        <p className={`text-xs sm:text-sm font-semibold ${dk ? "text-white" : "text-slate-800"} truncate`}>Saisir caisse</p>
+                        <p className={`text-[9px] sm:text-[10px] ${dk ? "text-white/40" : "text-slate-500"} truncate`}>CA quotidien</p>
                     </div>
                 </button>
-                <button onClick={() => onNavigate("banque")} className={`flex items-center gap-3 p-3 rounded-xl border ${dk ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"} transition shadow-sm`} data-testid="action-import-bank">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500"><Download className="w-5 h-5" /></div>
-                    <div className="text-left">
-                        <p className={`text-sm font-semibold ${dk ? "text-white" : "text-slate-800"}`}>Importer relevé</p>
-                        <p className={`text-[10px] ${dk ? "text-white/40" : "text-slate-500"}`}>Banque / PDF / CSV</p>
+                <button onClick={() => onNavigate("banque")} className={`flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-xl border ${dk ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"} transition shadow-sm`} data-testid="action-import-bank">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500 flex-shrink-0"><Download className="w-4 h-4 sm:w-5 sm:h-5" /></div>
+                    <div className="text-left min-w-0">
+                        <p className={`text-xs sm:text-sm font-semibold ${dk ? "text-white" : "text-slate-800"} truncate`}>Importer relevé</p>
+                        <p className={`text-[9px] sm:text-[10px] ${dk ? "text-white/40" : "text-slate-500"} truncate`}>Banque / PDF / CSV</p>
                     </div>
                 </button>
-                <button onClick={() => onNavigate("audit")} className={`flex items-center gap-3 p-3 rounded-xl border ${dk ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"} transition shadow-sm`} data-testid="action-view-audit">
-                    <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-500"><BarChart3 className="w-5 h-5" /></div>
-                    <div className="text-left">
-                        <p className={`text-sm font-semibold ${dk ? "text-white" : "text-slate-800"}`}>Rapport complet</p>
-                        <p className={`text-[10px] ${dk ? "text-white/40" : "text-slate-500"}`}>Audits & P&L</p>
+                <button onClick={() => onNavigate("audit")} className={`flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-xl border ${dk ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"} transition shadow-sm`} data-testid="action-view-audit">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-500 flex-shrink-0"><BarChart3 className="w-4 h-4 sm:w-5 sm:h-5" /></div>
+                    <div className="text-left min-w-0">
+                        <p className={`text-xs sm:text-sm font-semibold ${dk ? "text-white" : "text-slate-800"} truncate`}>Rapport complet</p>
+                        <p className={`text-[9px] sm:text-[10px] ${dk ? "text-white/40" : "text-slate-500"} truncate`}>Audits & P&L</p>
                     </div>
                 </button>
             </div>
             {/* Second row: financial state + alerts */}
             <div className="space-y-4">
                 {/* Financial Snapshot */}
-                <div className={`${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-2xl p-5 overflow-hidden`}>
-                    <div className="flex items-center gap-2 mb-4 min-w-0">
-                        <Landmark className="w-5 h-5 text-orange-400 flex-shrink-0" />
-                        <h3 className={`font-semibold ${dk ? "text-white" : "text-slate-800"} truncate`}>Synthèse Financière</h3>
+                <div className={`${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-2xl p-3 sm:p-5 overflow-hidden`}>
+                    <div className="flex items-center gap-2 mb-3 sm:mb-4 min-w-0">
+                        <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 flex-shrink-0" />
+                        <h3 className={`font-semibold text-sm sm:text-base ${dk ? "text-white" : "text-slate-800"} truncate`}>Synthèse Financière</h3>
                         <button onClick={() => onNavigate("audit")} className="ml-auto text-xs text-orange-400 hover:underline flex items-center gap-1">
                             Voir audit complet <ExternalLink className="w-3 h-3" />
                         </button>

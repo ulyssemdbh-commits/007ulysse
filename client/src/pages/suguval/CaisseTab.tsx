@@ -182,8 +182,8 @@ export function CaisseTab({ compactCards, setCompactCards, restricted, autoOpenF
                 const accountedFor = active.reduce((s, p) => s + p.amount, 0);
                 const other = totalRevenue - accountedFor;
                 return (
-                    <div className={`${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-2xl p-5`}>
-                        <h3 className={`font-semibold ${dk ? "text-white" : "text-slate-800"} mb-3 flex items-center gap-2`}><BarChart3 className="w-5 h-5 text-orange-400" /> Répartition encaissements</h3>
+                    <div className={`${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} rounded-2xl p-3 sm:p-5`}>
+                        <h3 className={`font-semibold text-sm sm:text-base ${dk ? "text-white" : "text-slate-800"} mb-2 sm:mb-3 flex items-center gap-2`}><BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400" /> Répartition encaissements</h3>
                         <div className="flex gap-0.5 h-6 rounded-full overflow-hidden">
                             {active.map(p => <div key={p.label} className={`${p.color} h-full transition-all`} style={{ width: `${(p.amount / totalRevenue) * 100}%` }} title={`${p.label}: ${fmt(p.amount)}`} />)}
                             {other > 0 && <div className={`${dk ? "bg-white/20" : "bg-slate-200"} h-full transition-all`} style={{ width: `${(other / totalRevenue) * 100}%` }} title={`Autre: ${fmt(other)}`} />}
@@ -212,8 +212,8 @@ export function CaisseTab({ compactCards, setCompactCards, restricted, autoOpenF
             )}
             <Card title="Journal de Caisse" icon={CreditCard}
                 action={
-                    <div className="flex items-center gap-2">
-                        <button onClick={exportCaisseCSV} className={`px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 ${dk ? "text-white" : "text-slate-800"} whitespace-nowrap flex items-center gap-1`}><Download className="w-3 h-3" /> CSV</button>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <button onClick={exportCaisseCSV} className={`px-2 sm:px-3 py-2 text-sm rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 ${dk ? "text-white" : "text-slate-800"} whitespace-nowrap flex items-center gap-1`}><Download className="w-3 h-3" /> CSV</button>
                         {!restricted && (
                             <>
                                 <input
@@ -232,9 +232,9 @@ export function CaisseTab({ compactCards, setCompactCards, restricted, autoOpenF
                                     data-testid="button-scan-ticket"
                                 >
                                     {parsingTicket ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-                                    {parsingTicket ? "Analyse..." : "Ticket Z"}
+                                    <span className="hidden sm:inline">{parsingTicket ? "Analyse..." : "Ticket Z"}</span>
                                 </button>
-                                <button onClick={() => setShowForm(true)} className={btnPrimary}><Plus className="w-4 h-4" /> Nouvelle Journée</button>
+                                <button onClick={() => setShowForm(true)} className={btnPrimary}><Plus className="w-4 h-4" /> <span className="hidden sm:inline">Nouvelle Journée</span><span className="sm:hidden">+</span></button>
                             </>
                         )}
                     </div>
@@ -286,13 +286,13 @@ export function CaisseTab({ compactCards, setCompactCards, restricted, autoOpenF
                                 ))}
                             </tbody>
                         </table>
-                        <div className={`flex items-center justify-between py-3 text-sm ${dk ? "text-white/70" : "text-slate-700"}`}>
-                            <span className="flex items-center gap-2">{sortedEntries.length} jours • Page {caisseCurrentPage} / {caisseTotalPages}<select value={caissePageSize} onChange={e => { setCaissePageSize(Number(e.target.value)); setCaissePage(1); }} className={`px-2 py-0.5 rounded-lg border text-xs ${dk ? "bg-[#1e1e2e] border-white/10 text-white/70" : "bg-white border-slate-200 text-slate-700"}`} style={dk ? { colorScheme: "dark" } : undefined}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select>/page</span>
-                            <div className="flex gap-2">
-                                <button disabled={caissePage <= 1} onClick={() => setCaissePage(1)} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E4;</button>
-                                <button disabled={caissePage <= 1} onClick={() => setCaissePage(p => Math.max(1, p - 1))} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Préc.</button>
-                                <button disabled={caissePage >= caisseTotalPages} onClick={() => setCaissePage(p => Math.min(caisseTotalPages, p + 1))} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Suiv.</button>
-                                <button disabled={caissePage >= caisseTotalPages} onClick={() => setCaissePage(caisseTotalPages)} className={`px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E5;</button>
+                        <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 py-3 text-xs sm:text-sm ${dk ? "text-white/70" : "text-slate-700"}`}>
+                            <span className="flex items-center gap-2 flex-wrap">{sortedEntries.length} jours • Page {caisseCurrentPage}/{caisseTotalPages}<select value={caissePageSize} onChange={e => { setCaissePageSize(Number(e.target.value)); setCaissePage(1); }} className={`px-2 py-0.5 rounded-lg border text-xs ${dk ? "bg-[#1e1e2e] border-white/10 text-white/70" : "bg-white border-slate-200 text-slate-700"}`} style={dk ? { colorScheme: "dark" } : undefined}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select>/page</span>
+                            <div className="flex gap-1.5 sm:gap-2">
+                                <button disabled={caissePage <= 1} onClick={() => setCaissePage(1)} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E4;</button>
+                                <button disabled={caissePage <= 1} onClick={() => setCaissePage(p => Math.max(1, p - 1))} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Préc.</button>
+                                <button disabled={caissePage >= caisseTotalPages} onClick={() => setCaissePage(p => Math.min(caisseTotalPages, p + 1))} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>Suiv.</button>
+                                <button disabled={caissePage >= caisseTotalPages} onClick={() => setCaissePage(caisseTotalPages)} className={`px-2 sm:px-3 py-1 rounded-lg ${dk ? "bg-white/5" : "bg-white"} border ${dk ? "border-white/10" : "border-slate-200"} disabled:opacity-40`}>&#x21E5;</button>
                             </div>
                         </div>
                     </div>
