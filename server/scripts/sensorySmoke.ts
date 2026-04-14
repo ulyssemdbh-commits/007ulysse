@@ -2,6 +2,7 @@ import { hearingHub } from "../services/sensory/HearingHub";
 import { visionHub } from "../services/sensory/VisionHub";
 import { actionHub } from "../services/sensory/ActionHub";
 import { voiceOutputHub } from "../services/sensory/VoiceOutputHub";
+import { brainHub } from "../services/sensory/BrainHub";
 
 async function runSensorySmokeTest(): Promise<void> {
   const userId = 1;
@@ -45,22 +46,29 @@ async function runSensorySmokeTest(): Promise<void> {
       priority: "low",
       userId,
       persona: "ulysse",
-      generateAudio: false
     }
   });
 
+  brainHub.updateNavigationContext("dashboard", "diagnostics");
+  const navContext = brainHub.getNavigationContext();
+
   console.log("[SensorySmoke] Results:");
   console.log({
-    hearing: { shouldRouteToBrain: hearing.shouldRouteToBrain, intent: hearing.intent?.domain || null },
+    hearing: { shouldRouteToBrain: hearing.shouldRouteToBrain, intent: hearing.intent?.domain || null, domain: hearing.domain },
     vision: { insights: vision.insights.length, textLength: (vision.text || "").length },
     action: { success: action.success, status: action.status },
-    output: { success: output.success, destination: output.destination }
+    output: { success: output.success, destination: output.destination },
+    navigation: { pageId: navContext.pageId, pageLabel: navContext.pageLabel, actions: navContext.availableActions.length }
   });
 
   console.log("[SensorySmoke] Done.");
 }
 
-runSensorySmokeTest().catch((error) => {
-  console.error("[SensorySmoke] Failed:", error);
-  process.exitCode = 1;
-});
+runSensorySmokeTest()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("[SensorySmoke] Failed:", error);
+    process.exit(1);
+  });

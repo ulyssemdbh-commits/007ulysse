@@ -16,14 +16,23 @@ import { voiceOutputHub, type VoiceOutput, type DialogueMode } from './VoiceOutp
 import { visionHub, type VisionInput, type ProcessedVision } from './VisionHub';
 import { actionHub, type ActionResult } from './ActionHub';
 import { autonomousInitiativeEngine } from '../autonomousInitiativeEngine';
+import { APP_PAGES, type AppPage } from '../../config/appNavigation';
 
 // ============== TYPES ==============
+
+export interface NavigationContext {
+  pageId: string | null;
+  tabId: string | null;
+  pageLabel: string | null;
+  availableActions: string[];
+}
 
 export interface ConsciousnessState {
   currentFocus: 'idle' | 'listening' | 'thinking' | 'speaking' | 'acting' | 'observing';
   activeUserId: number | null;
-  activePersona: 'ulysse' | 'iris' | 'alfred' | null;
+  activePersona: 'ulysse' | 'iris' | 'alfred' | 'maxai' | null;
   activeInterface: 'web' | 'discord' | 'api' | 'pwa' | null;
+  navigationContext: NavigationContext;
   workingMemory: WorkingMemoryItem[];
   cognitiveLoad: number; // 0-100
   lastActivity: Date;
@@ -194,6 +203,12 @@ class BrainHub extends EventEmitter {
       activeUserId: null,
       activePersona: null,
       activeInterface: null,
+      navigationContext: {
+        pageId: null,
+        tabId: null,
+        pageLabel: null,
+        availableActions: [],
+      },
       workingMemory: [],
       cognitiveLoad: 0,
       lastActivity: new Date(),
@@ -747,8 +762,10 @@ class BrainHub extends EventEmitter {
     content: string;
     source: 'web_chat' | 'talking_v3' | 'discord_text' | 'discord_voice' | 'api';
     userId: number;
-    persona: 'ulysse' | 'iris' | 'alfred';
+    persona: 'ulysse' | 'iris' | 'alfred' | 'maxai';
     isVoice: boolean;
+    pageId?: string;
+    tabId?: string;
     metadata?: Record<string, any>;
   }): Promise<{
     response: string;
@@ -763,13 +780,16 @@ class BrainHub extends EventEmitter {
     this.updateFocus('thinking');
     this.updateCognitiveLoad(25);
 
-    // 1. Mise à jour du contexte actif
     const iface = this.mapSourceToInterface(input.source);
     this.setActiveContext(
       input.userId,
       input.persona,
       iface || 'web'
     );
+
+    if (input.pageId) {
+      this.updateNavigationContext(input.pageId, input.tabId);
+    }
 
     // 2. Ajouter à la mémoire de travail
     this.addToWorkingMemory({
@@ -836,6 +856,17 @@ class BrainHub extends EventEmitter {
     let prompt = `[ÉTAT MENTAL ULYSSE]\n`;
     prompt += `Focus: ${c.currentFocus} | Charge cognitive: ${c.cognitiveLoad}% | État: ${ctx.cognitiveState}\n`;
     
+    if (c.navigationContext.pageId) {
+      prompt += `Page active: ${c.navigationContext.pageLabel || c.navigationContext.pageId}`;
+      if (c.navigationContext.tabId) {
+        prompt += ` (onglet: ${c.navigationContext.tabId})`;
+      }
+      prompt += '\n';
+      if (c.navigationContext.availableActions.length > 0) {
+        prompt += `Actions possibles: ${c.navigationContext.availableActions.slice(0, 5).join(', ')}\n`;
+      }
+    }
+    
     if (ctx.workingMemory.length > 0) {
       prompt += `Contexte récent: ${ctx.workingMemory.slice(0, 2).join(' | ')}\n`;
     }
@@ -901,11 +932,34 @@ class BrainHub extends EventEmitter {
     };
   }
 
-  setActiveContext(userId: number, persona: 'ulysse' | 'iris' | 'alfred', iface: 'web' | 'discord' | 'api' | 'pwa'): void {
+  setActiveContext(userId: number, persona: 'ulysse' | 'iris' | 'alfred' | 'maxai', iface: 'web' | 'discord' | 'api' | 'pwa'): void {
     this.consciousness.activeUserId = userId;
     this.consciousness.activePersona = persona;
     this.consciousness.activeInterface = iface;
     this.consciousness.lastActivity = new Date();
+  }
+
+  updateNavigationContext(pageId: string, tabId?: string): void {
+    const page = APP_PAGES.find((p: AppPage) => p.pageId === pageId);
+    if (!page) {
+      console.warn(`[BrainHub] Unknown pageId: ${pageId}`);
+      return;
+    }
+
+    const tab = tabId && page.tabs
+      ? page.tabs.find((t) => t.id === tabId)
+      : null;
+
+    this.consciousness.navigationContext = {
+      pageId,
+      tabId: tabId || null,
+      pageLabel: tab ? `${page.label} > ${tab.label}` : page.label,
+      availableActions: tab ? tab.actions : (page.tabs ? page.tabs.flatMap((t) => t.actions) : []),
+    };
+  }
+
+  getNavigationContext(): NavigationContext {
+    return { ...this.consciousness.navigationContext };
   }
 
   addThought(content: string, importance: number = 50): void {

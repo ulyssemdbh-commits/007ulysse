@@ -43,6 +43,38 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 - **Anti-Loop Detection**: Semantic, error, and read-only loop detection.
 - **Deep Code Analysis Protection System**: Multi-layer protection preventing destructive code changes.
 
+### Navigation Context System
+- **Registry**: `server/config/appNavigation.ts` — full inventory of all app pages, tabs, managed agents.
+- **Functions**: `buildNavigationContext(agent, pageId, tabId)` generates structured context for AI prompts.
+- **Integration**: Injected into `unifiedContextService` via `DomainContexts.navigationContext`.
+- **Trace Metadata**: `agent_traces.page_id` and `agent_traces.tab_id` columns track where users are when interacting with agents.
+
+### Agent Traces & Observability
+- **Service**: `server/services/traceCollector.ts` — captures full execution traces with steps, tool calls, latency, tokens.
+- **Schema**: `shared/schema/traces.ts` — `agent_traces` (with pageId/tabId) + `trace_steps` tables.
+- **Routes**: `server/routes/traceRoutes.ts` — GET traces (with source/model filters), GET stats (with hourly distribution, error rate, token cost, page stats, feedback summary), POST feedback.
+- **Frontend**: `client/src/pages/Traces.tsx` — enhanced with collapsible step detail (input/output), step timeline visualization, model filter, navigation context display, 8 analytics panels (agents, tools, models, daily volume, sources, hourly heatmap, error rate, token consumption, page activity).
+
+### Composable Skills Engine
+- **Service**: `server/services/skillEngine.ts` — CRUD, executeSkill with trace integration, parameter resolution from previous steps, Brain integration.
+- **Schema**: `shared/schema/skills.ts` — `skills`, `skill_steps`, `skill_executions` tables.
+- **Routes**: `server/routes/skillRoutes.ts` — full CRUD + execute + seed.
+- **Frontend**: `client/src/pages/Skills.tsx` — catalog with category filters, pipeline editor, execution history, rich result display.
+- **Pre-seeded Skills (18)**: bilan-mensuel-resto, morning-briefing, deploy-ulysse, audit-securite, analyse-concurrent, project-health-check, full-code-review, bootstrap-project, incident-response, cicd-audit, smart-deploy, weekly-digest, social-media-pulse, evening-wrapup, fournisseurs-check, backup-cleanup, match-day-briefing.
+
+### Sensory System (OpenJarvis-Inspired)
+- **Architecture**: Hub-and-spoke model with 4 sensory hubs (HearingHub, VisionHub, ActionHub, VoiceOutputHub) connected to a central BrainHub.
+- **BrainHub** (`server/services/sensory/BrainHub.ts`): Unified consciousness center with working memory, attention engine (priority-based signal processing with defer queue), cognitive load management, dialogue mode resolution, navigation context awareness, and consciousness prompt generation.
+- **HearingHub** (`server/services/sensory/HearingHub.ts`): Processes all inputs (web_voice, discord_voice, web_chat, siri, email, sms) with intent detection, reference resolution, sentiment analysis, and PUGI context enrichment.
+- **VisionHub** (`server/services/sensory/VisionHub.ts`): Handles visual inputs (screen_monitor, web_scrape, screenshots, documents, OCR, camera) with entity extraction, caching, and insight generation.
+- **ActionHub** (`server/services/sensory/ActionHub.ts`): Execution center for all actions (tool_call, homework, domotique, email, calendar, sports, payroll, monitoring, studio) with rollback support, pre-execute hooks, and proactive learning via PUGI.
+- **VoiceOutputHub** (`server/services/sensory/VoiceOutputHub.ts`): Manages all speech output (web_voice, discord_voice, web_chat, notifications) with TTS generation, dialogue mode formatting, channel priority management, and per-persona voice mapping.
+- **Bridge Files**: Adapter layers (`ActionHubBridge`, `HearingHubBridge`, `VisionHubBridge`, `VoiceOutputHubBridge`) connecting hub interfaces to existing services. ActionHubBridge registers 90+ tool executors from ulysseToolsV2.
+- **Navigation Context**: BrainHub maintains `NavigationContext` (pageId, tabId, pageLabel, availableActions) injected into consciousness prompt for context-aware AI responses.
+- **Persona Support**: ulysse, iris, alfred, maxai — bridges map maxai to ulysse for backward compatibility.
+- **API** (`server/api/v2/sensory.ts`): 12 endpoints — /stats, /state, /recent, /health, /hearing, /vision, /action, /output, /bridges, /consciousness, /memory, /navigation.
+- **Smoke Test**: `server/scripts/sensorySmoke.ts` validates all hubs and navigation context.
+
 ### 3D File Management
 - **Service**: Full STL/3MF parser, generator, editor, converter with AI tool `manage_3d_file` for analysis and editing.
 

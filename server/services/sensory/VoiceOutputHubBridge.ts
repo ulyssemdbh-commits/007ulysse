@@ -6,13 +6,14 @@
  * - Discord voice output
  * - Web voice response
  * - Chat text response
+ * - Notifications
  * 
  * Flow unifié:
  * [Réponse AI] → VoiceOutputHub.speak() → [TTS/Text] → [Destination]
  */
 
 import { voiceOutputHub } from "./VoiceOutputHub";
-import type { OutputDestination } from "./VoiceOutputHub";
+import type { OutputDestination, OutputPriority } from "./VoiceOutputHub";
 
 let bridgeInitialized = false;
 
@@ -30,67 +31,72 @@ export function initializeVoiceOutputHubBridge(): void {
 export async function speakViaVoiceOutputHub(
   content: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred",
+  persona: "ulysse" | "iris" | "alfred" | "maxai",
   destination: OutputDestination,
-  generateAudio: boolean = false
+  _generateAudio: boolean = false
 ): Promise<{
   success: boolean;
-  audioUrl?: string;
-  duration?: number;
+  audioGenerated: boolean;
+  audioDurationMs?: number;
 }> {
+  const mappedPersona = persona === "maxai" ? "ulysse" : persona;
+
   const result = await voiceOutputHub.speak({
-    content,
-    destination,
+    text: content,
     metadata: {
-      userId,
-      timestamp: Date.now(),
-      persona,
       destination,
-      generateAudio
+      priority: "normal" as OutputPriority,
+      userId,
+      persona: mappedPersona,
     }
   });
 
   return {
     success: result.success,
-    audioUrl: result.audioUrl,
-    duration: result.duration
+    audioGenerated: result.audioGenerated,
+    audioDurationMs: result.audioDurationMs,
   };
 }
 
 export async function speakToWebVoiceViaBridge(
   content: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred"
+  persona: "ulysse" | "iris" | "alfred" | "maxai"
 ) {
-  return voiceOutputHub.speakToWebVoice(content, userId, persona);
+  const mappedPersona = persona === "maxai" ? "ulysse" : persona;
+  return voiceOutputHub.speakToWebVoice(content, userId, mappedPersona);
 }
 
 export async function speakToDiscordViaBridge(
   content: string,
-  guildId: string,
-  channelId: string,
+  _guildId: string,
+  _channelId: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred"
+  persona: "ulysse" | "iris" | "alfred" | "maxai" = "ulysse"
 ) {
-  return voiceOutputHub.speakToDiscord(content, guildId, channelId, userId, persona);
+  const mappedPersona = persona === "maxai" ? "ulysse" : persona;
+  return voiceOutputHub.speakToDiscord(content, userId, {
+    persona: mappedPersona,
+  });
 }
 
 export async function respondToChatViaBridge(
   content: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred",
+  persona: "ulysse" | "iris" | "alfred" | "maxai",
   conversationId?: number
 ) {
-  return voiceOutputHub.respondToChat(content, userId, persona, conversationId);
+  const mappedPersona = persona === "maxai" ? "ulysse" : persona;
+  return voiceOutputHub.respondToChat(content, userId, mappedPersona, conversationId);
 }
 
 export async function notifyViaBridge(
   content: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred",
-  priority: "low" | "medium" | "high" = "medium"
+  _persona: "ulysse" | "iris" | "alfred" | "maxai" = "ulysse",
+  priority: OutputPriority = "normal"
 ) {
-  return voiceOutputHub.notify(content, userId, persona, priority);
+  return voiceOutputHub.notify(content, userId, priority);
 }
 
 export function getVoiceOutputHubStats() {

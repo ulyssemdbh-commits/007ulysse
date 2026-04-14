@@ -6,12 +6,13 @@
  * - Discord voice (messages vocaux Discord)
  * - Web chat (messages texte)
  * - TalkingApp (voix web)
+ * - Siri (commandes vocales)
  * 
  * Flow unifié:
  * [Audio/Texte] → HearingHub.hear() → [Analyse + Intent] → [Résultat]
  */
 
-import { hearingHub } from "./HearingHub";
+import { hearingHub, type ProcessedHearing } from "./HearingHub";
 import type { HearingSource } from "./HearingHub";
 
 let bridgeInitialized = false;
@@ -30,22 +31,22 @@ export function initializeHearingHubBridge(): void {
 export async function transcribeViaHearingHub(
   transcript: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred",
+  persona: "ulysse" | "iris" | "alfred" | "maxai",
   source: HearingSource = "web_voice"
 ): Promise<{
   resolvedContent: string;
   intent: any;
   shouldRouteToBrain: boolean;
-  confidence: number;
+  domain: string;
 }> {
-  const result = await hearingHub.hear({
-    rawContent: transcript,
-    source,
+  const result: ProcessedHearing = await hearingHub.hear({
+    content: transcript,
     metadata: {
-      userId,
+      source,
+      type: source.includes("voice") ? "voice" : "text",
       timestamp: Date.now(),
-      persona,
-      source
+      userId,
+      persona: persona === "maxai" ? "ulysse" : persona,
     }
   });
 
@@ -53,16 +54,20 @@ export async function transcribeViaHearingHub(
     resolvedContent: result.resolvedContent,
     intent: result.intent,
     shouldRouteToBrain: result.shouldRouteToBrain,
-    confidence: result.confidence
+    domain: result.domain,
   };
 }
 
 export async function hearFromWebVoiceViaBridge(
   transcript: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred"
+  persona: "ulysse" | "iris" | "alfred" | "maxai"
 ) {
-  return hearingHub.hearFromWebVoice(transcript, userId, persona);
+  return hearingHub.hearFromWebVoice(
+    transcript,
+    userId,
+    persona === "maxai" ? "ulysse" : persona
+  );
 }
 
 export async function hearFromDiscordViaBridge(
@@ -71,33 +76,40 @@ export async function hearFromDiscordViaBridge(
   guildId: string,
   channelId: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred"
+  persona: "ulysse" | "iris" | "alfred" | "maxai" = "ulysse"
 ) {
   return hearingHub.hearFromDiscordVoice(
     transcript,
-    discordUserId,
-    guildId,
-    channelId,
     userId,
-    persona
+    {
+      guildId,
+      channelId,
+      memberId: discordUserId,
+      memberName: discordUserId,
+    }
   );
 }
 
 export async function hearFromChatViaBridge(
   message: string,
   userId: number,
-  persona: "ulysse" | "iris" | "alfred",
+  persona: "ulysse" | "iris" | "alfred" | "maxai",
   conversationId?: number
 ) {
-  return hearingHub.hearFromWebChat(message, userId, persona, conversationId);
+  return hearingHub.hearFromWebChat(
+    message,
+    userId,
+    persona === "maxai" ? "ulysse" : persona,
+    conversationId
+  );
 }
 
 export async function hearFromSiriViaBridge(
   transcript: string,
-  deviceId: string,
+  _deviceId: string,
   userId: number
 ) {
-  return hearingHub.hearFromSiri(transcript, deviceId, userId);
+  return hearingHub.hearFromSiri(transcript, userId);
 }
 
 export function getHearingHubStats() {

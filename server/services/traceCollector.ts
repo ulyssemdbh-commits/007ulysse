@@ -12,6 +12,8 @@ export interface TraceContext {
   query: string;
   domain?: string;
   source?: string;
+  pageId?: string;
+  tabId?: string;
   startTime: number;
   steps: StepData[];
 }
@@ -38,6 +40,8 @@ class TraceCollector {
     query: string;
     domain?: string;
     source?: string;
+    pageId?: string;
+    tabId?: string;
   }): string {
     const traceId = `tr_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
     this.activeTraces.set(traceId, {
@@ -89,6 +93,8 @@ class TraceCollector {
         errorMessage: result.errorMessage,
         domain: ctx.domain,
         source: ctx.source || "chat",
+        pageId: ctx.pageId,
+        tabId: ctx.tabId,
         metadata: result.metadata,
         startedAt: new Date(ctx.startTime),
         completedAt: new Date(),
@@ -156,6 +162,8 @@ class TraceCollector {
     agent?: string;
     domain?: string;
     status?: string;
+    source?: string;
+    model?: string;
     from?: Date;
     to?: Date;
     limit?: number;
@@ -166,6 +174,8 @@ class TraceCollector {
     if (params.agent) conditions.push(eq(agentTraces.agent, params.agent));
     if (params.domain) conditions.push(eq(agentTraces.domain, params.domain));
     if (params.status) conditions.push(eq(agentTraces.status, params.status));
+    if (params.source) conditions.push(eq(agentTraces.source, params.source));
+    if (params.model) conditions.push(eq(agentTraces.model, params.model));
     if (params.from) conditions.push(gte(agentTraces.startedAt, params.from));
     if (params.to) conditions.push(lte(agentTraces.startedAt, params.to));
 
@@ -234,12 +244,62 @@ class TraceCollector {
       .groupBy(sql`DATE(${agentTraces.startedAt})`)
       .orderBy(sql`DATE(${agentTraces.startedAt})`);
 
+    const sourceStats = await db.select({
+      source: agentTraces.source,
+      count: count(),
+      avgLatency: sql<number>`AVG(${agentTraces.totalLatencyMs})::int`,
+      successRate: sql<number>`ROUND(100.0 * SUM(CASE WHEN ${agentTraces.status} = 'completed' THEN 1 ELSE 0 END) / COUNT(*), 1)`,
+    }).from(agentTraces).where(where).groupBy(agentTraces.source);
+
+    const hourlyDistribution = await db.select({
+      hour: sql<number>`EXTRACT(HOUR FROM ${agentTraces.startedAt})::int`,
+      count: count(),
+    }).from(agentTraces).where(where)
+      .groupBy(sql`EXTRACT(HOUR FROM ${agentTraces.startedAt})`)
+      .orderBy(sql`EXTRACT(HOUR FROM ${agentTraces.startedAt})`);
+
+    const errorRate = await db.select({
+      date: sql<string>`DATE(${agentTraces.startedAt})`,
+      total: count(),
+      errors: sql<number>`SUM(CASE WHEN ${agentTraces.status} IN ('error','failed') THEN 1 ELSE 0 END)::int`,
+      rate: sql<number>`ROUND(100.0 * SUM(CASE WHEN ${agentTraces.status} IN ('error','failed') THEN 1 ELSE 0 END) / COUNT(*), 1)`,
+    }).from(agentTraces).where(where)
+      .groupBy(sql`DATE(${agentTraces.startedAt})`)
+      .orderBy(sql`DATE(${agentTraces.startedAt})`);
+
+    const pageStats = await db.select({
+      pageId: agentTraces.pageId,
+      count: count(),
+    }).from(agentTraces).where(and(...conditions, sql`${agentTraces.pageId} IS NOT NULL`))
+      .groupBy(agentTraces.pageId)
+      .orderBy(desc(count()))
+      .limit(15);
+
+    const tokenCostEstimate = await db.select({
+      agent: agentTraces.agent,
+      totalPromptTokens: sql<number>`SUM(COALESCE(${agentTraces.promptTokens}, 0))::int`,
+      totalCompletionTokens: sql<number>`SUM(COALESCE(${agentTraces.completionTokens}, 0))::int`,
+      totalTokensAll: sql<number>`SUM(COALESCE(${agentTraces.totalTokens}, 0))::int`,
+    }).from(agentTraces).where(where).groupBy(agentTraces.agent);
+
+    const feedbackSummary = await db.select({
+      positive: sql<number>`SUM(CASE WHEN ${agentTraces.feedbackScore} >= 0.5 THEN 1 ELSE 0 END)::int`,
+      negative: sql<number>`SUM(CASE WHEN ${agentTraces.feedbackScore} < 0.5 THEN 1 ELSE 0 END)::int`,
+      total: sql<number>`COUNT(${agentTraces.feedbackScore})::int`,
+    }).from(agentTraces).where(and(...conditions, sql`${agentTraces.feedbackScore} IS NOT NULL`));
+
     return {
       totalTraces: totalTraces?.count || 0,
       agentStats,
       modelStats,
       topTools,
       dailyVolume,
+      sourceStats,
+      hourlyDistribution,
+      errorRate,
+      pageStats,
+      tokenCostEstimate,
+      feedbackSummary: feedbackSummary[0] || { positive: 0, negative: 0, total: 0 },
     };
   }
 }

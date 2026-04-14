@@ -5,13 +5,15 @@ const router = Router();
 
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const { agent, domain, status, from, to, limit, offset } = req.query;
+    const { agent, domain, status, source, model, from, to, limit, offset } = req.query;
     const userId = (req as any).user?.id;
     const result = await traceCollector.getTraces({
       userId,
       agent: agent as string,
       domain: domain as string,
       status: status as string,
+      source: source as string,
+      model: model as string,
       from: from ? new Date(from as string) : undefined,
       to: to ? new Date(to as string) : undefined,
       limit: limit ? parseInt(limit as string) : 50,

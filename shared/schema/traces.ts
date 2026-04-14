@@ -22,6 +22,8 @@ export const agentTraces = pgTable("agent_traces", {
   feedbackScore: real("feedback_score"),
   domain: text("domain"),
   source: text("source").default("chat"),
+  pageId: text("page_id"),
+  tabId: text("tab_id"),
   metadata: jsonb("metadata"),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),

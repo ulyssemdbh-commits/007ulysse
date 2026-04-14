@@ -55,7 +55,7 @@ import { hearingHub, type HearingInput, type ProcessedHearing, type HearingSourc
 import { voiceOutputHub, type VoiceOutput, type OutputResult, type OutputDestination, type VoiceOutputMetadata } from './VoiceOutputHub';
 import { visionHub, type VisionInput, type ProcessedVision, type VisionSource, type VisionMetadata } from './VisionHub';
 import { actionHub, type ActionInput, type ActionResult, type ActionCategory, type ActionMetadata } from './ActionHub';
-import { brainHub, type ConsciousnessState, type BrainEvent, type BrainDecision, type BrainStats, type WorkingMemoryItem, type VoiceSessionState, setVoiceSessionState, getVoiceSessionState } from './BrainHub';
+import { brainHub, type ConsciousnessState, type NavigationContext, type BrainEvent, type BrainDecision, type BrainStats, type WorkingMemoryItem, type VoiceSessionState, setVoiceSessionState, getVoiceSessionState } from './BrainHub';
 
 // ============== TYPES UNIFIÉS ==============
 
@@ -319,6 +319,7 @@ export type {
   DialogueMode,
   // Brain
   ConsciousnessState,
+  NavigationContext,
   BrainEvent,
   BrainDecision,
   BrainStats,

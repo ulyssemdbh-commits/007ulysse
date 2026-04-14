@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Activity, ArrowLeft, Clock, Cpu, MessageSquare, ThumbsUp, ThumbsDown, Zap, BarChart3, TrendingUp, Wrench, ChevronRight, X, CheckCircle2, XCircle, Loader2, Globe, Bot, Cog, BookOpen } from "lucide-react";
+import { Activity, ArrowLeft, Clock, Cpu, MessageSquare, ThumbsUp, ThumbsDown, Zap, BarChart3, TrendingUp, Wrench, ChevronRight, ChevronDown, X, CheckCircle2, XCircle, Loader2, Globe, Bot, Cog, BookOpen, MapPin, AlertTriangle, Hash } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -29,22 +29,26 @@ interface Trace {
   feedbackScore: number | null;
   domain: string | null;
   source: string | null;
+  pageId: string | null;
+  tabId: string | null;
   startedAt: string;
   completedAt: string | null;
 }
 
+interface TraceStep {
+  id: number;
+  stepType: string;
+  name: string;
+  input: any;
+  output: any;
+  latencyMs: number | null;
+  tokensUsed: number | null;
+  status: string;
+  errorMessage: string | null;
+}
+
 interface TraceDetail extends Trace {
-  steps: Array<{
-    id: number;
-    stepType: string;
-    name: string;
-    input: any;
-    output: any;
-    latencyMs: number | null;
-    tokensUsed: number | null;
-    status: string;
-    errorMessage: string | null;
-  }>;
+  steps: TraceStep[];
 }
 
 interface Stats {
@@ -53,6 +57,12 @@ interface Stats {
   modelStats: Array<{ model: string; count: number; avgLatency: number; avgTokens: number }>;
   topTools: Array<{ tool: string; count: number }>;
   dailyVolume: Array<{ date: string; count: number; avgLatency: number }>;
+  sourceStats: Array<{ source: string | null; count: number; avgLatency: number; successRate: number }>;
+  hourlyDistribution: Array<{ hour: number; count: number }>;
+  errorRate: Array<{ date: string; total: number; errors: number; rate: number }>;
+  pageStats: Array<{ pageId: string | null; count: number }>;
+  tokenCostEstimate: Array<{ agent: string; totalPromptTokens: number; totalCompletionTokens: number; totalTokensAll: number }>;
+  feedbackSummary: { positive: number; negative: number; total: number };
 }
 
 const AGENT_CONFIG: Record<string, { color: string; bg: string; border: string; emoji: string; icon: typeof Bot }> = {
@@ -66,9 +76,11 @@ const AGENT_CONFIG: Record<string, { color: string; bg: string; border: string; 
 const SOURCE_ICONS: Record<string, { icon: typeof Globe; label: string; color: string }> = {
   superchat: { icon: MessageSquare, label: "SuperChat", color: "text-violet-400" },
   core_conversation: { icon: Bot, label: "Chat", color: "text-blue-400" },
+  chat: { icon: Bot, label: "Chat", color: "text-blue-400" },
   homework_auto: { icon: BookOpen, label: "Devoir auto", color: "text-emerald-400" },
   homework_manual: { icon: BookOpen, label: "Devoir manuel", color: "text-teal-400" },
   homework_daily: { icon: BookOpen, label: "Devoir quotidien", color: "text-green-400" },
+  skill: { icon: Zap, label: "Skill", color: "text-yellow-400" },
   skill_engine: { icon: Zap, label: "Skill", color: "text-yellow-400" },
 };
 
@@ -89,6 +101,7 @@ function formatMs(ms: number | null) {
 
 function formatTokens(t: number | null) {
   if (!t) return "-";
+  if (t > 1000000) return `${(t / 1000000).toFixed(1)}M`;
   if (t > 1000) return `${(t / 1000).toFixed(1)}k`;
   return `${t}`;
 }
@@ -111,6 +124,94 @@ function TimeAgo({ date }: { date: string }) {
   return <span>{new Date(date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>;
 }
 
+function CollapsibleStep({ step, index }: { step: TraceStep; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const isSuccess = step.status === "success";
+
+  return (
+    <div className="bg-[#080c16] rounded-lg border border-cyan-900/15 overflow-hidden">
+      <div
+        className="flex items-center gap-2 p-2 cursor-pointer hover:bg-cyan-950/20 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+        data-testid={`step-toggle-${index}`}
+      >
+        <div className={cn(
+          "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+          isSuccess ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"
+        )}>
+          {index + 1}
+        </div>
+        <span className="text-[10px] font-mono text-purple-400/70 bg-purple-500/10 px-1.5 py-0.5 rounded shrink-0">{step.stepType}</span>
+        <span className="text-xs text-gray-300 flex-1 truncate">{step.name}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {step.tokensUsed && <span className="text-[10px] font-mono text-purple-500">{formatTokens(step.tokensUsed)}</span>}
+          <span className="text-[10px] font-mono text-gray-600">{formatMs(step.latencyMs)}</span>
+          <ChevronDown className={cn("w-3 h-3 text-gray-600 transition-transform", expanded && "rotate-180")} />
+        </div>
+      </div>
+      {expanded && (
+        <div className="border-t border-cyan-900/15 p-2.5 space-y-2">
+          {step.errorMessage && (
+            <div className="bg-red-900/20 border border-red-500/30 rounded p-2 text-[11px] text-red-300">
+              {step.errorMessage}
+            </div>
+          )}
+          {step.input && (
+            <div>
+              <p className="text-[9px] font-mono text-cyan-700 uppercase tracking-wider mb-1">Input</p>
+              <ScrollArea className="max-h-[150px]">
+                <pre className="text-[10px] bg-[#060a14] p-2 rounded border border-cyan-900/10 text-gray-400 whitespace-pre-wrap break-words">
+                  {typeof step.input === "string" ? step.input : JSON.stringify(step.input, null, 2)}
+                </pre>
+              </ScrollArea>
+            </div>
+          )}
+          {step.output && (
+            <div>
+              <p className="text-[9px] font-mono text-cyan-700 uppercase tracking-wider mb-1">Output</p>
+              <ScrollArea className="max-h-[200px]">
+                <pre className="text-[10px] bg-[#060a14] p-2 rounded border border-cyan-900/10 text-gray-400 whitespace-pre-wrap break-words">
+                  {typeof step.output === "string" ? step.output.slice(0, 2000) : JSON.stringify(step.output, null, 2)?.slice(0, 2000)}
+                </pre>
+              </ScrollArea>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepTimeline({ steps, totalMs }: { steps: TraceStep[]; totalMs: number }) {
+  if (!steps.length || !totalMs) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-[10px] font-mono text-cyan-700 uppercase tracking-wider mb-1.5">Timeline</p>
+      <div className="relative h-6 bg-[#080c16] rounded-lg border border-cyan-900/15 overflow-hidden flex">
+        {steps.map((step, i) => {
+          const width = Math.max(((step.latencyMs || 0) / totalMs) * 100, 2);
+          const isSuccess = step.status === "success";
+          return (
+            <div
+              key={i}
+              className={cn(
+                "h-full border-r border-[#0a0e1a] relative group",
+                isSuccess ? "bg-emerald-500/30" : "bg-red-500/30"
+              )}
+              style={{ width: `${width}%` }}
+              title={`${step.name}: ${formatMs(step.latencyMs)}`}
+            >
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-[8px] font-mono text-white truncate px-0.5">{i + 1}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function TracesPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -118,14 +219,17 @@ export default function TracesPage() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [modelFilter, setModelFilter] = useState<string>("all");
   const [days, setDays] = useState(30);
 
   const { data: tracesData, isLoading: tracesLoading } = useQuery<{ traces: Trace[]; total: number }>({
-    queryKey: ["/api/traces", agentFilter, statusFilter],
+    queryKey: ["/api/traces", agentFilter, statusFilter, sourceFilter, modelFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (agentFilter !== "all") params.set("agent", agentFilter);
       if (statusFilter !== "all") params.set("status", statusFilter);
+      if (sourceFilter !== "all") params.set("source", sourceFilter);
+      if (modelFilter !== "all") params.set("model", modelFilter);
       params.set("limit", "100");
       const res = await fetch(`/api/traces?${params}`, { credentials: "include" });
       return res.json();
@@ -159,12 +263,9 @@ export default function TracesPage() {
     },
   });
 
-  let traces = tracesData?.traces || [];
-  if (sourceFilter !== "all") {
-    traces = traces.filter(t => t.source === sourceFilter);
-  }
-
-  const uniqueSources = [...new Set((tracesData?.traces || []).map(t => t.source).filter(Boolean))];
+  const traces = tracesData?.traces || [];
+  const uniqueSources = [...new Set(traces.map(t => t.source).filter(Boolean))];
+  const uniqueModels = [...new Set(traces.map(t => t.model).filter(Boolean))];
 
   return (
     <div className="min-h-screen bg-[#060a14] text-white">
@@ -240,9 +341,20 @@ export default function TracesPage() {
                   <SelectItem value="running">En cours</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={modelFilter} onValueChange={setModelFilter}>
+                <SelectTrigger className="w-[180px] bg-[#0a0e1a] border-cyan-900/30 text-cyan-300 text-sm h-9" data-testid="select-model-filter">
+                  <SelectValue placeholder="Modèle" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0d1220] border-cyan-900/30">
+                  <SelectItem value="all">Tous modèles</SelectItem>
+                  {uniqueModels.map(m => (
+                    <SelectItem key={m!} value={m!}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr,380px] gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr,420px] gap-4">
               <ScrollArea className="h-[calc(100vh-220px)]">
                 <div className="space-y-1.5 pr-2">
                   {tracesLoading && (
@@ -285,6 +397,11 @@ export default function TracesPage() {
                               {trace.domain && trace.domain !== "general" && (
                                 <span className="text-[10px] font-mono text-purple-400/70 bg-purple-500/10 px-1.5 py-0.5 rounded">{trace.domain}</span>
                               )}
+                              {trace.pageId && (
+                                <span className="text-[10px] font-mono text-teal-400/70 bg-teal-500/10 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                  <MapPin className="w-2.5 h-2.5" />{trace.pageId}{trace.tabId ? `/${trace.tabId}` : ""}
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm text-gray-300 truncate leading-snug">{trace.query}</p>
                             <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-600">
@@ -303,6 +420,7 @@ export default function TracesPage() {
                                   <Wrench className="w-3 h-3" />{trace.toolCallCount}
                                 </span>
                               )}
+                              <span className="text-[10px] font-mono text-gray-700 truncate max-w-[120px]">{trace.model}</span>
                               <span className="ml-auto"><TimeAgo date={trace.startedAt} /></span>
                             </div>
                           </div>
@@ -351,7 +469,7 @@ export default function TracesPage() {
                           {[
                             { label: "Modèle", value: traceDetail.model, color: "text-cyan-300" },
                             { label: "Latence", value: formatMs(traceDetail.totalLatencyMs), color: traceDetail.totalLatencyMs && traceDetail.totalLatencyMs < 3000 ? "text-emerald-400" : "text-amber-400" },
-                            { label: "Tokens", value: formatTokens(traceDetail.totalTokens), color: "text-purple-300" },
+                            { label: "Tokens", value: `${formatTokens(traceDetail.promptTokens)} → ${formatTokens(traceDetail.completionTokens)} (${formatTokens(traceDetail.totalTokens)})`, color: "text-purple-300" },
                             { label: "Source", value: getSourceInfo(traceDetail.source).label, color: getSourceInfo(traceDetail.source).color },
                           ].map((item) => (
                             <div key={item.label} className="bg-[#080c16] rounded-lg p-2.5 border border-cyan-900/20">
@@ -360,6 +478,19 @@ export default function TracesPage() {
                             </div>
                           ))}
                         </div>
+
+                        {(traceDetail.pageId || traceDetail.tabId) && (
+                          <div className="bg-teal-500/5 border border-teal-500/20 rounded-lg p-2.5 flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-teal-400 shrink-0" />
+                            <div>
+                              <p className="text-[10px] font-mono text-teal-600 uppercase tracking-wider">Contexte Navigation</p>
+                              <p className="text-xs text-teal-300 mt-0.5">
+                                Page: <span className="font-semibold">{traceDetail.pageId}</span>
+                                {traceDetail.tabId && <> / Onglet: <span className="font-semibold">{traceDetail.tabId}</span></>}
+                              </p>
+                            </div>
+                          </div>
+                        )}
 
                         <div>
                           <p className="text-[10px] font-mono text-cyan-700 uppercase tracking-wider mb-1.5">Query</p>
@@ -372,7 +503,7 @@ export default function TracesPage() {
                           <div>
                             <p className="text-[10px] font-mono text-cyan-700 uppercase tracking-wider mb-1.5">Réponse</p>
                             <div className="bg-[#080c16] rounded-lg p-3 border border-cyan-900/20 max-h-[200px] overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
-                              <p className="text-sm text-gray-400 leading-relaxed whitespace-pre-wrap">{traceDetail.response.slice(0, 1000)}</p>
+                              <p className="text-sm text-gray-400 leading-relaxed whitespace-pre-wrap">{traceDetail.response.slice(0, 1500)}</p>
                             </div>
                           </div>
                         )}
@@ -389,22 +520,26 @@ export default function TracesPage() {
                         )}
 
                         {traceDetail.steps && traceDetail.steps.length > 0 && (
-                          <div>
-                            <p className="text-[10px] font-mono text-cyan-700 uppercase tracking-wider mb-1.5">Étapes ({traceDetail.steps.length})</p>
-                            <div className="space-y-1">
-                              {traceDetail.steps.map((step, i) => (
-                                <div key={i} className="flex items-center gap-2 bg-[#080c16] p-2 rounded-lg border border-cyan-900/15">
-                                  <div className={cn(
-                                    "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-                                    step.status === "success" ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"
-                                  )}>
-                                    {i + 1}
-                                  </div>
-                                  <span className="text-xs text-gray-300 flex-1 truncate">{step.name}</span>
-                                  <span className="text-[10px] font-mono text-gray-600">{formatMs(step.latencyMs)}</span>
-                                </div>
-                              ))}
+                          <>
+                            <StepTimeline steps={traceDetail.steps} totalMs={traceDetail.totalLatencyMs || 0} />
+                            <div>
+                              <p className="text-[10px] font-mono text-cyan-700 uppercase tracking-wider mb-1.5">Étapes ({traceDetail.steps.length})</p>
+                              <div className="space-y-1">
+                                {traceDetail.steps.map((step, i) => (
+                                  <CollapsibleStep key={i} step={step} index={i} />
+                                ))}
+                              </div>
                             </div>
+                          </>
+                        )}
+
+                        {traceDetail.errorMessage && (
+                          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                              <span className="text-[10px] font-mono text-red-400 uppercase">Erreur</span>
+                            </div>
+                            <p className="text-xs text-red-300">{traceDetail.errorMessage}</p>
                           </div>
                         )}
 
@@ -469,12 +604,13 @@ export default function TracesPage() {
               </div>
             ) : stats ? (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   {[
                     { icon: Activity, label: "Total traces", value: stats.totalTraces, color: "text-cyan-300", iconColor: "text-cyan-400", bg: "bg-cyan-500/10" },
                     { icon: Bot, label: "Agents actifs", value: stats.agentStats.length, color: "text-blue-300", iconColor: "text-blue-400", bg: "bg-blue-500/10" },
                     { icon: Cpu, label: "Modèles", value: stats.modelStats.length, color: "text-purple-300", iconColor: "text-purple-400", bg: "bg-purple-500/10" },
-                    { icon: Wrench, label: "Outils", value: stats.topTools.length, color: "text-emerald-300", iconColor: "text-emerald-400", bg: "bg-emerald-500/10" },
+                    { icon: ThumbsUp, label: "Feedback", value: `${stats.feedbackSummary?.positive || 0}👍 / ${stats.feedbackSummary?.negative || 0}👎`, color: "text-emerald-300", iconColor: "text-emerald-400", bg: "bg-emerald-500/10" },
+                    { icon: Wrench, label: "Outils uniques", value: stats.topTools.length, color: "text-amber-300", iconColor: "text-amber-400", bg: "bg-amber-500/10" },
                   ].map((card) => {
                     const Icon = card.icon;
                     return (
@@ -558,7 +694,7 @@ export default function TracesPage() {
                   <div className="border border-cyan-900/30 bg-[#0a0e1a]/60 rounded-xl overflow-hidden">
                     <div className="px-4 py-3 border-b border-cyan-900/20 flex items-center gap-2">
                       <Cpu className="w-4 h-4 text-purple-400" />
-                      <span className="text-sm font-semibold text-cyan-200">Modèles</span>
+                      <span className="text-sm font-semibold text-cyan-200">Modèles & Tokens</span>
                     </div>
                     <div className="p-4 space-y-2">
                       {stats.modelStats.map((m) => (
@@ -601,6 +737,149 @@ export default function TracesPage() {
                       {stats.dailyVolume.length === 0 && <p className="text-cyan-800 text-sm text-center py-4">Aucune donnée</p>}
                     </div>
                   </div>
+
+                  {stats.sourceStats && stats.sourceStats.length > 0 && (
+                    <div className="border border-cyan-900/30 bg-[#0a0e1a]/60 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-cyan-900/20 flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-violet-400" />
+                        <span className="text-sm font-semibold text-cyan-200">Par Source</span>
+                      </div>
+                      <div className="p-4 space-y-2">
+                        {stats.sourceStats.map((s) => {
+                          const info = getSourceInfo(s.source);
+                          const SrcIcon = info.icon;
+                          return (
+                            <div key={s.source || "null"} className="flex items-center gap-3 bg-[#080c16] p-2.5 rounded-lg border border-cyan-900/15">
+                              <SrcIcon className={cn("w-4 h-4 shrink-0", info.color)} />
+                              <span className="text-xs text-gray-300 flex-1">{info.label}</span>
+                              <div className="flex gap-3 text-[11px] font-mono shrink-0">
+                                <span className="text-gray-500">{s.count}x</span>
+                                <span className="text-cyan-400">{formatMs(s.avgLatency)}</span>
+                                <span className={s.successRate >= 90 ? "text-emerald-400" : "text-amber-400"}>{s.successRate}%</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {stats.hourlyDistribution && stats.hourlyDistribution.length > 0 && (
+                    <div className="border border-cyan-900/30 bg-[#0a0e1a]/60 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-cyan-900/20 flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-teal-400" />
+                        <span className="text-sm font-semibold text-cyan-200">Distribution Horaire</span>
+                      </div>
+                      <div className="p-4">
+                        <div className="flex items-end gap-0.5 h-24">
+                          {Array.from({ length: 24 }, (_, h) => {
+                            const entry = stats.hourlyDistribution.find(e => e.hour === h);
+                            const val = entry?.count || 0;
+                            const maxH = Math.max(...stats.hourlyDistribution.map(e => e.count), 1);
+                            const barH = val > 0 ? Math.max((val / maxH) * 100, 6) : 2;
+                            return (
+                              <div key={h} className="flex-1 flex flex-col items-center gap-0.5" title={`${h}h: ${val} traces`}>
+                                <div className="w-full relative" style={{ height: `${barH}%` }}>
+                                  <div className={cn(
+                                    "absolute inset-0 rounded-t transition-colors",
+                                    val > 0 ? "bg-gradient-to-t from-teal-500/60 to-teal-400/20 hover:from-teal-500/80" : "bg-gray-800/30"
+                                  )} />
+                                </div>
+                                {h % 4 === 0 && <span className="text-[7px] font-mono text-gray-700">{h}h</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {stats.errorRate && stats.errorRate.length > 0 && (
+                    <div className="border border-cyan-900/30 bg-[#0a0e1a]/60 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-cyan-900/20 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-400" />
+                        <span className="text-sm font-semibold text-cyan-200">Taux d'Erreur</span>
+                      </div>
+                      <div className="p-4 space-y-1">
+                        {stats.errorRate.slice(-10).map((e) => (
+                          <div key={e.date} className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono text-gray-600 w-12">{new Date(e.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}</span>
+                            <div className="flex-1 h-2 bg-cyan-900/20 rounded-full overflow-hidden">
+                              <div
+                                className={cn("h-full rounded-full", e.rate > 10 ? "bg-red-500/70" : e.rate > 5 ? "bg-amber-500/70" : "bg-emerald-500/50")}
+                                style={{ width: `${Math.max(e.rate, 1)}%` }}
+                              />
+                            </div>
+                            <span className={cn("text-[10px] font-mono w-10 text-right", e.rate > 10 ? "text-red-400" : e.rate > 5 ? "text-amber-400" : "text-emerald-400")}>
+                              {e.rate}%
+                            </span>
+                            <span className="text-[9px] font-mono text-gray-700 w-16 text-right">{e.errors}/{e.total}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {stats.tokenCostEstimate && stats.tokenCostEstimate.length > 0 && (
+                    <div className="border border-cyan-900/30 bg-[#0a0e1a]/60 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-cyan-900/20 flex items-center gap-2">
+                        <Hash className="w-4 h-4 text-indigo-400" />
+                        <span className="text-sm font-semibold text-cyan-200">Consommation Tokens</span>
+                      </div>
+                      <div className="p-4 space-y-2">
+                        {stats.tokenCostEstimate.map((t) => {
+                          const cfg = getAgentConfig(t.agent);
+                          return (
+                            <div key={t.agent} className={cn("rounded-lg p-3 border", cfg.bg, cfg.border)}>
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-sm">{cfg.emoji}</span>
+                                <span className={cn("text-xs font-bold capitalize", cfg.color)}>{t.agent}</span>
+                                <span className="ml-auto text-xs font-mono text-gray-500">{formatTokens(t.totalTokensAll)} total</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                                <div>
+                                  <span className="text-gray-600">Prompt:</span>
+                                  <span className="text-cyan-400 ml-1">{formatTokens(t.totalPromptTokens)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Completion:</span>
+                                  <span className="text-purple-400 ml-1">{formatTokens(t.totalCompletionTokens)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {stats.pageStats && stats.pageStats.length > 0 && (
+                    <div className="border border-cyan-900/30 bg-[#0a0e1a]/60 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-cyan-900/20 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-teal-400" />
+                        <span className="text-sm font-semibold text-cyan-200">Pages les plus actives</span>
+                      </div>
+                      <div className="p-4 space-y-1.5">
+                        {stats.pageStats.map((p, i) => {
+                          const maxCount = Math.max(...stats.pageStats.map(x => x.count), 1);
+                          return (
+                            <div key={p.pageId || i} className="flex items-center gap-2">
+                              <span className="text-[10px] font-mono text-gray-600 w-4 text-right">{i + 1}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-teal-300 truncate">{p.pageId || "inconnu"}</span>
+                                  <span className="text-[10px] font-mono text-gray-600 ml-auto shrink-0">{p.count}x</span>
+                                </div>
+                                <div className="h-1 bg-cyan-900/30 rounded-full mt-1 overflow-hidden">
+                                  <div className="h-full bg-teal-500/50 rounded-full" style={{ width: `${(p.count / maxCount) * 100}%` }} />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             ) : null}

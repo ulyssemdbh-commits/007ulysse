@@ -13,6 +13,7 @@ import { codeContextOrchestrator } from "./codeContextOrchestrator";
 import { requestAnalysisService, type RequestAnalysis, type RequestDomain } from "./requestAnalysisService";
 import { marsAuditContextService } from "./marsAuditContextService";
 import { sportsContextBuilder } from "./sportsContextBuilder";
+import { buildNavigationContext } from "../config/appNavigation";
 
 export interface CoreContext {
   systemPrompt: string;
@@ -33,6 +34,7 @@ export interface DomainContexts {
   codeContext?: string;
   sportsContext?: string;
   learningContext?: string;
+  navigationContext?: string;
 }
 
 export interface UnifiedContext {
@@ -58,7 +60,8 @@ const MAX_METRICS_HISTORY = 100;
 export const unifiedContextService = {
   async getUnifiedContext(
     userId: number,
-    userMessage: string
+    userMessage: string,
+    pageContext?: { agent?: string; pageId?: string; tabId?: string }
   ): Promise<UnifiedContext> {
     const startTime = Date.now();
 
@@ -77,6 +80,13 @@ export const unifiedContextService = {
 
     const domainStart = Date.now();
     const domainContext = await this.getDomainContexts(userId, userMessage, analysis);
+    if (pageContext?.agent) {
+      domainContext.navigationContext = buildNavigationContext(
+        pageContext.agent,
+        pageContext.pageId,
+        pageContext.tabId
+      );
+    }
     const domainLatency = Date.now() - domainStart;
 
     const totalLatency = Date.now() - startTime;
@@ -273,6 +283,10 @@ export const unifiedContextService = {
 
     if (unified.domain.learningContext) {
       parts.push("\n" + unified.domain.learningContext);
+    }
+
+    if (unified.domain.navigationContext) {
+      parts.push("\n🗺️ " + unified.domain.navigationContext);
     }
 
     return parts.join("\n");

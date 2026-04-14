@@ -28,21 +28,25 @@ export function initializeVisionHubBridge(): void {
 }
 
 export async function analyzeDocumentViaVisionHub(
-  imageBuffer: Buffer,
+  imageInput: Buffer | string,
   filename: string,
   mimeType: string,
   userId: number
 ): Promise<{ text: string; structured?: any; insights: any[] }> {
+  const content = typeof imageInput === "string"
+    ? imageInput
+    : imageInput.toString("base64");
+
   const result = await visionHub.seeDocument(
-    imageBuffer,
+    content,
     filename,
     mimeType,
     userId
   );
 
   return {
-    text: result.extractedContent.text,
-    structured: result.extractedContent.structuredData,
+    text: result.text || "",
+    structured: result.structuredData,
     insights: result.insights
   };
 }
@@ -57,15 +61,17 @@ export async function analyzeScreenViaVisionHub(
 ): Promise<{ summary: string; insights: any[] }> {
   const result = await visionHub.seeScreen(
     imageBase64,
-    sessionId,
-    appName,
-    windowTitle,
-    frameNumber,
-    userId
+    userId,
+    {
+      sessionId,
+      appName,
+      windowTitle,
+      frameNumber,
+    }
   );
 
   return {
-    summary: result.extractedContent.text,
+    summary: result.text || "",
     insights: result.insights
   };
 }
@@ -75,11 +81,15 @@ export async function analyzeWebpageViaVisionHub(
   htmlContent: string,
   userId: number
 ): Promise<{ text: string; structured?: any; insights: any[] }> {
-  const result = await visionHub.seeWebpage(url, htmlContent, userId);
+  const result = await visionHub.seeWebpage(
+    htmlContent,
+    url,
+    userId
+  );
 
   return {
-    text: result.extractedContent.text,
-    structured: result.extractedContent.structuredData,
+    text: result.text || "",
+    structured: result.structuredData,
     insights: result.insights
   };
 }
@@ -92,7 +102,7 @@ export async function analyzeScreenshotViaVisionHub(
   const result = await visionHub.seeScreenshot(imageBase64, url, userId);
 
   return {
-    text: result.extractedContent.text,
+    text: result.text || "",
     insights: result.insights
   };
 }
