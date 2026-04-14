@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Mail, CheckSquare, CreditCard, Trophy, Activity, ChevronRight, TrendingUp } from "lucide-react";
+import { Calendar, CreditCard, Trophy, Activity, ChevronRight, TrendingUp, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 
 interface MarseilleData {
   time: string;
@@ -12,10 +13,35 @@ interface MarseilleData {
   };
 }
 
+interface TraceStats {
+  totalTraces: number;
+  agentStats: Array<{ agent: string; count: number; avgLatency: number; successRate: number }>;
+  dailyVolume: Array<{ date: string; count: number }>;
+}
+
+interface CalendarEvent {
+  id: string;
+  summary: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+}
+
 export function DashboardRightPanel() {
+  const [, navigate] = useLocation();
+
   const { data: marseilleInfo } = useQuery<MarseilleData>({
     queryKey: ["/api/marseille-info"],
     refetchInterval: 60000,
+  });
+
+  const { data: traceStats } = useQuery<TraceStats>({
+    queryKey: ["/api/traces/stats", { days: 7 }],
+    refetchInterval: 120000,
+  });
+
+  const { data: calendarEvents } = useQuery<CalendarEvent[]>({
+    queryKey: ["/api/calendar/today"],
+    refetchInterval: 300000,
   });
 
   const [time, setTime] = useState(() =>
@@ -29,13 +55,17 @@ export function DashboardRightPanel() {
     return () => clearInterval(interval);
   }, []);
 
-  const agendaItems = [
-    { time: "10:00", label: "Standup DevMax", color: "bg-blue-500" },
-    { time: "12:30", label: "Dejeuner", color: "bg-pink-500" },
-    { time: "14:00", label: "Review finances", color: "bg-amber-500" },
-    { time: "17:00", label: "Livraison colis", color: "bg-emerald-500" },
-    { time: "21:00", label: "OM Match", color: "bg-cyan-500" },
-  ];
+  const EVENT_COLORS = ["bg-blue-500", "bg-pink-500", "bg-amber-500", "bg-emerald-500", "bg-cyan-500", "bg-violet-500", "bg-rose-500", "bg-teal-500"];
+
+  const agendaItems = calendarEvents && calendarEvents.length > 0
+    ? calendarEvents.map((ev, i) => {
+        const startStr = ev.start?.dateTime || ev.start?.date || "";
+        const eventTime = startStr ? new Date(startStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "Journée";
+        return { time: eventTime, label: ev.summary || "Événement", color: EVENT_COLORS[i % EVENT_COLORS.length] };
+      })
+    : [
+        { time: "--:--", label: "Chargement agenda...", color: "bg-cyan-800" },
+      ];
 
   const systems = [
     { name: "Ulysse", status: "ok" },
@@ -53,8 +83,13 @@ export function DashboardRightPanel() {
           <Calendar className="w-3 h-3" /> Agenda du jour
         </h3>
         <div className="flex flex-col gap-1.5">
-          {agendaItems.map((item, i) => (
-            <div key={i} className="flex items-center gap-2 p-1.5 rounded-lg bg-cyan-950/20 border border-cyan-900/20 group hover:border-cyan-500/30 transition-all cursor-pointer">
+          {agendaItems.slice(0, 6).map((item, i) => (
+            <div
+              key={i}
+              onClick={() => navigate("/")}
+              data-testid={`agenda-item-${i}`}
+              className="flex items-center gap-2 p-1.5 rounded-lg bg-cyan-950/20 border border-cyan-900/20 group hover:border-cyan-500/30 transition-all cursor-pointer active:scale-[0.98]"
+            >
               <div className={cn("w-1 h-8 rounded-full shrink-0", item.color)} />
               <div className="flex-1 min-w-0">
                 <div className="text-[11px] text-cyan-200 truncate">{item.label}</div>
@@ -67,7 +102,11 @@ export function DashboardRightPanel() {
       </div>
 
       <div className="flex gap-3">
-        <div className="flex-1 border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3">
+        <div
+          onClick={() => navigate("/finances")}
+          data-testid="widget-solde"
+          className="flex-1 border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3 cursor-pointer hover:border-cyan-400/50 transition-all active:scale-[0.98]"
+        >
           <h3 className="text-[10px] font-mono text-cyan-500/70 tracking-widest uppercase mb-2 flex items-center gap-1">
             <CreditCard className="w-3 h-3" /> Solde
           </h3>
@@ -77,7 +116,11 @@ export function DashboardRightPanel() {
             <span className="text-[10px] font-mono text-emerald-400">ce mois</span>
           </div>
         </div>
-        <div className="flex-1 border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3">
+        <div
+          onClick={() => navigate("/sports/predictions")}
+          data-testid="widget-pronos"
+          className="flex-1 border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3 cursor-pointer hover:border-cyan-400/50 transition-all active:scale-[0.98]"
+        >
           <h3 className="text-[10px] font-mono text-cyan-500/70 tracking-widest uppercase mb-2 flex items-center gap-1">
             <Trophy className="w-3 h-3" /> Pronos
           </h3>
@@ -92,7 +135,11 @@ export function DashboardRightPanel() {
         </div>
       </div>
 
-      <div className="border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3 flex flex-col">
+      <div
+        onClick={() => navigate("/diagnostics")}
+        data-testid="widget-systemes"
+        className="border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3 flex flex-col cursor-pointer hover:border-cyan-400/50 transition-all active:scale-[0.98]"
+      >
         <h3 className="text-[10px] font-mono text-cyan-500/70 tracking-widest uppercase mb-2 flex items-center justify-between pb-2 border-b border-cyan-900/40">
           <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Systemes</span>
           <span className="text-emerald-400 text-[9px]">{systems.filter(s => s.status === "ok").length}/{systems.length} OK</span>
@@ -116,6 +163,52 @@ export function DashboardRightPanel() {
           ))}
         </div>
       </div>
+
+      {traceStats && (traceStats.totalTraces > 0 || (traceStats.agentStats && traceStats.agentStats.length > 0)) && (
+        <div
+          onClick={() => navigate("/traces")}
+          data-testid="widget-traces"
+          className="border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3 flex flex-col cursor-pointer hover:border-cyan-400/50 transition-all active:scale-[0.98]"
+        >
+          <h3 className="text-[10px] font-mono text-cyan-500/70 tracking-widest uppercase mb-2 flex items-center justify-between pb-2 border-b border-cyan-900/40">
+            <span className="flex items-center gap-2"><Zap className="w-3 h-3" /> Traces (7j)</span>
+            <span className="text-cyan-400 text-[9px] font-bold">{traceStats.totalTraces}</span>
+          </h3>
+          <div className="flex flex-col gap-1.5">
+            {(traceStats.agentStats || []).slice(0, 5).map((ag, i) => (
+              <div key={i} className="flex items-center gap-2 p-1 rounded bg-cyan-950/20">
+                <div className={cn(
+                  "w-1.5 h-1.5 rounded-full shrink-0",
+                  ag.successRate >= 90 ? "bg-emerald-400" : ag.successRate >= 70 ? "bg-amber-400" : "bg-red-400"
+                )} />
+                <span className="text-[9px] font-mono text-cyan-300 flex-1 truncate capitalize">{ag.agent}</span>
+                <span className="text-[8px] font-mono text-cyan-600">{ag.count}x</span>
+                <span className="text-[8px] font-mono text-cyan-500">{ag.avgLatency ? `${Math.round(ag.avgLatency / 1000)}s` : "--"}</span>
+                <span className={cn(
+                  "text-[8px] font-mono font-bold",
+                  ag.successRate >= 90 ? "text-emerald-400" : ag.successRate >= 70 ? "text-amber-400" : "text-red-400"
+                )}>{ag.successRate}%</span>
+              </div>
+            ))}
+          </div>
+          {traceStats.dailyVolume && traceStats.dailyVolume.length > 1 && (
+            <div className="mt-2 flex items-end gap-[2px] h-6">
+              {traceStats.dailyVolume.slice(-7).map((d, i) => {
+                const max = Math.max(...traceStats.dailyVolume!.slice(-7).map(v => v.count), 1);
+                const h = Math.max((d.count / max) * 100, 8);
+                return (
+                  <div
+                    key={i}
+                    className="flex-1 bg-cyan-500/40 rounded-t-sm hover:bg-cyan-400/60 transition-colors"
+                    style={{ height: `${h}%` }}
+                    title={`${d.date}: ${d.count} traces`}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </aside>
   );
 }

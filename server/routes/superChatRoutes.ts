@@ -6,6 +6,7 @@ import { eq, desc, asc, and, sql } from "drizzle-orm";
 import { ulysseToolsV2, executeToolCallV2 } from "../services/ulysseToolsServiceV2";
 import { PERSONA_IDENTITIES } from "../config/personaMapping";
 import { cumulativeLearningEngine } from "../services/cumulativeLearningEngine";
+import { traceCollector } from "../services/traceCollector";
 import type OpenAI from "openai";
 
 type ChatCompletionTool = OpenAI.Chat.Completions.ChatCompletionTool;
@@ -574,6 +575,15 @@ router.post("/message", async (req: Request, res: Response) => {
       if (!persona) return;
       console.log(`[SuperChat] Streaming ${persona.name} (${persona.emoji}) with model: ${persona.model}`);
 
+      const traceId = traceCollector.startTrace({
+        userId: userId!,
+        agent: personaKey,
+        model: persona.model,
+        query: message,
+        domain: "superchat",
+        source: "superchat",
+      });
+
       const previousResponses = allResponsesThisRound.map(r => {
         const p = AI_PERSONAS[r.sender];
         return `${p?.emoji || "🤖"} [${r.name}]: ${r.content}`;
@@ -714,6 +724,14 @@ router.post("/message", async (req: Request, res: Response) => {
           metadata: { respondedTo: message.substring(0, 100) },
         });
 
+        traceCollector.endTrace(traceId, {
+          response: fullResponse,
+          status: "completed",
+          toolsUsed: toolsExecuted.map(t => t.name),
+          toolCallCount: toolsExecuted.length,
+          metadata: { sessionId: activeSessionId, toolDetails: toolsExecuted },
+        }).catch(() => {});
+
         allResponsesThisRound.push({ sender: personaKey, name: persona.name, content: fullResponse });
         if (toolsExecuted.length > 0) {
           allToolsUsed.push({ persona: persona.name, tools: toolsExecuted });
@@ -751,6 +769,12 @@ router.post("/message", async (req: Request, res: Response) => {
 
       } catch (err: any) {
         console.error(`[SuperChat] Error from ${persona.name}:`, err.message);
+        traceCollector.endTrace(traceId, {
+          status: "error",
+          errorMessage: err.message,
+          toolsUsed: toolsExecuted.map(t => t.name),
+          toolCallCount: toolsExecuted.length,
+        }).catch(() => {});
         res.write(`data: ${JSON.stringify({
           type: "error",
           sender: personaKey,

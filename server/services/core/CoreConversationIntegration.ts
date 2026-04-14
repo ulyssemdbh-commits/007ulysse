@@ -16,6 +16,7 @@ import { unifiedRAGService } from "../context/unifiedRAG";
 import { plannerService } from "./PlannerExecutorVerifier";
 import { autonomousInitiativeEngine } from "../autonomousInitiativeEngine";
 import { conversationalPreferencesService } from "../conversationalPreferencesService";
+import { traceCollector } from "../traceCollector";
 
 interface ConversationContext {
   userId: number;
@@ -186,6 +187,15 @@ class CoreConversationIntegration {
     let providerProcessingMs = 0;
     const toolsUsed: string[] = [];
 
+    const traceId = traceCollector.startTrace({
+      userId: context.userId,
+      agent: context.persona,
+      model: "auto",
+      query,
+      domain: this.detectDomain(query),
+      source: "core_conversation",
+    });
+
     // Step 1: Analyze query
     const coreStart = Date.now();
     const decision = await this.analyzeQuery(query, context);
@@ -195,7 +205,11 @@ class CoreConversationIntegration {
 
     // Step 2: Execute based on strategy
     if (decision.strategy === 'local' && decision.localResponse) {
-      // Use Core Engine response directly
+      traceCollector.endTrace(traceId, {
+        response: decision.localResponse,
+        status: "completed",
+        metadata: { strategy: "local", source: "core_cache" },
+      }).catch(() => {});
       return {
         response: decision.localResponse,
         toolsUsed: [],
@@ -265,6 +279,14 @@ class CoreConversationIntegration {
       ulysseKPIService.detectSatisfactionFromMessage(query, detectedDomain);
 
       conversationalPreferencesService.analyzeResponsePreference(context.userId, query, response).catch(() => {});
+
+      traceCollector.endTrace(traceId, {
+        response,
+        status: "completed",
+        toolsUsed: decision.suggestedTools || [],
+        toolCallCount: (decision.suggestedTools || []).length,
+        metadata: { strategy: "tools" },
+      }).catch(() => {});
 
       return {
         response,
@@ -372,6 +394,14 @@ class CoreConversationIntegration {
     ulysseKPIService.detectSatisfactionFromMessage(query, detectedDomain);
 
     conversationalPreferencesService.analyzeResponsePreference(context.userId, query, finalContent).catch(() => {});
+
+    traceCollector.endTrace(traceId, {
+      response: finalContent,
+      status: "completed",
+      toolsUsed: response.toolsUsed,
+      toolCallCount: response.toolsUsed.length,
+      metadata: { strategy: "provider", model: modelRoute.model, domain: detectedDomain },
+    }).catch(() => {});
 
     return {
       response: finalContent,

@@ -60,6 +60,8 @@ const IrisHomework = lazy(() => import("@/pages/IrisHomework"));
 const IrisFiles = lazy(() => import("@/pages/IrisFiles"));
 const TalkingIris = lazy(() => import("@/pages/TalkingIris"));
 const ScreenMonitorPage = lazy(() => import("@/pages/ScreenMonitor"));
+const TracesPage = lazy(() => import("@/pages/Traces"));
+const SkillsPage = lazy(() => import("@/pages/Skills"));
 
 function LazyPage({ children }: { children: React.ReactNode }) {
   return (
@@ -368,6 +370,20 @@ function AppRouter() {
         {() => (
           <ProtectedRoute>
             <LazyPage><BrainDashboard /></LazyPage>
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/traces">
+        {() => (
+          <ProtectedRoute>
+            <LazyPage><TracesPage /></LazyPage>
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/skills">
+        {() => (
+          <ProtectedRoute>
+            <LazyPage><SkillsPage /></LazyPage>
           </ProtectedRoute>
         )}
       </Route>

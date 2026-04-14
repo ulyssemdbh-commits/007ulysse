@@ -1,4 +1,4 @@
-import { Trophy, Brain, Store, DollarSign, FolderOpen, ListTodo, Pencil, Mail, BarChart3, GitBranch, Sparkles, Users, Stethoscope, Settings, CreditCard, CheckSquare, Briefcase } from "lucide-react";
+import { Trophy, Brain, Store, DollarSign, FolderOpen, ListTodo, Pencil, Mail, BarChart3, GitBranch, Sparkles, Users, Stethoscope, Settings, CreditCard, CheckSquare, Briefcase, Activity, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -20,6 +20,8 @@ const URL_SHORTCUTS = [
   { label: "DevOps", icon: GitBranch, path: "/devops", color: "text-indigo-400" },
   { label: "Iris", icon: Sparkles, path: "/devops-iris", color: "text-amber-400" },
   { label: "SuperChat", icon: Users, path: "/superchat", color: "text-violet-400" },
+  { label: "Traces", icon: Activity, path: "/traces", color: "text-cyan-400" },
+  { label: "Skills", icon: Zap, path: "/skills", color: "text-yellow-400" },
   { label: "Diag", icon: Stethoscope, path: "/diagnostics", color: "text-slate-400" },
   { label: "Reglages", icon: Settings, path: "/settings", color: "text-slate-300" },
 ];
@@ -28,7 +30,7 @@ export function DashboardShortcuts({ navigate }: DashboardShortcutsProps) {
   const [activeModule, setActiveModule] = useState<string | null>(null);
 
   return (
-    <aside className="w-[72px] shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+    <aside className="w-[130px] shrink-0 grid grid-cols-2 gap-1.5 overflow-y-auto pb-2 content-start" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
       {URL_SHORTCUTS.map((mod) => {
         const Icon = mod.icon;
         const isActive = activeModule === mod.label;
@@ -49,7 +51,7 @@ export function DashboardShortcuts({ navigate }: DashboardShortcutsProps) {
           >
             <Icon className={cn("w-5 h-5", isActive ? "text-cyan-300" : mod.color)} />
             <span className="text-[8px] uppercase tracking-wider font-mono opacity-80 group-hover:opacity-100 leading-tight">{mod.label}</span>
-            <div className="absolute inset-0 border border-cyan-400/0 group-hover:border-cyan-400/20 rounded-xl transition-all duration-300" />
+            <div className="absolute inset-0 border border-cyan-400/0 group-hover:border-cyan-400/20 rounded-xl transition-all duration-300 text-[#d8edf0]" />
           </button>
         );
       })}

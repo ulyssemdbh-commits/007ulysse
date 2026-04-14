@@ -21,6 +21,7 @@ import {
 } from "./scraper/verified";
 import { memoryService } from "./memory";
 import { homeworkIntelligence } from "./homeworkIntelligence";
+import { traceCollector } from "./traceCollector";
 import { injectScrapedDataToFootdatas } from "./footdatasUlysseIntegration";
 import * as matchEndirectService from "./matchEndirectService";
 
@@ -794,7 +795,16 @@ Le prompt DOIT INCLURE cette instruction: "INTERDICTION ABSOLUE d'inventer des d
     try {
       const urgency = await homeworkIntelligence.detectUrgency(homework);
       console.log(`[HomeworkExecution] Starting execution for homework ${homework.id}: "${homework.title}" (urgency: ${urgency})`);
-      
+
+      const traceId = traceCollector.startTrace({
+        userId,
+        agent: "ulysse",
+        model: "auto",
+        query: `[Devoir] ${homework.title}`,
+        domain: "homework",
+        source: `homework_${triggeredBy}`,
+      });
+
       const [execution] = await db.insert(homeworkExecution).values({
         homeworkId: homework.id,
         userId,
@@ -843,6 +853,12 @@ Le prompt DOIT INCLURE cette instruction: "INTERDICTION ABSOLUE d'inventer des d
           })
           .where(and(eq(ulysseHomework.id, homework.id), eq(ulysseHomework.userId, userId)));
 
+        traceCollector.endTrace(traceId, {
+          response: result.summary?.slice(0, 5000),
+          status: "completed",
+          metadata: { homeworkId: homework.id, executionId: execution.id, durationMs, triggeredBy },
+        }).catch(() => {});
+
         console.log(`[HomeworkExecution] Completed homework ${homework.id} in ${durationMs}ms`);
         return completed;
 
@@ -872,6 +888,12 @@ Le prompt DOIT INCLURE cette instruction: "INTERDICTION ABSOLUE d'inventer des d
         await db.update(ulysseHomework)
           .set({ status: "pending" })
           .where(and(eq(ulysseHomework.id, homework.id), eq(ulysseHomework.userId, userId)));
+
+        traceCollector.endTrace(traceId, {
+          status: "error",
+          errorMessage: errorMessage,
+          metadata: { homeworkId: homework.id, executionId: execution.id, triggeredBy },
+        }).catch(() => {});
 
         return null;
       }

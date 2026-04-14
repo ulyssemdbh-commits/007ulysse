@@ -294,6 +294,9 @@ export async function registerRoutes(
   app.use(dataRoutes);
   app.use("/api", lazyRouter(() => import("./routes/fileRoutes")));
   app.use("/api", lazyRouter(() => import("./routes/miscRoutes")));
+  app.use("/api/calendar", lazyRouter(() => import("./routes/calendarRoutes")));
+  app.use("/api/traces", requireAuth, lazyRouter(() => import("./routes/traceRoutes")));
+  app.use("/api/skills", requireAuth, lazyRouter(() => import("./routes/skillRoutes")));
   app.use("/api/superchat", requireAuth, lazyRouter(() => import("./routes/superChatRoutes")));
   app.use("/api/commax", lazyRouter(() => import("./routes/commaxRoutes")));
   app.use("/api", lazyRouter(() => import("./routes/ownerRoutes")));

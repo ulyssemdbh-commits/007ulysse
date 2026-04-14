@@ -7,7 +7,7 @@ import {
   Send, Volume2, VolumeX, Sparkles, Activity, Plus, History, Mic, MicOff, Brain,
   LogOut, X, FolderOpen, Stethoscope, Wand2, BookOpen, MapPin, Camera, Eye, Music,
   Phone, PhoneOff, Menu, Check, Trophy, DollarSign, Settings, Mail, Store, ListTodo,
-  BarChart3, Users, GitBranch, Pencil, Power, Bell, Clock, CloudSun,
+  BarChart3, Users, GitBranch, Pencil, Power, Bell, Clock, CloudSun, Zap,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
@@ -297,6 +297,8 @@ function BurgerMenu({ burgerMenuOpen, setBurgerMenuOpen, panels, navigate, logou
     { label: "DevOps", icon: GitBranch, path: "/devops", color: "text-indigo-400" },
     { label: "Iris", icon: Sparkles, path: "/devops-iris", color: "text-amber-400" },
     { label: "SuperChat", icon: Users, path: "/superchat", color: "text-violet-400" },
+    { label: "Traces", icon: Activity, path: "/traces", color: "text-cyan-400" },
+    { label: "Skills", icon: Zap, path: "/skills", color: "text-yellow-400" },
     { label: "Diag", icon: Stethoscope, path: "/diagnostics", color: "text-slate-400" },
     { label: "Reglages", icon: Settings, path: "/settings", color: "text-slate-300" },
   ] : [];

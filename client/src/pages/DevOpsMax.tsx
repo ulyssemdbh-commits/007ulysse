@@ -70,6 +70,7 @@ import { DevOpsChatPanel } from "./devmax/ChatPanel";
 import { OverviewPanel, EnvVarsPanel, NotificationsPanel, CustomDomainsPanel, LogsPanel } from "./devmax/SettingsPanels";
 import { MetricsPanel, PlanBillingPanel } from "./devmax/MonitoringPanels";
 import { MonComptePanel } from "./devmax/ProfilePanels";
+import { DevmaxSkillsPanel, DevmaxTracesPanel } from "./devmax/SkillsTracesPanels";
 
 const DEVMAX_TABS = [
   { id: "overview", label: "Apercu", icon: Activity, color: "text-emerald-400" },
@@ -96,6 +97,8 @@ const DEVMAX_TABS = [
   { id: "deploy-history", label: "Historique", icon: History, needsRepo: true, color: "text-emerald-300" },
   { id: "notifications", label: "Notifs", icon: Bell, color: "text-amber-300" },
   { id: "plan", label: "Plan", icon: CreditCard, color: "text-green-300" },
+  { id: "skills", label: "Skills", icon: FlaskConical, color: "text-yellow-300" },
+  { id: "traces", label: "Traces", icon: ScrollText, color: "text-violet-400" },
   { id: "chat", label: "MaxAI", icon: Bot, color: "text-blue-300" },
   { id: "account", label: "Compte", icon: Settings, color: "text-slate-400" },
 ];
@@ -175,6 +178,8 @@ function DevmaxDashboard() {
       case "deploy-history": return hasRepo ? <DeployHistoryPanel /> : null;
       case "notifications": return <NotificationsPanel />;
       case "plan": return <PlanBillingPanel />;
+      case "skills": return <DevmaxSkillsPanel />;
+      case "traces": return <DevmaxTracesPanel />;
       case "chat": return <DevOpsChatPanel currentTab={activeTab} />;
       case "account": return <MonComptePanel />;
       default: return <OverviewPanel repo={repo} repoLoading={repoLoading} />;
