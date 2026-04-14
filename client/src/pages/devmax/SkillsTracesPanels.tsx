@@ -107,7 +107,9 @@ export function DevmaxTracesPanel() {
       const params = new URLSearchParams({ limit: "50" });
       if (agentFilter !== "all") params.set("agent", agentFilter);
       const res = await fetch(`/api/traces?${params}`, { credentials: "include" });
-      return res.json();
+      if (!res.ok) return { traces: [], total: 0 };
+      const d = await res.json();
+      return { traces: Array.isArray(d?.traces) ? d.traces : [], total: d?.total || 0 };
     },
     refetchInterval: 30000,
   });
@@ -116,6 +118,7 @@ export function DevmaxTracesPanel() {
     queryKey: ["/api/traces/stats", 7],
     queryFn: async () => {
       const res = await fetch("/api/traces/stats?days=7", { credentials: "include" });
+      if (!res.ok) return null;
       return res.json();
     },
   });
@@ -124,12 +127,13 @@ export function DevmaxTracesPanel() {
     queryKey: ["/api/traces", selectedId],
     queryFn: async () => {
       const res = await fetch(`/api/traces/${selectedId}`, { credentials: "include" });
+      if (!res.ok) return null;
       return res.json();
     },
     enabled: !!selectedId,
   });
 
-  const traces = tracesData?.traces || [];
+  const traces = Array.isArray(tracesData?.traces) ? tracesData.traces : [];
   const agents = ["all", "ulysse", "iris", "alfred", "maxai", "system"];
 
   if (selectedId && detail) {
@@ -168,7 +172,7 @@ export function DevmaxTracesPanel() {
           </div>
         )}
 
-        {detail.steps.length > 0 && (
+        {Array.isArray(detail.steps) && detail.steps.length > 0 && (
           <div className="space-y-2">
             <div className="text-[10px] text-cyan-600 uppercase tracking-wider">Steps ({detail.steps.length})</div>
             {detail.steps.map((step, i) => (
@@ -289,28 +293,35 @@ export function DevmaxSkillsPanel() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tab, setTab] = useState<"catalog" | "executions">("catalog");
 
-  const { data: skills, isLoading } = useQuery<Skill[]>({
+  const { data: skillsRaw, isLoading } = useQuery<Skill[]>({
     queryKey: ["/api/skills"],
     queryFn: async () => {
       const res = await fetch("/api/skills", { credentials: "include" });
-      return res.json();
+      if (!res.ok) return [];
+      const d = await res.json();
+      return Array.isArray(d) ? d : [];
     },
     refetchInterval: 30000,
   });
+  const skills = Array.isArray(skillsRaw) ? skillsRaw : [];
 
-  const { data: executions } = useQuery<SkillExecution[]>({
+  const { data: executionsRaw } = useQuery<SkillExecution[]>({
     queryKey: ["/api/skills/executions/all"],
     queryFn: async () => {
       const res = await fetch("/api/skills/executions/all", { credentials: "include" });
-      return res.json();
+      if (!res.ok) return [];
+      const d = await res.json();
+      return Array.isArray(d) ? d : [];
     },
     refetchInterval: 15000,
   });
+  const executions = Array.isArray(executionsRaw) ? executionsRaw : [];
 
   const { data: detail } = useQuery<Skill>({
     queryKey: ["/api/skills", selectedId],
     queryFn: async () => {
       const res = await fetch(`/api/skills/${selectedId}`, { credentials: "include" });
+      if (!res.ok) return null;
       return res.json();
     },
     enabled: !!selectedId,
