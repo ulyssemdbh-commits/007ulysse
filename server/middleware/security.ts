@@ -7,6 +7,7 @@ async function getHelmet() {
 import { Request, Response, NextFunction, Express } from "express";
 import { db } from "../db";
 import { auditLogs } from "@shared/schema";
+import { csrfCookieSetter, csrfProtection } from "./csrf";
 
 const SENSITIVE_ENDPOINTS = [
   "/api/auth/login",
@@ -217,12 +218,16 @@ export function setupSecurityMiddleware(app: Express) {
   app.use("/api/sports/dashboard", createLimiter(30, 1, "Trop de requêtes sur le dashboard sportif. Réessayez dans une minute."));
 
   app.use("/api", generalLimiter);
-  
+
+  // CSRF protection (double-submit cookie)
+  app.use(csrfCookieSetter);
+  app.use("/api", csrfProtection);
+
   app.use(blockExternalUsersMiddleware);
-  
+
   app.use(auditMiddleware);
-  
-  console.log("[Security] Middleware initialized: helmet, rate limiting, external user blocking, audit logging");
+
+  console.log("[Security] Middleware initialized: helmet, rate limiting, CSRF, external user blocking, audit logging");
 }
 
 export function configureSessionSecurity() {

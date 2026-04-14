@@ -6,8 +6,28 @@ vite.config.ts.*
 *.tar.gz
 .env
 .env.*
+!.env.example
 *.zip
 *.onnx
 piper_tts/models/
 attached_assets/Ulysse-Project-Replit_1771519152256.zip
 piper_tts/models/*.onnx
+
+# User uploads — should be in external storage (S3/GCS), not Git
+uploads/
+
+# Apify cache / runtime storage
+storage/
+
+# Test artifacts
+test-results/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Root-level screenshots/images (move to docs/assets if needed)
+step6_after_login.png
+tabbar.png
+tabbar_final.png
+smartscrawl
