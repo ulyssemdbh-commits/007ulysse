@@ -1,6 +1,6 @@
 import { db } from "../db";
-import { suguPurchases, suguExpenses, suguCashRegister, suguBankEntries, suguEmployees, suguPayroll } from "@shared/schema";
-import { eq, gte, desc, sql, and } from "drizzle-orm";
+import { suguPurchases, suguExpenses, suguCashRegister, suguEmployees, suguPayroll } from "@shared/schema";
+import { eq, gte, desc } from "drizzle-orm";
 
 interface RestaurantSnapshot {
   restaurant: string;
@@ -41,36 +41,37 @@ class DigitalTwinService {
   async getSnapshot(restaurant: string = "suguval"): Promise<RestaurantSnapshot> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateStr = thirtyDaysAgo.toISOString().split("T")[0];
 
     const [purchases, expenses, cashEntries, employees, payroll] = await Promise.all([
-      db.select().from(suguPurchases).where(and(eq(suguPurchases.restaurant, restaurant), gte(suguPurchases.date, thirtyDaysAgo.toISOString().split("T")[0]))).orderBy(desc(suguPurchases.date)),
-      db.select().from(suguExpenses).where(eq(suguExpenses.restaurant, restaurant)).orderBy(desc(suguExpenses.date)),
-      db.select().from(suguCashRegister).where(eq(suguCashRegister.restaurant, restaurant)).orderBy(desc(suguCashRegister.date)).limit(30),
-      db.select().from(suguEmployees).where(and(eq(suguEmployees.restaurant, restaurant), eq(suguEmployees.status, "active"))),
-      db.select().from(suguPayroll).where(eq(suguPayroll.restaurant, restaurant)).orderBy(desc(suguPayroll.month)).limit(20),
+      db.select().from(suguPurchases).where(gte(suguPurchases.invoiceDate, dateStr)).orderBy(desc(suguPurchases.invoiceDate)),
+      db.select().from(suguExpenses).orderBy(desc(suguExpenses.dueDate)),
+      db.select().from(suguCashRegister).orderBy(desc(suguCashRegister.entryDate)).limit(30),
+      db.select().from(suguEmployees).where(eq(suguEmployees.isActive, true)),
+      db.select().from(suguPayroll).orderBy(desc(suguPayroll.period)).limit(20),
     ]);
 
-    const totalRevenue = cashEntries.reduce((s, e) => s + Number((e as any).totalTtc || (e as any).montant || 0), 0);
-    const daysWithData = new Set(cashEntries.map((e: any) => e.date)).size || 1;
-    const totalPurchases = purchases.reduce((s, p) => s + Number((p as any).montant || (p as any).totalHt || 0), 0);
-    const totalExpenses = expenses.reduce((s, e) => s + Number((e as any).montant || 0), 0);
-    const totalPayrollGross = payroll.reduce((s, p) => s + Number((p as any).salaireBrut || 0), 0);
+    const totalRevenue = cashEntries.reduce((s, e) => s + Number(e.totalRevenue || 0), 0);
+    const daysWithData = new Set(cashEntries.map(e => e.entryDate)).size || 1;
+    const totalPurchases = purchases.reduce((s, p) => s + Number(p.amount || 0), 0);
+    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const totalPayrollGross = payroll.reduce((s, p) => s + Number(p.grossSalary || 0), 0);
     const totalCosts = totalPurchases + totalExpenses + totalPayrollGross;
     const grossMargin = totalRevenue - totalCosts;
 
     const supplierMap = new Map<string, { total: number; count: number }>();
     for (const p of purchases) {
-      const name = String((p as any).fournisseur || "Inconnu");
+      const name = String(p.supplier || "Inconnu");
       const existing = supplierMap.get(name) || { total: 0, count: 0 };
-      existing.total += Number((p as any).montant || (p as any).totalHt || 0);
+      existing.total += Number(p.amount || 0);
       existing.count++;
       supplierMap.set(name, existing);
     }
 
     const expCatMap = new Map<string, number>();
     for (const e of expenses) {
-      const cat = String((e as any).category || (e as any).type || "Autre");
-      expCatMap.set(cat, (expCatMap.get(cat) || 0) + Number((e as any).montant || 0));
+      const cat = String(e.category || "Autre");
+      expCatMap.set(cat, (expCatMap.get(cat) || 0) + Number(e.amount || 0));
     }
 
     return {

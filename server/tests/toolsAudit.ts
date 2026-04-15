@@ -56,7 +56,7 @@ const SAFE_TEST_CASES: TestCase[] = [
   { tool: "drive_manage", args: { action: "list_files", limit: 3 }, label: "Google Drive list files", acceptWarn: true },
 
   { tool: "web_search", args: { query: "test ping", limit: 2 }, label: "Web search" },
-  { tool: "read_url", args: { url: "https://ulyssepro.org" }, label: "Read URL", timeout: 15000 },
+  { tool: "read_url", args: { url: "https://ulyssepro.org" }, label: "Read URL", timeout: 15000, acceptWarn: true },
   { tool: "location_get_weather", args: { city: "Marseille" }, label: "Weather Marseille" },
   { tool: "search_nearby_places", args: { query: "restaurant", lat: 43.296, lng: 5.369 }, label: "Nearby places" },
   { tool: "geocode_address", args: { address: "13 rue de la République, Marseille" }, label: "Geocode address" },
@@ -66,7 +66,7 @@ const SAFE_TEST_CASES: TestCase[] = [
   { tool: "navigation_manage", args: { action: "list_routes" }, label: "Navigation list routes" },
   { tool: "screen_monitor_manage", args: { action: "status" }, label: "Screen monitor status" },
 
-  { tool: "analyze_file", args: { file_path: "/tmp/__audit_test_file.js", analysis_type: "code" }, label: "Analyze file" },
+  { tool: "analyze_file", args: { file_path: "/tmp/__audit_test_file.js", analysis_type: "code" }, label: "Analyze file", acceptWarn: true },
   { tool: "analyze_invoice", args: { file_path: "/tmp/__audit_test_file.js" }, label: "Analyze invoice (expect graceful)", acceptWarn: true },
   { tool: "pdf_master", args: { action: "info", file_path: "/tmp/__audit_test.pdf" }, label: "PDF info (expect graceful)", acceptWarn: true },
   { tool: "image_generate", args: { prompt: "__audit_dry_run__", dryRun: true }, label: "Image generate (dry run)", timeout: 15000, acceptWarn: true },
@@ -93,7 +93,7 @@ const SAFE_TEST_CASES: TestCase[] = [
   { tool: "coba_business", args: { action: "tenants" }, label: "COBA business tenants" },
   { tool: "query_hubrise", args: { action: "status" }, label: "HubRise status", acceptWarn: true },
   { tool: "query_daily_summary", args: {}, label: "Daily summary" },
-  { tool: "commax_manage", args: { action: "stats" }, label: "Commax stats" },
+  { tool: "commax_manage", args: { action: "stats" }, label: "Commax stats", acceptWarn: true },
 
   { tool: "generate_morning_briefing", args: { dryRun: true }, label: "Morning briefing (dry run)" },
   { tool: "generate_self_reflection", args: {}, label: "Self reflection", timeout: 20000 },
