@@ -8,8 +8,11 @@ import { getAIForContext } from "../services/core/openaiClient";
 import { desc, eq } from "drizzle-orm";
 import { calendarService } from "../services/googleCalendarService";
 import { emitSuguChecklistUpdated } from "../services/realtimeSync";
+import { emailActionService } from "../services/emailActionService";
 import { getSessionToken } from "../middleware/auth";
 import { authService } from "../services/auth";
+
+const SUGUVAL_EMAIL_TO = process.env.SUGUVAL_EMAIL_TO || "sugu.gestion@gmail.com";
 
 // Lightweight auth check for checklist admin operations (destructive/expensive)
 // Keeps toggle/read public for staff tablets, but protects structural changes
@@ -18,6 +21,20 @@ async function requireSuguAuth(req: Request, res: Response, next: NextFunction) 
   if (!token) return res.status(403).json({ error: "Connexion requise pour cette opération" });
   const result = await authService.validateSession(token);
   if (!result.success) return res.status(403).json({ error: "Session invalide" });
+  return next();
+}
+
+const SUGUVAL_API_SECRET = process.env.SUGUVAL_API_SECRET || (() => {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("[Suguval] SUGUVAL_API_SECRET must be set in production");
+  }
+  console.warn("[Suguval] WARNING: Using default API secret — set SUGUVAL_API_SECRET in production");
+  return "suguval-internal-2024";
+})();
+
+function requireSuguSecret(req: Request, res: Response, next: NextFunction) {
+  const secret = req.headers["x-suguval-secret"];
+  if (secret !== SUGUVAL_API_SECRET) return res.status(403).json({ error: "Forbidden" });
   return next();
 }
 
@@ -320,14 +337,8 @@ export function registerSuguvalRoutes(app: Express) {
   });
 
   // Manually trigger email (protected - requires secret header)
-  app.post("/api/suguval/send-email", requireSuguAuth, async (req: Request, res: Response) => {
+  app.post("/api/suguval/send-email", requireSuguAuth, requireSuguSecret, async (req: Request, res: Response) => {
     try {
-      // Protect with a simple secret header to prevent abuse
-      const secret = req.headers["x-suguval-secret"];
-      if (secret !== "suguval-internal-2024") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
       const result = await suguvalService.sendDailyEmail();
       res.json(result);
     } catch (error) {
@@ -337,13 +348,8 @@ export function registerSuguvalRoutes(app: Express) {
   });
 
   // Get email logs (protected)
-  app.get("/api/suguval/email-logs", async (req: Request, res: Response) => {
+  app.get("/api/suguval/email-logs", requireSuguSecret, async (req: Request, res: Response) => {
     try {
-      const secret = req.headers["x-suguval-secret"];
-      if (secret !== "suguval-internal-2024") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
       const logs = await suguvalService.getEmailLogs();
       res.json(logs);
     } catch (error) {
@@ -377,15 +383,9 @@ export function registerSuguvalRoutes(app: Express) {
 
   // Simulation endpoint: Send 6 emails representing a full week of different grocery lists
   // Protected with secret header - only for testing
-  app.post("/api/suguval/simulate-week", async (req: Request, res: Response) => {
+  app.post("/api/suguval/simulate-week", requireSuguSecret, async (req: Request, res: Response) => {
     try {
-      const secret = req.headers["x-suguval-secret"];
-      if (secret !== "suguval-internal-2024") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
 
-      const { emailActionService } = await import("../services/emailActionService");
       const categories = await suguvalService.getCategoriesWithItems();
       
       // 6 days of simulation (excluding Friday evening and Saturday)
@@ -463,7 +463,7 @@ Ce message est une SIMULATION envoyée par Ulysse pour tester le système Suguva
         try {
           const emailResults = await emailActionService.executeActions([{
             type: "send",
-            to: "sugu.gestion@gmail.com",
+            to: SUGUVAL_EMAIL_TO,
             subject: `[SIMULATION ${i + 1}/6] Liste courses ${day.deliveryDay} - Suguval`,
             body: emailContent
           }], 'ulysse', 1);
@@ -524,7 +524,7 @@ Ce message est une SIMULATION envoyée par Ulysse pour tester le système Suguva
       res.json({
         message: `Simulation terminée: ${successCount}/${results.length} emails envoyés avec succès`,
         results,
-        destination: "sugu.gestion@gmail.com",
+        destination: SUGUVAL_EMAIL_TO,
         savedToHistory: true,
         savedToCalendar: true
       });
@@ -687,7 +687,7 @@ Ce message est une SIMULATION envoyée par Ulysse pour tester le système Suguva
           recentHistory: recentPurchases,
           metadata: {
             restaurant: "Suguval",
-            destination: "sugu.gestion@gmail.com",
+            destination: SUGUVAL_EMAIL_TO,
             emailTime: "23h59 daily",
             languages: ["FR", "VN", "TH"]
           }
@@ -760,13 +760,8 @@ Ce message est une SIMULATION envoyée par Ulysse pour tester le système Suguva
   });
 
   // Assign zones to existing categories (one-time migration)
-  app.post("/api/suguval/assign-zones", requireSuguAuth, async (req: Request, res: Response) => {
+  app.post("/api/suguval/assign-zones", requireSuguAuth, requireSuguSecret, async (req: Request, res: Response) => {
     try {
-      const secret = req.headers["x-suguval-secret"];
-      if (secret !== "suguval-internal-2024") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
       const result = await suguvalService.assignZonesToCategories();
       res.json({ success: true, ...result });
       emitSuguChecklistUpdated();
@@ -800,7 +795,7 @@ Ce message est une SIMULATION envoyée par Ulysse pour tester le système Suguva
     message: z.string().min(1).max(500)
   });
 
-  app.post("/api/suguval/comments", async (req: Request, res: Response) => {
+  app.post("/api/suguval/comments", requireSuguAuth, async (req: Request, res: Response) => {
     try {
       const data = addCommentSchema.parse(req.body);
       const [comment] = await db.insert(suguvalComments)
@@ -819,7 +814,7 @@ Ce message est une SIMULATION envoyée par Ulysse pour tester le système Suguva
     message: z.string().min(1).max(500)
   });
 
-  app.patch("/api/suguval/comments/:id", async (req: Request, res: Response) => {
+  app.patch("/api/suguval/comments/:id", requireSuguAuth, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {

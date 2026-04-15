@@ -509,8 +509,7 @@ export function createDeployMethods(service: SSHService) {
         try {
           const { db } = await import("../../db");
           const { sql } = await import("drizzle-orm");
-          const SECRETS_KEY = process.env.SECRETS_ENCRYPTION_KEY || process.env.SESSION_SECRET || "ulysse-devmax-secrets-key-2026";
-          const crypto = await import("crypto");
+          const { decryptSecret } = await import("../devmax/cryptoService");
 
           const environment = appName.endsWith("-dev") ? "staging" : "production";
 
@@ -538,17 +537,10 @@ export function createDeployMethods(service: SSHService) {
           for (const row of secretsRows) {
             if (row.key && row.encrypted_value && row.key !== "PORT") {
               try {
-                const [ivHex, encHex] = row.encrypted_value.split(":");
-                if (ivHex && encHex) {
-                  const iv = Buffer.from(ivHex, "hex");
-                  const key = crypto.scryptSync(SECRETS_KEY, "salt", 32);
-                  const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
-                  let decrypted = decipher.update(encHex, "hex", "utf8");
-                  decrypted += decipher.final("utf8");
-                  if (!envVars[row.key]) {
-                    envVars[row.key] = decrypted;
-                    secretCount++;
-                  }
+                const decrypted = decryptSecret(row.encrypted_value);
+                if (decrypted !== "***" && !envVars[row.key]) {
+                  envVars[row.key] = decrypted;
+                  secretCount++;
                 }
               } catch (decErr) {
                 console.error(`[Deploy] Failed to decrypt secret ${row.key}:`, decErr);

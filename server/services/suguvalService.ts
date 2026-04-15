@@ -5,6 +5,8 @@ import { emailActionService } from "./emailActionService";
 import { calendarService } from "./googleCalendarService";
 import { getTodayDate } from "./baseSuguHelpers";
 
+const SUGUVAL_EMAIL_TO = process.env.SUGUVAL_EMAIL_TO || "sugu.gestion@gmail.com";
+
 const ZONE_NAMES: Record<number, string> = {
   1: "CUISINE",
   2: "SUSHI BAR",
@@ -463,7 +465,7 @@ Ce message a été envoyé automatiquement par le système de gestion Suguval.`;
       // Use emailActionService to send email
       const results = await emailActionService.executeActions([{
         type: "send",
-        to: "sugu.gestion@gmail.com",
+        to: SUGUVAL_EMAIL_TO,
         subject: `[SUGUVAL] Liste des courses - ${deliveryDayStr}`,
         body: emailContent
       }], 'ulysse', 1);
@@ -853,56 +855,67 @@ Ce message a été envoyé automatiquement par le système de gestion Suguval.`;
     return { applied: futureItems.length };
   }
 
-  // Sync catalog from Suguval (master) to Sugumaillane
-  async syncToMaillane(): Promise<{ success: boolean; message: string; categoriesSync: number; itemsSync: number }> {
+  // Sync catalog from Suguval (master) to Sugumaillane (incremental merge)
+  async syncToMaillane(): Promise<{ success: boolean; message: string; categoriesSync: number; itemsSync: number; categoriesAdded: number; itemsAdded: number; itemsUpdated: number }> {
     try {
-      console.log("[Suguval] Starting catalog sync to Sugumaillane...");
+      console.log("[Suguval] Starting incremental catalog sync to Sugumaillane...");
 
-      // Step 1: Get all Suguval categories and items
       const suguvalCats = await db.select().from(suguvalCategories).orderBy(suguvalCategories.sortOrder);
       const suguvalItms = await db.select().from(suguvalItems).orderBy(suguvalItems.sortOrder);
+      const existingMaillaneCats = await db.select().from(sugumaillaneCategories);
+      const existingMaillaneItems = await db.select().from(sugumaillaneItems);
 
-      // Step 2: Clear existing Sugumaillane catalog (items first due to FK)
-      await db.delete(sugumaillaneItems);
-      await db.delete(sugumaillaneCategories);
-
-      // Step 3: Insert categories into Sugumaillane, keeping track of ID mapping
-      const categoryIdMap = new Map<number, number>(); // suguvalId -> maillaneId
+      const categoryIdMap = new Map<number, number>();
+      let categoriesAdded = 0;
+      let itemsAdded = 0;
+      let itemsUpdated = 0;
 
       for (const cat of suguvalCats) {
-        const [newCat] = await db.insert(sugumaillaneCategories).values({
-          name: cat.name,
-          nameVi: cat.nameVi,
-          nameTh: cat.nameTh,
-          sheet: cat.sheet,
-          sortOrder: cat.sortOrder
-        }).returning();
-        categoryIdMap.set(cat.id, newCat.id);
-      }
-
-      // Step 4: Insert items into Sugumaillane with mapped category IDs
-      let itemsCreated = 0;
-      for (const item of suguvalItms) {
-        const newCategoryId = categoryIdMap.get(item.categoryId);
-        if (newCategoryId) {
-          await db.insert(sugumaillaneItems).values({
-            categoryId: newCategoryId,
-            name: item.name,
-            nameVi: item.nameVi,
-            nameTh: item.nameTh,
-            sortOrder: item.sortOrder,
-            isActive: item.isActive
-          });
-          itemsCreated++;
+        const existing = existingMaillaneCats.find(c => c.name === cat.name);
+        if (existing) {
+          await db.update(sugumaillaneCategories)
+            .set({ nameVi: cat.nameVi, nameTh: cat.nameTh, sheet: cat.sheet, sortOrder: cat.sortOrder })
+            .where(eq(sugumaillaneCategories.id, existing.id));
+          categoryIdMap.set(cat.id, existing.id);
+        } else {
+          const [newCat] = await db.insert(sugumaillaneCategories).values({
+            name: cat.name, nameVi: cat.nameVi, nameTh: cat.nameTh,
+            sheet: cat.sheet, sortOrder: cat.sortOrder
+          }).returning();
+          categoryIdMap.set(cat.id, newCat.id);
+          categoriesAdded++;
         }
       }
 
-      console.log(`[Suguval] Sync complete: ${suguvalCats.length} categories, ${itemsCreated} items`);
+      for (const item of suguvalItms) {
+        const maillaneCatId = categoryIdMap.get(item.categoryId);
+        if (!maillaneCatId) continue;
+
+        const existing = existingMaillaneItems.find(i => i.name === item.name && i.categoryId === maillaneCatId);
+        if (existing) {
+          await db.update(sugumaillaneItems)
+            .set({ nameVi: item.nameVi, nameTh: item.nameTh, sortOrder: item.sortOrder, isActive: item.isActive })
+            .where(eq(sugumaillaneItems.id, existing.id));
+          itemsUpdated++;
+        } else {
+          await db.insert(sugumaillaneItems).values({
+            categoryId: maillaneCatId, name: item.name,
+            nameVi: item.nameVi, nameTh: item.nameTh,
+            sortOrder: item.sortOrder, isActive: item.isActive
+          });
+          itemsAdded++;
+        }
+      }
+
+      console.log(`[Suguval] Incremental sync complete: ${suguvalCats.length} categories (${categoriesAdded} new), ${itemsAdded} items added, ${itemsUpdated} updated`);
       return {
         success: true,
-        message: `Catalogue synchronisé vers SUGU Maillane`,
+        message: `Catalogue synchronisé vers SUGU Maillane (incrémental)`,
         categoriesSync: suguvalCats.length,
-        itemsSync: itemsCreated
+        itemsSync: itemsAdded + itemsUpdated,
+        categoriesAdded,
+        itemsAdded,
+        itemsUpdated
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
@@ -910,8 +923,7 @@ Ce message a été envoyé automatiquement par le système de gestion Suguval.`;
       return {
         success: false,
         message: `Erreur de synchronisation: ${errorMsg}`,
-        categoriesSync: 0,
-        itemsSync: 0
+        categoriesSync: 0, itemsSync: 0, categoriesAdded: 0, itemsAdded: 0, itemsUpdated: 0
       };
     }
   }

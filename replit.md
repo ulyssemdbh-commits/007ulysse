@@ -32,16 +32,29 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 
 ### DevOps Platform (DevMax)
 - A multi-tenant SaaS DevOps dashboard for project management with PIN-based authentication and project isolation.
+- **Modular Architecture** (refactored from 2 monolithic files ~6000 lines → 21 focused modules):
+  - **Services** (`server/services/devmax/`): `tokenService.ts` (GitHub token validation/resolution), `testService.ts` (preflight, pre/post-deploy tests, health checks), `index.ts` (barrel exports).
+  - **Middleware** (`server/routes/devmax/devmaxMiddleware.ts`): Auth (requireDevmaxAuth, requireAdminAuth), crypto (hashPin/verifyPin, hashPassword/verifyPassword), plan limits, notifications, activity logging.
+  - **Tables** (`server/routes/devmax/devmaxTables.ts`): ensureDevmaxTables with all CREATE TABLE + ALTER TABLE migrations.
+  - **Route Modules** (`server/routes/devmax/`): gitRoutes, pullRoutes, deployRoutes, cicdRoutes, dgmRoutes, infraRoutes, billingRoutes, secretsRoutes (ops side) + authRoutes, projectCrudRoutes, githubOAuthRoutes, chatJournalRoutes, adminRoutes (auth side).
+  - **Index Files**: `opsIndex.ts` and `authIndex.ts` assemble sub-routers; original files (`devopsMaxRoutes.ts`, `devmaxAuth.ts`) are thin re-export proxies for backward compatibility.
+  - **Helpers**: `opsHelpers.ts` (getProjectRepo, withRepoToken).
 - **Deployment System**: Staging/production pipeline with automated URL generation, Cloudflare DNS automation, and CI/CD via GitHub webhooks. Includes automated PRE-deploy and POST-deploy tests.
 - **Deploy Isolation**: Enforces application isolation, protecting core Ulysse deployments.
 - **SPA Auto-Diagnose & Repair**: Automatically detects and fixes common issues in SPA builds (e.g., missing entry points, outdated dependencies).
 - **DGM (Dev God Mode) V2**: Autonomous development pipeline with 15 actions, including rollback capabilities, and Discord notifications.
 - **Nginx Management**: Pro-level configuration, cleanup, logging, and security.
 - **Orphaned Apps Cleanup**: Scans and flags unused deployments.
-- **Security**: PIN hashing via bcrypt, webhook signature verification.
+- **Security**: PIN hashing via bcrypt, webhook signature verification, CSRF double-submit cookie protection (`server/middleware/csrf.ts`), non-root Docker container user, AES-256-CBC token/secret encryption at rest (`server/services/devmax/cryptoService.ts` — per-entry random salt+IV, `enc:` prefix, legacy backward compat), admin PIN rate limiting (5 attempts → 15 min lockout), unique admin session fingerprints, production crash-if-missing for `DEVMAX_ADMIN_PIN` and `SECRETS_ENCRYPTION_KEY`.
 - **Scaffolding**: 9 project templates.
 - **Anti-Loop Detection**: Semantic, error, and read-only loop detection.
 - **Deep Code Analysis Protection System**: Multi-layer protection preventing destructive code changes.
+
+### Utilities
+- **Structured Logger** (`server/utils/logger.ts`): Level-aware logging with `createLogger(tag)`. JSON output in production, human-readable in development. Levels: debug, info, warn, error, fatal.
+- **CSRF Middleware** (`server/middleware/csrf.ts`): Double-submit cookie pattern with exempt routes for DevMax, webhooks, API keys.
+- **Process Supervisor** (`server/services/processSupervisor.ts`): Manages PiperTTS and Speaker service processes.
+- **Tests**: 148+ unit tests across 9 test files covering security, routes, retry logic, process supervisor, public routes, DevMax security (token encryption, admin hardening, secrets encryption).
 
 ### Navigation Context System
 - **Registry**: `server/config/appNavigation.ts` — full inventory of all app pages, tabs, managed agents.
@@ -93,6 +106,9 @@ Ulysse is a full-stack AI personal assistant system designed to provide a unifie
 
 ### SUGU — Restaurant Supply Management
 - Daily grocery list management with categories, zones, checked items, comments, future items scheduling, and automated daily email. The `suguManagement` backend has been refactored into focused modules for document parsing, financial routes, HR, audit, file operations, suppliers, and expert backups.
+- **Security**: API secret via `SUGUVAL_API_SECRET` env var (production-required), `requireSuguAuth` on destructive endpoints, `requireSuguSecret` on email/admin routes (both suguval.ts and sugumaillane.ts). Email recipients via `SUGUVAL_EMAIL_TO` and `SUGUMAILLANE_EMAIL_TO` env vars.
+- **Architecture**: `BaseSuguService` base class (`server/services/BaseSuguService.ts`) with shared CRUD, checks, stats, future items, email health, and recovery logic. `SugumaillaneService` extends it; `SuguvalService` remains standalone (zone-specific logic in most methods).
+- **Sync**: `syncToMaillane()` uses incremental merge (upsert by name) instead of destructive delete-all+reinsert.
 - **Mobile Responsive**: Full mobile-first responsive design across all Suguval tabs (Dashboard, Achats, Caisse, Banque, Frais, Gestion RH). Paginations stack vertically (`flex-col sm:flex-row`), filter grids use `grid-cols-2` base, FormModal slides up as bottom-sheet on mobile, stat cards adapt to 2-col on small screens.
 
 ### Frontend & Service Refactoring

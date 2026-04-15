@@ -9,6 +9,20 @@ async function requireSuguAuth(req: Request, res: Response, next: NextFunction) 
   if (!result.success) return res.status(403).json({ error: "Session invalide" });
   return next();
 }
+
+function requireSuguSecret(req: Request, res: Response, next: NextFunction) {
+  const secret = req.headers["x-sugumaillane-secret"] || req.headers["x-suguval-secret"];
+  const expected = process.env.SUGUVAL_API_SECRET;
+  if (!expected) {
+    console.error("[Sugumaillane] SUGUVAL_API_SECRET not configured");
+    return res.status(500).json({ error: "Server configuration error" });
+  }
+  if (secret !== expected) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  return next();
+}
+
 import { sugumaillaneService } from "../services/sugumaillaneService";
 import { z } from "zod";
 import { emitSuguChecklistUpdated } from "../services/realtimeSync";
@@ -158,14 +172,9 @@ export function registerSugumaillaneRoutes(app: Express) {
     }
   });
 
-  // Manually trigger email (protected - requires secret header)
-  app.post("/api/sugumaillane/send-email", requireSuguAuth, async (req: Request, res: Response) => {
+  // Manually trigger email (protected - requires auth + secret)
+  app.post("/api/sugumaillane/send-email", requireSuguAuth, requireSuguSecret, async (req: Request, res: Response) => {
     try {
-      const secret = req.headers["x-sugumaillane-secret"];
-      if (secret !== "sugumaillane-internal-2024") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
       const result = await sugumaillaneService.sendDailyEmail();
       res.json(result);
     } catch (error) {
@@ -175,13 +184,8 @@ export function registerSugumaillaneRoutes(app: Express) {
   });
 
   // Get email logs (protected)
-  app.get("/api/sugumaillane/email-logs", async (req: Request, res: Response) => {
+  app.get("/api/sugumaillane/email-logs", requireSuguSecret, async (req: Request, res: Response) => {
     try {
-      const secret = req.headers["x-sugumaillane-secret"];
-      if (secret !== "sugumaillane-internal-2024") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
       const logs = await sugumaillaneService.getEmailLogs();
       res.json(logs);
     } catch (error) {
@@ -271,7 +275,7 @@ export function registerSugumaillaneRoutes(app: Express) {
           recentHistory: recentPurchases,
           metadata: {
             restaurant: "SUGU Maillane",
-            destination: "sugu.resto@gmail.com",
+            destination: process.env.SUGUMAILLANE_EMAIL_TO || "sugu.resto@gmail.com",
             emailTime: "23h59 daily",
             languages: ["FR", "VN", "TH"]
           }
