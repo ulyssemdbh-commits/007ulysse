@@ -304,7 +304,7 @@ function BurgerMenu({ burgerMenuOpen, setBurgerMenuOpen, panels, navigate, logou
   ] : [];
 
   return (
-    <div className="lg:hidden relative">
+    <div className="relative">
       <button onClick={() => setBurgerMenuOpen(!burgerMenuOpen)} data-testid="button-burger-menu"
         className="p-1.5 rounded-lg border border-blue-200 dark:border-cyan-900/50 text-blue-500 dark:text-cyan-600 bg-blue-50 dark:bg-cyan-950/30 hover:text-blue-700 dark:hover:text-cyan-400 transition-all">
         {burgerMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -323,7 +323,7 @@ function BurgerMenu({ burgerMenuOpen, setBurgerMenuOpen, panels, navigate, logou
             </button>
 
             {navShortcuts.length > 0 && (
-              <>
+              <div className="lg:hidden">
                 <div className="border-t border-blue-100 dark:border-cyan-900/30 my-1" />
                 <div className="px-3 py-1.5">
                   <span className="text-[10px] uppercase tracking-wider text-blue-400/60 dark:text-cyan-600/60 font-semibold">Modules</span>
@@ -336,7 +336,7 @@ function BurgerMenu({ burgerMenuOpen, setBurgerMenuOpen, panels, navigate, logou
                     </button>
                   ))}
                 </div>
-              </>
+              </div>
             )}
 
             <div className="border-t border-blue-100 dark:border-cyan-900/30 my-1" />
