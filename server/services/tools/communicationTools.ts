@@ -7,7 +7,7 @@ async function loadService(serviceName: string): Promise<any> {
     try {
         switch (serviceName) {
             case 'calendar':
-                return (await import("../calendarActionService")).calendarActionService;
+                return (await import("../googleCalendarService")).calendarService;
             case 'agentMail':
                 return (await import("../agentMailService")).agentMailService;
             case 'spotify':

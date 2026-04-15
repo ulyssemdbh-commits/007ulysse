@@ -209,9 +209,9 @@ async function testSpotify(): Promise<{ connected: boolean; user?: string }> {
 // Test Calendar
 async function testCalendar(): Promise<{ connected: boolean }> {
   try {
-    const { calendarActionService } = await import("../../services/calendarActionService");
-    const events = await calendarActionService.listEvents(1, { maxResults: 1 });
-    return { connected: events.success };
+    const { calendarService } = await import("../../services/googleCalendarService");
+    const connected = await calendarService.isConnected();
+    return { connected };
   } catch {
     return { connected: false };
   }

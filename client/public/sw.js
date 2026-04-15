@@ -1,6 +1,6 @@
-const CACHE_NAME = "ulysse-v5";
-const STATIC_CACHE = "ulysse-static-v5";
-const DYNAMIC_CACHE = "ulysse-dynamic-v5";
+const CACHE_NAME = "ulysse-v6";
+const STATIC_CACHE = "ulysse-static-v6";
+const DYNAMIC_CACHE = "ulysse-dynamic-v6";
 
 const STATIC_ASSETS = [
   "/",
@@ -14,7 +14,7 @@ const API_CACHE_ROUTES = [
 ];
 
 self.addEventListener("install", (event) => {
-  console.log("[SW] Installing service worker v4");
+  console.log("[SW] Installing service worker v6");
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
@@ -26,7 +26,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  console.log("[SW] Activating service worker v4");
+  console.log("[SW] Activating service worker v6");
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(

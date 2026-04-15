@@ -5,9 +5,9 @@ const router = Router();
 
 router.get("/today", requireAuth, async (req, res) => {
   try {
-    const { calendarActionService } = await import("../services/calendarActionService");
+    const { calendarService } = await import("../services/googleCalendarService");
     const now = new Date();
-    const events = await calendarActionService.getUpcomingEvents(20, 1);
+    const events = await calendarService.getUpcomingEvents(1, 20);
 
     const todayEvents = events
       .filter((e: any) => {

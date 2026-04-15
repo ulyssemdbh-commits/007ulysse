@@ -2609,7 +2609,9 @@ class JobScheduler {
       }
 
       console.log("[JobScheduler] Starting L5 cross-domain insights generation...");
-      const result = await autonomousLearningServiceV2.generateL5CrossDomainInsights(ownerId);
+      const svc = await lazy.autonomousLearning();
+      if (!svc) { console.log("[JobScheduler] L5: autonomousLearning service unavailable"); return; }
+      const result = await svc.generateL5CrossDomainInsights(ownerId);
       console.log(`[JobScheduler] L5 Cross-Domain complete: ${result.generated} insights generated`);
     } catch (error) {
       console.error("[JobScheduler] L5 cross-domain error:", error);
@@ -2625,7 +2627,9 @@ class JobScheduler {
       }
 
       console.log("[JobScheduler] Applying confidence decay...");
-      const result = await autonomousLearningServiceV2.applyConfidenceDecay(ownerId);
+      const svc = await lazy.autonomousLearning();
+      if (!svc) { console.log("[JobScheduler] Decay: autonomousLearning service unavailable"); return; }
+      const result = await svc.applyConfidenceDecay(ownerId);
       console.log(`[JobScheduler] Confidence decay complete: ${result.decayed} topics decayed`);
     } catch (error) {
       console.error("[JobScheduler] Confidence decay error:", error);
