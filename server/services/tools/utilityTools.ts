@@ -1082,55 +1082,69 @@ async function devopsAutoJournal(repoFullName: string, entryType: string, title:
 }
 
 async function resolveGitHubTokenForProject(db: any, owner?: string, repo?: string, projectId?: string, tenantContext?: { isTenant?: boolean; tenantUserId?: number; tenantId?: string }): Promise<string | null> {
+    let rawToken: string | null = null;
     try {
         const { sql } = await import("drizzle-orm");
         if (projectId) {
             const [project] = await db.execute(sql`
                 SELECT github_token, github_provider, repo_owner, tenant_id FROM devmax_projects WHERE id = ${projectId}
             `).then((r: any) => r.rows || r);
-            if (project?.github_token) return project.github_token;
-            if (project?.tenant_id) {
+            if (project?.github_token) { rawToken = project.github_token; }
+            else if (project?.tenant_id) {
                 const [tenant] = await db.execute(sql`
                     SELECT github_token FROM devmax_tenants WHERE id = ${project.tenant_id} AND github_token IS NOT NULL
                 `).then((r: any) => r.rows || r);
                 if (tenant?.github_token) {
                     console.log(`[DevOpsGitHub] Token resolved from tenant for project ${projectId}`);
-                    return tenant.github_token;
+                    rawToken = tenant.github_token;
                 }
             }
         }
-        if (owner && repo) {
+        if (!rawToken && owner && repo) {
             const rows = await db.execute(sql`
                 SELECT github_token, github_provider FROM devmax_projects
                 WHERE repo_owner = ${owner} AND repo_name = ${repo} AND github_token IS NOT NULL
                 LIMIT 1
             `).then((r: any) => r.rows || r);
-            if (rows?.[0]?.github_token) return rows[0].github_token;
+            if (rows?.[0]?.github_token) rawToken = rows[0].github_token;
         }
-        if (owner) {
+        if (!rawToken && owner) {
             const userRows = await db.execute(sql`
                 SELECT github_token FROM devmax_users
                 WHERE github_username = ${owner} AND github_token IS NOT NULL
                 LIMIT 1
             `).then((r: any) => r.rows || r);
-            if (userRows?.[0]?.github_token) return userRows[0].github_token;
-            const tenantRows = await db.execute(sql`
-                SELECT github_token FROM devmax_tenants
-                WHERE github_org = ${owner} AND github_token IS NOT NULL
-                LIMIT 1
-            `).then((r: any) => r.rows || r);
-            if (tenantRows?.[0]?.github_token) {
-                console.log(`[DevOpsGitHub] Token resolved from tenant org ${owner}`);
-                return tenantRows[0].github_token;
+            if (userRows?.[0]?.github_token) rawToken = userRows[0].github_token;
+            if (!rawToken) {
+                const tenantRows = await db.execute(sql`
+                    SELECT github_token FROM devmax_tenants
+                    WHERE github_org = ${owner} AND github_token IS NOT NULL
+                    LIMIT 1
+                `).then((r: any) => r.rows || r);
+                if (tenantRows?.[0]?.github_token) {
+                    console.log(`[DevOpsGitHub] Token resolved from tenant org ${owner}`);
+                    rawToken = tenantRows[0].github_token;
+                }
             }
-            const projectByOwner = await db.execute(sql`
-                SELECT github_token FROM devmax_projects
-                WHERE repo_owner = ${owner} AND github_token IS NOT NULL
-                LIMIT 1
-            `).then((r: any) => r.rows || r);
-            if (projectByOwner?.[0]?.github_token) {
-                console.log(`[DevOpsGitHub] Token resolved from DevMax project for owner ${owner}`);
-                return projectByOwner[0].github_token;
+            if (!rawToken) {
+                const projectByOwner = await db.execute(sql`
+                    SELECT github_token FROM devmax_projects
+                    WHERE repo_owner = ${owner} AND github_token IS NOT NULL
+                    LIMIT 1
+                `).then((r: any) => r.rows || r);
+                if (projectByOwner?.[0]?.github_token) {
+                    console.log(`[DevOpsGitHub] Token resolved from DevMax project for owner ${owner}`);
+                    rawToken = projectByOwner[0].github_token;
+                }
+            }
+        }
+        if (rawToken) {
+            try {
+                const { decryptToken } = await import("../devmax/cryptoService");
+                return decryptToken(rawToken);
+            } catch (e: any) {
+                console.warn(`[DevOpsGitHub] Token decrypt failed, using raw:`, e.message);
+                return rawToken;
             }
         }
     } catch (e: any) {
