@@ -965,6 +965,274 @@ NE DIS JAMAIS "je ne peux pas générer un PDF". Tu PEUX et tu DOIS utiliser ce 
     }
   },
 
+  // === RECONNAISSANCE & BIOMÉTRIE ===
+  {
+    type: "function",
+    function: {
+      name: "face_recognize",
+      description: "Reconnaissance faciale: identifie une personne sur une photo, consulte le catalogue de visages connus, ou enregistre un nouveau visage.",
+      parameters: { type: "object", properties: { imageBase64: { type: "string", description: "Photo en base64" }, mimeType: { type: "string" }, action: { type: "string", enum: ["identify", "recognize", "catalog", "list", "register"], description: "Action (défaut: identify)" }, name: { type: "string", description: "Nom pour register" } }, required: ["imageBase64"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "speaker_identify",
+      description: "Reconnaissance vocale: identifie qui parle dans un extrait audio en comparant avec les empreintes vocales connues.",
+      parameters: { type: "object", properties: { audioBase64: { type: "string", description: "Audio en base64" }, mimeType: { type: "string" } }, required: ["audioBase64"] }
+    }
+  },
+
+  // === TRADUCTION ===
+  {
+    type: "function",
+    function: {
+      name: "translate_text",
+      description: "Traduit un texte d'une langue à une autre (fr, en, es, de, it, ar, zh, ja, ko, pt, ru...).",
+      parameters: { type: "object", properties: { text: { type: "string", description: "Texte à traduire" }, from: { type: "string", description: "Langue source (auto-detect si omis)" }, to: { type: "string", description: "Langue cible" } }, required: ["text", "to"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "audio_translate",
+      description: "Traduit un fichier audio d'une langue vers une autre: transcrit, traduit le texte, puis resynthétise en audio.",
+      parameters: { type: "object", properties: { audioBase64: { type: "string", description: "Audio en base64" }, mimeType: { type: "string" }, targetLang: { type: "string", description: "Langue cible" }, voice: { type: "string", description: "Voix pour la synthèse" } }, required: ["audioBase64", "targetLang"] }
+    }
+  },
+
+  // === ÉDITION IMAGE ===
+  {
+    type: "function",
+    function: {
+      name: "image_edit",
+      description: "Édite une image: recadrer, redimensionner, filtrer, ajouter du texte, convertir le format.",
+      parameters: { type: "object", properties: { imageBase64: { type: "string", description: "Image en base64" }, action: { type: "string", enum: ["resize", "crop", "rotate", "flip", "grayscale", "blur", "sharpen", "brightness", "contrast", "watermark", "convert"], description: "Transformation" }, mimeType: { type: "string" }, params: { type: "object", description: "Paramètres (width, height, angle, text, format, etc.)" } }, required: ["imageBase64", "action"] }
+    }
+  },
+
+  // === INTELLIGENCE PRÉDICTIVE ===
+  {
+    type: "function",
+    function: {
+      name: "predictive_intelligence",
+      description: "Intelligence prédictive: prévoit le CA, les achats, la fréquentation du restaurant sur la prochaine période.",
+      parameters: { type: "object", properties: { type: { type: "string", enum: ["revenue", "purchases", "attendance", "expenses", "trends"], description: "Type de prédiction" }, restaurant: { type: "string" }, period: { type: "string", enum: ["day", "week", "month"], description: "Horizon" } }, required: ["type"] }
+    }
+  },
+
+  // === RECHERCHE & ANALYSE ===
+  {
+    type: "function",
+    function: {
+      name: "deep_research",
+      description: "Recherche autonome approfondie: explore plusieurs sources web, croise les infos, et synthétise un rapport complet sur un sujet.",
+      parameters: { type: "object", properties: { topic: { type: "string", description: "Sujet de recherche" }, depth: { type: "string", enum: ["quick", "standard", "deep"], description: "Profondeur" }, maxSources: { type: "number", description: "Nombre max de sources (défaut: 5)" } }, required: ["topic"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "decision_coach",
+      description: "Coach décisionnel: analyse une question/dilemme, évalue les options, et donne une recommandation argumentée.",
+      parameters: { type: "object", properties: { question: { type: "string", description: "Question ou dilemme" }, options: { type: "array", items: { type: "string" }, description: "Options possibles" }, context: { type: "string", description: "Contexte supplémentaire" } }, required: ["question"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "sentiment_analyze",
+      description: "Analyse le sentiment d'un texte: positif/négatif/neutre, émotions détectées, score de confiance.",
+      parameters: { type: "object", properties: { text: { type: "string", description: "Texte à analyser" }, language: { type: "string", description: "Langue (défaut: fr)" } }, required: ["text"] }
+    }
+  },
+
+  // === NOTIFICATIONS ===
+  {
+    type: "function",
+    function: {
+      name: "push_notify",
+      description: "Envoie une notification push sur les appareils enregistrés de l'utilisateur.",
+      parameters: { type: "object", properties: { title: { type: "string", description: "Titre de la notification" }, body: { type: "string", description: "Corps du message" }, userId: { type: "number" }, data: { type: "object", description: "Données supplémentaires" } }, required: ["title", "body"] }
+    }
+  },
+
+  // === PARSERS SPÉCIALISÉS ===
+  {
+    type: "function",
+    function: {
+      name: "parse_invoice",
+      description: "Parser de factures intelligent: extrait toutes les données structurées (fournisseur, lignes, montants, TVA, dates) depuis une image ou un fichier.",
+      parameters: { type: "object", properties: { imageBase64: { type: "string", description: "Image de la facture en base64" }, filePath: { type: "string", description: "Chemin du fichier PDF/image" }, mimeType: { type: "string" } } }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "parse_payroll",
+      description: "Parser de fiches de paie: extrait salaire brut/net, cotisations, heures, primes depuis une image ou un fichier de bulletin de paie.",
+      parameters: { type: "object", properties: { imageBase64: { type: "string", description: "Image du bulletin en base64" }, filePath: { type: "string", description: "Chemin du fichier" }, mimeType: { type: "string" } } }
+    }
+  },
+
+  // === RAPPORTS ===
+  {
+    type: "function",
+    function: {
+      name: "generate_report",
+      description: "Générateur de rapports business: P&L, bilan mensuel, analyse fournisseurs, rapport RH, etc.",
+      parameters: { type: "object", properties: { type: { type: "string", enum: ["pnl", "monthly", "suppliers", "hr", "cash_flow", "full_audit"], description: "Type de rapport" }, restaurant: { type: "string" }, period: { type: "string" }, format: { type: "string", enum: ["markdown", "json", "html"], description: "Format de sortie" } }, required: ["type"] }
+    }
+  },
+
+  // === PARIS SPORTIFS ===
+  {
+    type: "function",
+    function: {
+      name: "value_bets",
+      description: "Détecte les paris à valeur (value bets) en comparant les cotes des bookmakers avec les probabilités calculées.",
+      parameters: { type: "object", properties: { sport: { type: "string", enum: ["football", "basketball", "hockey", "tennis", "nfl"] }, league: { type: "string" }, minValue: { type: "number", description: "Valeur minimum en % (défaut: 5)" } } }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "sports_prediction",
+      description: "Prédictions sportives multi-sports: basketball/NBA, hockey/NHL, NFL. Utilise les modèles de prédiction spécialisés.",
+      parameters: { type: "object", properties: { sport: { type: "string", enum: ["basketball", "nba", "hockey", "nhl", "nfl", "american_football"], description: "Sport" }, matchId: { type: "string" }, league: { type: "string" }, action: { type: "string", enum: ["predict", "memory", "history"] } }, required: ["sport"] }
+    }
+  },
+
+  // === MÉMOIRE & COGNITION ===
+  {
+    type: "function",
+    function: {
+      name: "memory_graph",
+      description: "Graphe de mémoire: explore les connexions entre concepts, personnes, lieux et événements dans la mémoire d'Ulysse.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["search", "query", "connections", "stats"] }, query: { type: "string" }, nodeId: { type: "string" }, limit: { type: "number" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "rag_search",
+      description: "Recherche RAG (Retrieval Augmented Generation): cherche dans les documents indexés avec recherche sémantique vectorielle.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Requête de recherche" }, collection: { type: "string", description: "Collection de documents" }, limit: { type: "number" } }, required: ["query"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "self_awareness",
+      description: "Introspection d'Ulysse: état interne, capacités actuelles, métriques de performance, auto-évaluation.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["introspect", "status", "capabilities", "performance"] } }, required: ["action"] }
+    }
+  },
+
+  // === SCREENSHOT & NAVIGATION ===
+  {
+    type: "function",
+    function: {
+      name: "screenshot_url",
+      description: "Capture une capture d'écran d'un site web (URL publique).",
+      parameters: { type: "object", properties: { url: { type: "string", description: "URL à capturer" }, fullPage: { type: "boolean", description: "Page entière ou viewport" }, width: { type: "number", description: "Largeur viewport (défaut: 1280)" } }, required: ["url"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "browse_web",
+      description: "Navigateur web avancé: extraction de contenu, scraping ciblé avec sélecteurs CSS, extraction de liens.",
+      parameters: { type: "object", properties: { url: { type: "string", description: "URL à explorer" }, action: { type: "string", enum: ["extract", "scrape", "screenshot", "links"], description: "Action" }, selector: { type: "string", description: "Sélecteur CSS pour cibler le contenu" } }, required: ["url"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "photo_search",
+      description: "Recherche de photos et images sur le web avec filtres intelligents.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Recherche" }, limit: { type: "number", description: "Nombre max (défaut: 5)" } }, required: ["query"] }
+    }
+  },
+
+  // === DEVOPS AVANCÉ ===
+  {
+    type: "function",
+    function: {
+      name: "system_metrics",
+      description: "Métriques système: CPU, mémoire, disque, réseau, uptime du serveur Hetzner.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["current", "status", "history", "alerts"] } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "cloudflare_manage",
+      description: "Gestion Cloudflare: zones DNS, purge de cache, analytics trafic.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["status", "zones", "dns_list", "purge_cache", "analytics"] }, domain: { type: "string", description: "Domaine (défaut: ulyssepro.org)" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "code_snapshot",
+      description: "Snapshots de code: capture l'état du codebase, compare les versions, liste les snapshots.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["create", "snapshot", "compare", "diff", "list"] }, repo: { type: "string" }, branch: { type: "string" }, snapshotId: { type: "string" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "codebase_analyze",
+      description: "Analyse du codebase: graphe de dépendances, recherche de code, statistiques (lignes, fichiers, complexité).",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["graph", "dependencies", "search", "stats"] }, path: { type: "string" }, query: { type: "string" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "style_guide_extract",
+      description: "Extrait le guide de style d'un site web ou d'une image: couleurs, typographies, espacements, composants UI.",
+      parameters: { type: "object", properties: { url: { type: "string", description: "URL du site" }, imageBase64: { type: "string", description: "Image en base64" }, mimeType: { type: "string" } } }
+    }
+  },
+
+  // === FAMILLE & PRODUCTIVITÉ ===
+  {
+    type: "function",
+    function: {
+      name: "homework_intelligence",
+      description: "Intelligence devoirs scolaires: vue d'ensemble, aide par matière, suivi de progression des enfants.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["status", "overview", "help", "progress"] }, subject: { type: "string", description: "Matière (math, français, etc.)" }, childName: { type: "string" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "calendar_anticipation",
+      description: "Anticipation calendrier: analyse les événements à venir et suggère des actions préparatoires.",
+      parameters: { type: "object", properties: { days: { type: "number", description: "Horizon en jours (défaut: 7)" } } }
+    }
+  },
+
+  // === ANALYTICS ===
+  {
+    type: "function",
+    function: {
+      name: "usage_analytics",
+      description: "Analytics d'utilisation d'Ulysse: quels outils sont les plus utilisés, par qui, quand.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["stats", "overview", "top_tools", "users"] }, period: { type: "string", enum: ["day", "week", "month"] } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "conversation_prefs",
+      description: "Préférences conversationnelles: consulte ou modifie les préférences de communication d'un utilisateur (ton, langue, format).",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["get", "list", "set"] }, userId: { type: "number" }, key: { type: "string" }, value: { type: "string" } }, required: ["action"] }
+    }
+  },
+
   // === FICHIERS & DOCUMENTS AVANCÉS ===
   {
     type: "function",
@@ -1430,6 +1698,36 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   devops_github: (a) => executeDevopsGithub(a),
   devops_server: (a) => executeDevopsServer(a),
   pdf_master: (a) => executePdfMaster(a),
+  face_recognize: (a) => executeBridge("faceRecognize", a),
+  speaker_identify: (a) => executeBridge("speakerIdentify", a),
+  translate_text: (a) => executeBridge("translate", a),
+  audio_translate: (a) => executeBridge("audioTranslate", a),
+  image_edit: (a) => executeBridge("imageEditTool", a),
+  predictive_intelligence: (a) => executeBridge("predictiveIntelligence", a),
+  deep_research: (a) => executeBridge("deepResearch", a),
+  decision_coach: (a) => executeBridge("decisionCoach", a),
+  sentiment_analyze: (a) => executeBridge("sentimentAnalyze", a),
+  push_notify: (a) => executeBridge("pushNotify", a),
+  parse_invoice: (a) => executeBridge("parseInvoice", a),
+  parse_payroll: (a) => executeBridge("parsePayroll", a),
+  generate_report: (a) => executeBridge("generateReport", a),
+  value_bets: (a) => executeBridge("valueBets", a),
+  sports_prediction: (a) => executeBridge("sportsPrediction", a),
+  memory_graph: (a) => executeBridge("memoryGraph", a),
+  rag_search: (a) => executeBridge("ragSearch", a),
+  self_awareness: (a) => executeBridge("selfAwareness", a),
+  screenshot_url: (a) => executeBridge("screenshotUrl", a),
+  browse_web: (a) => executeBridge("browseWeb", a),
+  photo_search: (a) => executeBridge("photoSearch", a),
+  system_metrics: (a) => executeBridge("systemMetrics", a),
+  cloudflare_manage: (a) => executeBridge("cloudflareManage", a),
+  code_snapshot: (a) => executeBridge("codeSnapshot", a),
+  codebase_analyze: (a) => executeBridge("codebaseAnalyze", a),
+  style_guide_extract: (a) => executeBridge("styleGuideExtract", a),
+  homework_intelligence: (a) => executeBridge("homeworkIntelligence", a),
+  calendar_anticipation: (a) => executeBridge("calendarAnticipation", a),
+  usage_analytics: (a) => executeBridge("usageAnalytics", a),
+  conversation_prefs: (a) => executeBridge("conversationPrefs", a),
   file_convert: (a) => executeFileConvert(a),
   file_compress: (a) => executeFileCompress(a),
   spreadsheet_analyze: (a) => executeSpreadsheetAnalyze(a),
@@ -5508,6 +5806,18 @@ async function executePdfMaster(args: Record<string, any>): Promise<string> {
     }
   } catch (e: any) {
     console.error("[PDFMaster] Tool execution error:", e);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+async function executeBridge(method: string, args: Record<string, any>): Promise<string> {
+  try {
+    const { unexploitedToolsBridge } = await import("./unexploitedToolsBridge");
+    const fn = (unexploitedToolsBridge as any)[method];
+    if (!fn) return JSON.stringify({ error: `Bridge method '${method}' not found` });
+    return await fn(args);
+  } catch (e: any) {
+    console.error(`[Bridge:${method}] Error:`, e.message);
     return JSON.stringify({ error: e.message });
   }
 }
