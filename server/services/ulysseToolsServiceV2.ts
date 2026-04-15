@@ -965,6 +965,113 @@ NE DIS JAMAIS "je ne peux pas générer un PDF". Tu PEUX et tu DOIS utiliser ce 
     }
   },
 
+  // === FICHIERS & DOCUMENTS AVANCÉS ===
+  {
+    type: "function",
+    function: {
+      name: "file_convert",
+      description: "Convertit un fichier d'un format à un autre: CSV↔JSON, JSON↔YAML, CSV→XML, CSV/JSON→Markdown table, TXT→JSON.",
+      parameters: {
+        type: "object",
+        properties: {
+          input_path: { type: "string", description: "Chemin du fichier source" },
+          input_data: { type: "string", description: "Données brutes (alternative à input_path)" },
+          from_format: { type: "string", enum: ["csv", "json", "yaml", "txt", "xml"], description: "Format source" },
+          to_format: { type: "string", enum: ["csv", "json", "yaml", "xml", "md", "markdown", "txt"], description: "Format cible" },
+          file_name: { type: "string", description: "Nom du fichier de sortie (sans extension)" }
+        },
+        required: ["from_format", "to_format"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "file_compress",
+      description: "Crée ou extrait des archives ZIP. Actions: create (zipper des fichiers), extract (dézipper), list (lister le contenu).",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["create", "zip", "extract", "unzip", "list"], description: "Action à effectuer" },
+          files: { type: "array", items: { type: "string" }, description: "Chemins des fichiers à zipper (pour create)" },
+          input_path: { type: "string", description: "Chemin du ZIP (pour extract/list)" },
+          output_name: { type: "string", description: "Nom de l'archive de sortie (sans .zip)" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "spreadsheet_analyze",
+      description: "Analyse avancée de données CSV/Excel: stats (sum/avg/min/max/median par colonne), filter (avec opérateurs), group/pivot (agrégation par catégorie), unique/distinct, top (fréquences), columns (lister).",
+      parameters: {
+        type: "object",
+        properties: {
+          input_path: { type: "string", description: "Chemin du fichier CSV" },
+          csv_data: { type: "string", description: "Données CSV brutes (alternative à input_path)" },
+          action: { type: "string", enum: ["stats", "summary", "filter", "search", "group", "pivot", "columns", "unique", "distinct", "top"], description: "Type d'analyse" },
+          column: { type: "string", description: "Colonne cible (pour unique, top)" },
+          filter: { type: "object", properties: { column: { type: "string" }, operator: { type: "string", enum: ["=", "!=", ">", "<", ">=", "<=", "contains", "starts_with"] }, value: { type: "string" } }, description: "Filtre à appliquer" },
+          group_by: { type: "string", description: "Colonne de regroupement (pour group/pivot)" },
+          sort_by: { type: "string", description: "Colonne de tri" },
+          sort_order: { type: "string", enum: ["asc", "desc"] },
+          limit: { type: "number", description: "Nombre max de résultats" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "document_compare",
+      description: "Compare deux fichiers texte/code/CSV et montre les différences ligne par ligne (ajouts, suppressions, modifications).",
+      parameters: {
+        type: "object",
+        properties: {
+          file_a: { type: "string", description: "Chemin du premier fichier" },
+          file_b: { type: "string", description: "Chemin du second fichier" },
+          mode: { type: "string", description: "Mode de comparaison (line)" }
+        },
+        required: ["file_a", "file_b"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "qr_code_generate",
+      description: "Génère un QR code en SVG à partir de texte, URL, email, téléphone ou vCard.",
+      parameters: {
+        type: "object",
+        properties: {
+          data: { type: "string", description: "Contenu du QR code (URL, texte, vCard, etc.)" },
+          size: { type: "number", description: "Taille en pixels (défaut: 256)" },
+          file_name: { type: "string", description: "Nom du fichier de sortie (sans extension)" }
+        },
+        required: ["data"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "ocr_extract",
+      description: "Extraction OCR: lit tout le texte visible dans une image (document, facture, ticket, menu, photo de texte). Utilise GPT-4 Vision pour une précision maximale.",
+      parameters: {
+        type: "object",
+        properties: {
+          imageBase64: { type: "string", description: "Image en base64" },
+          mimeType: { type: "string", description: "Type MIME (image/jpeg, image/png)" },
+          language: { type: "string", description: "Langue principale du document (fr, en, es...)" }
+        },
+        required: ["imageBase64"]
+      }
+    }
+  },
+
   // === TOOLS CHECKUP ===
   {
     type: "function",
@@ -1323,6 +1430,12 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   devops_github: (a) => executeDevopsGithub(a),
   devops_server: (a) => executeDevopsServer(a),
   pdf_master: (a) => executePdfMaster(a),
+  file_convert: (a) => executeFileConvert(a),
+  file_compress: (a) => executeFileCompress(a),
+  spreadsheet_analyze: (a) => executeSpreadsheetAnalyze(a),
+  document_compare: (a) => executeDocumentCompare(a),
+  qr_code_generate: (a) => executeQrCodeGenerate(a),
+  ocr_extract: (a) => executeOcrExtract(a),
   tools_checkup: (a) => executeToolsCheckup(a),
   vision_live_analyze: (a) => executeVisionLiveAnalyze(a),
   digital_twin_snapshot: (a) => executeDigitalTwinSnapshot(a),
@@ -5397,6 +5510,48 @@ async function executePdfMaster(args: Record<string, any>): Promise<string> {
     console.error("[PDFMaster] Tool execution error:", e);
     return JSON.stringify({ error: e.message });
   }
+}
+
+async function executeFileConvert(args: Record<string, any>): Promise<string> {
+  try {
+    const { fileToolsAdvanced } = await import("./fileToolsAdvanced");
+    return await fileToolsAdvanced.convert(args as any);
+  } catch (e: any) { return JSON.stringify({ error: e.message }); }
+}
+
+async function executeFileCompress(args: Record<string, any>): Promise<string> {
+  try {
+    const { fileToolsAdvanced } = await import("./fileToolsAdvanced");
+    return await fileToolsAdvanced.compress(args as any);
+  } catch (e: any) { return JSON.stringify({ error: e.message }); }
+}
+
+async function executeSpreadsheetAnalyze(args: Record<string, any>): Promise<string> {
+  try {
+    const { fileToolsAdvanced } = await import("./fileToolsAdvanced");
+    return await fileToolsAdvanced.spreadsheetAnalyze(args as any);
+  } catch (e: any) { return JSON.stringify({ error: e.message }); }
+}
+
+async function executeDocumentCompare(args: Record<string, any>): Promise<string> {
+  try {
+    const { fileToolsAdvanced } = await import("./fileToolsAdvanced");
+    return await fileToolsAdvanced.compare(args as any);
+  } catch (e: any) { return JSON.stringify({ error: e.message }); }
+}
+
+async function executeQrCodeGenerate(args: Record<string, any>): Promise<string> {
+  try {
+    const { fileToolsAdvanced } = await import("./fileToolsAdvanced");
+    return await fileToolsAdvanced.qrCode(args as any);
+  } catch (e: any) { return JSON.stringify({ error: e.message }); }
+}
+
+async function executeOcrExtract(args: Record<string, any>): Promise<string> {
+  try {
+    const { fileToolsAdvanced } = await import("./fileToolsAdvanced");
+    return await fileToolsAdvanced.ocrExtract(args as any);
+  } catch (e: any) { return JSON.stringify({ error: e.message }); }
 }
 
 async function executeToolsCheckup(args: Record<string, any>): Promise<string> {

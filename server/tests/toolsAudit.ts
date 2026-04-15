@@ -103,6 +103,13 @@ const SAFE_TEST_CASES: TestCase[] = [
   { tool: "generate_financial_report", args: { action: "preview", restaurant: "suguval" }, label: "Financial report preview" },
   { tool: "notion_manage", args: { action: "list_databases" }, label: "Notion list databases", acceptWarn: true },
 
+  { tool: "file_convert", args: { input_data: "name;age\nAlice;30\nBob;25", from_format: "csv", to_format: "json" }, label: "File convert CSV→JSON" },
+  { tool: "file_compress", args: { action: "list", input_path: "/tmp/__audit_nonexistent.zip" }, label: "File compress list (expect graceful)", acceptWarn: true },
+  { tool: "spreadsheet_analyze", args: { csv_data: "product;price;qty\nPizza;12;50\nBurger;8;30\nSalad;6;20", action: "stats" }, label: "Spreadsheet analyze stats" },
+  { tool: "document_compare", args: { file_a: "/tmp/__audit_a.txt", file_b: "/tmp/__audit_b.txt" }, label: "Document compare (expect graceful)", acceptWarn: true },
+  { tool: "qr_code_generate", args: { data: "https://ulyssepro.org" }, label: "QR code generate" },
+  { tool: "ocr_extract", args: { imageBase64: "iVBORw0KGgo=", mimeType: "image/png" }, label: "OCR extract (expect graceful)", acceptWarn: true },
+
   { tool: "digital_twin_snapshot", args: { restaurant: "suguval" }, label: "Digital Twin snapshot", timeout: 15000 },
   { tool: "digital_twin_simulate", args: { type: "price_change", params: { percentChange: 5 }, restaurant: "suguval" }, label: "Digital Twin simulate", timeout: 15000 },
   { tool: "voice_status", args: {}, label: "Voice mode status" },
