@@ -156,9 +156,10 @@ export interface ScreenAnalysis {
 
 export class ScreenMonitorService {
   private static instance: ScreenMonitorService;
-  private activeSessions = new Map<number, { sessionId: number; lastAnalysis: number; frameBuffer: ScreenFrame[] }>();
-  private analysisInterval = 5000;
+  private activeSessions = new Map<number, { sessionId: number; lastAnalysis: number; frameBuffer: ScreenFrame[]; recentAnalyses: string[] }>();
+  private analysisInterval = 15000;
   private maxBufferSize = 10;
+  private maxRecentAnalyses = 5;
 
   static getInstance(): ScreenMonitorService {
     if (!ScreenMonitorService.instance) {
@@ -209,7 +210,8 @@ export class ScreenMonitorService {
     this.activeSessions.set(userId, {
       sessionId: session.id,
       lastAnalysis: Date.now(),
-      frameBuffer: []
+      frameBuffer: [],
+      recentAnalyses: []
     });
 
     console.log(`${LOG_PREFIX} Session started for user ${userId}, device ${deviceId}`);
@@ -287,7 +289,16 @@ export class ScreenMonitorService {
     sessionData.lastAnalysis = now;
 
     try {
-      const analysis = await this.analyzeScreen(frame);
+      const analysis = await this.analyzeScreen(frame, sessionData.recentAnalyses);
+
+      if (this.isDuplicateAnalysis(analysis.context, sessionData.recentAnalyses)) {
+        return null;
+      }
+
+      sessionData.recentAnalyses.push(analysis.context);
+      if (sessionData.recentAnalyses.length > this.maxRecentAnalyses) {
+        sessionData.recentAnalyses.shift();
+      }
       
       await db.insert(screenContextEvents).values({
         userId,
@@ -309,7 +320,7 @@ export class ScreenMonitorService {
       
       await this.checkAndSyncSignificantPatterns(userId);
 
-      console.log(`${LOG_PREFIX} Analyzed screen for user ${userId}: ${analysis.context.substring(0, 100)}...`);
+      console.log(`${LOG_PREFIX} Analyzed screen for user ${userId}: ${analysis.context.substring(0, 150)}`);
       return analysis;
     } catch (error) {
       console.error(`${LOG_PREFIX} Analysis error:`, error);
@@ -317,18 +328,56 @@ export class ScreenMonitorService {
     }
   }
 
-  private async analyzeScreen(frame: ScreenFrame): Promise<ScreenAnalysis> {
+  private isDuplicateAnalysis(newContext: string, recentAnalyses: string[]): boolean {
+    if (recentAnalyses.length === 0) return false;
+    const lastAnalysis = recentAnalyses[recentAnalyses.length - 1];
+    const newWords = new Set(newContext.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+    const lastWords = new Set(lastAnalysis.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+    if (newWords.size === 0 || lastWords.size === 0) return false;
+    let overlap = 0;
+    for (const w of newWords) { if (lastWords.has(w)) overlap++; }
+    const similarity = overlap / Math.max(newWords.size, lastWords.size);
+    return similarity > 0.7;
+  }
+
+  private async analyzeScreen(frame: ScreenFrame, recentAnalyses: string[]): Promise<ScreenAnalysis> {
+    const historyContext = recentAnalyses.length > 0
+      ? `\n\nAnalyses précédentes (NE PAS répéter):\n${recentAnalyses.slice(-3).map((a, i) => `${i + 1}. ${a}`).join("\n")}`
+      : "";
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      max_tokens: 300,
+      max_tokens: 500,
       messages: [
         {
           role: "system",
-          content: `Tu es l'assistant Ulysse qui observe l'écran de l'utilisateur pour comprendre son travail.
-Analyse l'image et décris BRIÈVEMENT ce que l'utilisateur fait.
-Réponds en JSON avec: {"context": "description courte", "tags": ["tag1", "tag2"], "confidence": 0.9, "suggestions": ["suggestion optionnelle"]}
-Tags possibles: coding, browsing, documentation, design, communication, entertainment, productivity, file_management, unknown
-Sois concis et précis. Maximum 1-2 phrases pour le contexte.`
+          content: `Tu es Ulysse, un assistant IA qui observe l'écran de Maurice pour comprendre précisément son activité.
+
+RÈGLES D'ANALYSE :
+1. LIS le texte visible à l'écran — noms de fichiers, titres d'onglets, contenu des cellules, URLs, noms de menus
+2. IDENTIFIE les données spécifiques : noms de produits, montants, dates, noms de fournisseurs, noms de clients
+3. DÉCRIS l'action en cours avec PRÉCISION : "Édite la ligne 45 du fichier tarifs_fournisseur_metro.xlsx, colonne Prix HT" plutôt que "travaille sur Excel"
+4. Si c'est un tableur : lis les en-têtes de colonnes, le nom de la feuille, les données visibles
+5. Si c'est un navigateur : lis l'URL, le titre de la page, le contenu principal
+6. Si c'est du code : identifie le langage, le fichier, la fonction en cours d'édition
+7. JAMAIS de descriptions vagues comme "travaille sur un fichier" ou "consulte une feuille de calcul"
+
+TAGS DISPONIBLES (choisis 2-4 les plus pertinents) :
+- coding, devops, terminal, git
+- browsing, research, documentation, learning
+- spreadsheet, accounting, invoicing, pricing, inventory
+- restaurant_management, food_ordering, supplier, menu_planning
+- email, messaging, calendar, communication, video_call
+- trading, finance, banking, crypto
+- sports, betting, analytics
+- design, media, creative
+- entertainment, social_media, gaming
+- admin, hr, payroll, legal
+- writing, notes, planning, project_management
+
+SUGGESTIONS : Donne 1-2 suggestions UTILES et SPÉCIFIQUES au contexte observé (pas de généralités).
+
+Réponds UNIQUEMENT en JSON : {"context": "description précise et détaillée (3-4 phrases)", "tags": ["tag1", "tag2", "tag3"], "confidence": 0.85, "suggestions": ["suggestion spécifique"]}${historyContext}`
         },
         {
           role: "user",
@@ -337,12 +386,12 @@ Sois concis et précis. Maximum 1-2 phrases pour le contexte.`
               type: "image_url",
               image_url: {
                 url: `data:image/jpeg;base64,${frame.imageBase64}`,
-                detail: "low"
+                detail: "auto"
               }
             },
             {
               type: "text",
-              text: `App active: ${frame.activeApp || 'unknown'}, Fenêtre: ${frame.activeWindow || 'unknown'}`
+              text: `App: ${frame.activeApp || 'inconnue'} | Fenêtre: ${frame.activeWindow || 'inconnue'} | Heure: ${new Date().toLocaleTimeString('fr-FR')}`
             }
           ]
         }
@@ -367,7 +416,7 @@ Sois concis et précis. Maximum 1-2 phrases pour le contexte.`
     }
 
     return {
-      context: content.substring(0, 200) || "Activité en cours",
+      context: content.substring(0, 300) || "Activité en cours",
       tags: ["unknown"],
       confidence: 0.5
     };
