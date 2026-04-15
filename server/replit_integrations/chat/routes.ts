@@ -4861,7 +4861,7 @@ SANS CE MARQUEUR = L'EMAIL NE PART PAS. Tu utilises AgentMail, PAS Gmail.`
       try {
         const { aiRouter } = await import("../../services/aiRouter");
         const { ulysseToolsV2, executeToolCallV2 } = await import("../../services/ulysseToolsServiceV2");
-        const { detectActionIntent, shouldForceToolChoice } = await import("../../services/actionIntentDetector");
+        const { detectActionIntent, shouldForceToolChoice, getRelevantTools } = await import("../../services/actionIntentDetector");
         
         // Only give tools to owner/family members
         const shouldUseTools = persona.isOwner || persona.isApproved;
@@ -4869,16 +4869,17 @@ SANS CE MARQUEUR = L'EMAIL NE PART PAS. Tu utilises AgentMail, PAS Gmail.`
         // Detect intent from user message to decide tool_choice
         const actionIntent = shouldUseTools ? detectActionIntent(content) : null;
         const toolChoice = actionIntent ? shouldForceToolChoice(actionIntent) : "auto";
+        const chatTools = shouldUseTools && actionIntent ? getRelevantTools(actionIntent, ulysseToolsV2) : (shouldUseTools ? ulysseToolsV2.slice(0, 128) : undefined);
         if (actionIntent?.shouldForceTools) {
           console.log(`[Chat] Intent detected → toolChoice=${toolChoice} | ${actionIntent.reason} | tools: ${actionIntent.suggestedTools.join(',') || 'any'}`);
         }
-        console.log(`[Chat] User ${userId} (${persona.ownerProfile?.displayName || 'unknown'}): isOwner=${persona.isOwner}, isApproved=${persona.isApproved}, shouldUseTools=${shouldUseTools}, toolsCount=${shouldUseTools ? ulysseToolsV2.length : 0}`);
+        console.log(`[Chat] User ${userId} (${persona.ownerProfile?.displayName || 'unknown'}): isOwner=${persona.isOwner}, isApproved=${persona.isApproved}, shouldUseTools=${shouldUseTools}, toolsCount=${chatTools ? chatTools.length : 0}`);
         
         fullResponse = await aiRouter.streamChat(
           chatMessages as any,
           { 
             provider: "auto",
-            tools: shouldUseTools ? ulysseToolsV2 : undefined,
+            tools: chatTools,
             onToolCall: shouldUseTools ? async (name: string, args: any) => {
               console.log(`[Chat] Executing tool: ${name}`, args);
               return await executeToolCallV2(name, args, userId);

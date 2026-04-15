@@ -568,15 +568,54 @@ export function shouldForceToolChoice(intent: ActionIntent): "required" | "auto"
   return intent.shouldForceTools && intent.confidence >= 0.6 ? "required" : "auto";
 }
 
+const MAX_TOOLS_PER_CALL = 128;
+
+const CORE_TOOLS = new Set([
+  "query_brain", "memory_save", "web_search", "read_url", "image_generate",
+  "calendar_list_events", "calendar_create_event", "email_list_inbox", "email_send",
+  "email_read_message", "email_reply", "email_forward",
+  "todoist_list_tasks", "todoist_create_task", "todoist_complete_task",
+  "spotify_control", "smarthome_control", "location_get_weather",
+  "discord_send_message", "discord_status", "notion_manage", "drive_manage",
+  "query_sports_data", "query_match_intelligence", "query_stock_data",
+  "query_suguval_history", "sugu_full_overview", "manage_sugu_purchases",
+  "manage_sugu_expenses", "manage_sugu_bank", "manage_sugu_employees",
+  "search_sugu_data", "compute_business_health", "detect_anomalies",
+  "devops_github", "devops_server", "devops_intelligence", "dgm_manage",
+  "analyze_file", "generate_file", "pdf_master", "translate_text",
+  "commax_manage", "screen_monitor_manage", "navigation_manage",
+  "query_coba", "coba_business", "superchat_search", "manage_ai_system",
+  "generate_morning_briefing", "monitoring_manage", "push_notify",
+  "mars_search", "deep_research", "decision_engine", "decision_coach",
+  "trading_analysis", "trading_alerts", "itinerary_plan", "google_maps",
+  "agent_mail", "tools_checkup", "generate_report", "brain_context",
+  "analyze_invoice", "homework_intelligence", "music_search",
+  "sports_watch", "api_football", "value_bets", "sports_prediction",
+  "ifttt_trigger", "camera_manage", "run_diagnostics", "health_probe",
+  "kpi_dashboard", "self_heal", "autonomous_execute",
+  "sentiment_analyze", "behavior_analysis", "anticipation_engine",
+  "export_analysis", "generate_invoice_pdf", "export_invoice_excel",
+  "query_bets_tracker", "betting_profile",
+]);
+
 export function getRelevantTools(intent: ActionIntent, allTools: any[]): any[] {
-  if (!intent.shouldForceTools || intent.suggestedTools.length === 0) {
-    return allTools;
+  if (intent.shouldForceTools && intent.suggestedTools.length > 0) {
+    const relevantTools = allTools.filter(tool => 
+      intent.suggestedTools.includes(tool.function.name) ||
+      ['query_brain', 'memory_save', 'web_search'].includes(tool.function.name)
+    );
+    if (relevantTools.length > 0 && relevantTools.length <= MAX_TOOLS_PER_CALL) {
+      return relevantTools;
+    }
   }
   
-  const relevantTools = allTools.filter(tool => 
-    intent.suggestedTools.includes(tool.function.name) ||
-    ['query_brain', 'memory_save', 'web_search'].includes(tool.function.name)
-  );
-  
-  return relevantTools.length > 0 ? relevantTools : allTools;
+  if (allTools.length <= MAX_TOOLS_PER_CALL) {
+    return allTools;
+  }
+
+  const coreSet = allTools.filter(t => CORE_TOOLS.has(t.function.name));
+  const remaining = allTools.filter(t => !CORE_TOOLS.has(t.function.name));
+  const spotsLeft = MAX_TOOLS_PER_CALL - coreSet.length;
+  const result = [...coreSet, ...remaining.slice(0, Math.max(0, spotsLeft))];
+  return result;
 }
