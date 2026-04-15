@@ -340,10 +340,16 @@ export function DevmaxSkillsPanel() {
   });
 
   const seedMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/skills/seed"),
-    onSuccess: () => {
-      toast({ title: "Skills initialisées" });
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/skills/seed");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: `${data?.seeded || 0} skills initialisées` });
       queryClient.invalidateQueries({ queryKey: ["/api/skills"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Erreur initialisation skills", description: err?.message || "Erreur inconnue", variant: "destructive" });
     },
   });
 

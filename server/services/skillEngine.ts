@@ -621,10 +621,13 @@ class SkillEngine {
       },
     ];
 
+    let seeded = 0;
     for (const def of defaults) {
       if (existingSlugs.has(def.slug)) continue;
       await this.createSkill({ userId, ...def });
+      seeded++;
     }
+    return seeded;
   }
 }
 

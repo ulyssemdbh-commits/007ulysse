@@ -113,9 +113,11 @@ router.get("/:id/executions", async (req: Request, res: Response) => {
 router.post("/seed", async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
-    await skillEngine.seedDefaultSkills(userId);
-    res.json({ success: true });
+    if (!userId) return res.status(401).json({ error: "User ID required" });
+    const count = await skillEngine.seedDefaultSkills(userId);
+    res.json({ success: true, seeded: count });
   } catch (err: any) {
+    console.error("[Skills] Seed error:", err);
     res.status(500).json({ error: err.message });
   }
 });
