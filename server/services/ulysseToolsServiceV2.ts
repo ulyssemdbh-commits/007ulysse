@@ -1233,6 +1233,212 @@ NE DIS JAMAIS "je ne peux pas générer un PDF". Tu PEUX et tu DOIS utiliser ce 
     }
   },
 
+  // === EMAIL AUTONOME ===
+  {
+    type: "function",
+    function: {
+      name: "agent_mail",
+      description: "AgentMail: boîte mail autonome d'Ulysse — consulter l'inbox, envoyer des mails, vérifier le statut.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["inbox", "list", "send", "status"] }, to: { type: "string" }, subject: { type: "string" }, body: { type: "string" }, limit: { type: "number" } }, required: ["action"] }
+    }
+  },
+
+  // === ANTICIPATION & PROACTIVITÉ ===
+  {
+    type: "function",
+    function: {
+      name: "anticipation_engine",
+      description: "Moteur d'anticipation: génère des prédictions et suggestions proactives basées sur les patterns détectés.",
+      parameters: { type: "object", properties: { action: { type: "string" } } }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "proactive_intelligence",
+      description: "Intelligence proactive générale (PUGI): génère des insights et suggestions basés sur toutes les données disponibles.",
+      parameters: { type: "object", properties: { action: { type: "string" } } }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "sugu_proactive",
+      description: "Suggestions proactives SUGU: analyse le restaurant et propose des actions d'amélioration (stocks, fournisseurs, personnel).",
+      parameters: { type: "object", properties: { restaurant: { type: "string", enum: ["suguval", "sugumaillane"] } } }
+    }
+  },
+
+  // === COMPORTEMENT & PROFILS ===
+  {
+    type: "function",
+    function: {
+      name: "behavior_analysis",
+      description: "Analyse comportementale: profil d'usage, patterns d'activité, insights sur les habitudes d'un utilisateur.",
+      parameters: { type: "object", properties: { userId: { type: "number" }, action: { type: "string", enum: ["profile", "patterns", "insights"] } } }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "betting_profile",
+      description: "Profil de paris: statistiques personnelles, historique, recommandations basées sur le style de parieur.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["profile", "stats", "recommendations", "history"] }, userId: { type: "number" } }, required: ["action"] }
+    }
+  },
+
+  // === MÉMOIRE AVANCÉE ===
+  {
+    type: "function",
+    function: {
+      name: "brain_context",
+      description: "Contexte mémoire enrichi: récupère le contexte pertinent du cerveau d'Ulysse pour une question donnée.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Question ou contexte recherché" }, maxTokens: { type: "number" } }, required: ["query"] }
+    }
+  },
+
+  // === CAMÉRAS & SURVEILLANCE ===
+  {
+    type: "function",
+    function: {
+      name: "camera_manage",
+      description: "Gestion des caméras de surveillance: lister, capturer un snapshot, vérifier le statut.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["list", "snapshot", "status"] }, cameraId: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === DIAGNOSTICS & SANTÉ SYSTÈME ===
+  {
+    type: "function",
+    function: {
+      name: "run_diagnostics",
+      description: "Diagnostic système complet: vérifie la DB, les services, les connexions, la mémoire. Rapide ou approfondi.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["full", "run", "quick", "db", "services"] }, target: { type: "string" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "health_probe",
+      description: "Sonde de santé: vérifie la disponibilité de tous les services et dépendances (DB, Redis, APIs, etc.).",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["full", "check", "service"] }, target: { type: "string", description: "Service spécifique à vérifier" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "self_heal",
+      description: "Auto-guérison: diagnostique les problèmes et tente de les réparer automatiquement (restart services, clear cache, etc.).",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["check", "diagnose", "heal", "fix", "status"] } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "failure_analysis",
+      description: "Analyse des échecs: patterns de défaillances, erreurs récentes, recommandations de correction.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["patterns", "analyze", "recent", "recommendations"] }, limit: { type: "number" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "incident_correlation",
+      description: "Corrélation d'incidents: relie les erreurs entre elles pour identifier les causes racines.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["correlate", "analyze", "active"] }, timeWindow: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === DISCORD VOICE ===
+  {
+    type: "function",
+    function: {
+      name: "discord_voice_metrics",
+      description: "Métriques vocales Discord: statistiques des sessions vocales, temps par utilisateur, activité.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["stats", "user"] }, userId: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === IFTTT ===
+  {
+    type: "function",
+    function: {
+      name: "ifttt_trigger",
+      description: "Déclenche un webhook IFTTT pour automatiser des actions (allumer une lumière, envoyer une notification, etc.).",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["trigger", "status"] }, event: { type: "string", description: "Nom de l'événement IFTTT" }, value1: { type: "string" }, value2: { type: "string" }, value3: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === ITINÉRAIRES ===
+  {
+    type: "function",
+    function: {
+      name: "itinerary_plan",
+      description: "Planification d'itinéraires: calcule un trajet, estime le temps, propose des alternatives (voiture, transport, marche).",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["plan", "saved", "list", "eta"] }, from: { type: "string" }, to: { type: "string" }, mode: { type: "string", enum: ["driving", "transit", "walking", "bicycling"] } }, required: ["action"] }
+    }
+  },
+
+  // === KPI & TABLEAUX DE BORD ===
+  {
+    type: "function",
+    function: {
+      name: "kpi_dashboard",
+      description: "Tableau de bord KPI d'Ulysse: métriques clés, tendances, vue d'ensemble des performances.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["overview", "dashboard", "trends"] }, period: { type: "string", enum: ["day", "week", "month"] } }, required: ["action"] }
+    }
+  },
+
+  // === MARS (Recherche) ===
+  {
+    type: "function",
+    function: {
+      name: "mars_search",
+      description: "Recherche MARS (Multi-Agent Research System): recherche approfondie multi-sources avec scoring de fiabilité.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Requête de recherche" }, depth: { type: "string", enum: ["quick", "standard", "deep"] } }, required: ["query"] }
+    }
+  },
+
+  // === MUSIQUE ===
+  {
+    type: "function",
+    function: {
+      name: "music_search",
+      description: "Recherche musicale MusicBrainz: artistes, albums, titres, paroles, discographies.",
+      parameters: { type: "object", properties: { query: { type: "string" }, type: { type: "string", enum: ["artist", "album", "track", "release"] } }, required: ["query"] }
+    }
+  },
+
+  // === SPORTS LIVE ===
+  {
+    type: "function",
+    function: {
+      name: "sports_watch",
+      description: "Sports en direct: matchs live, calendrier à venir, résultats récents tous sports.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["live", "now", "schedule", "upcoming", "results", "recent"] }, league: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === TRADING AVANCÉ ===
+  {
+    type: "function",
+    function: {
+      name: "trading_analysis",
+      description: "Analyse technique de trading: analyse un titre, watchlist, signaux d'achat/vente, analyse de portefeuille.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["analyze", "watchlist", "signals", "portfolio"] }, symbol: { type: "string", description: "Symbole boursier (AAPL, MSFT...)" }, period: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === SÉCURITÉ ===
+  {
+    type: "function",
+    function: {
+      name: "two_factor_auth",
+      description: "Authentification deux facteurs: vérifier le statut 2FA, générer un secret, valider un code.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["status", "generate", "verify"] }, userId: { type: "number" }, code: { type: "string" } }, required: ["action"] }
+    }
+  },
+
   // === FICHIERS & DOCUMENTS AVANCÉS ===
   {
     type: "function",
@@ -1728,6 +1934,28 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   calendar_anticipation: (a) => executeBridge("calendarAnticipation", a),
   usage_analytics: (a) => executeBridge("usageAnalytics", a),
   conversation_prefs: (a) => executeBridge("conversationPrefs", a),
+  agent_mail: (a) => executeBridge("agentMail", a),
+  anticipation_engine: (a) => executeBridge("anticipation", a),
+  proactive_intelligence: (a) => executeBridge("proactiveIntelligence", a),
+  sugu_proactive: (a) => executeBridge("suguProactive", a),
+  behavior_analysis: (a) => executeBridge("behaviorAnalysis", a),
+  betting_profile: (a) => executeBridge("bettingProfile", a),
+  brain_context: (a) => executeBridge("brainContext", a),
+  camera_manage: (a) => executeBridge("cameraManage", a),
+  run_diagnostics: (a) => executeBridge("runDiagnostics", a),
+  health_probe: (a) => executeBridge("healthProbe", a),
+  self_heal: (a) => executeBridge("selfHeal", a),
+  failure_analysis: (a) => executeBridge("failureAnalysis", a),
+  incident_correlation: (a) => executeBridge("incidentCorrelation", a),
+  discord_voice_metrics: (a) => executeBridge("discordVoiceMetrics", a),
+  ifttt_trigger: (a) => executeBridge("iftttTrigger", a),
+  itinerary_plan: (a) => executeBridge("itinerary", a),
+  kpi_dashboard: (a) => executeBridge("kpiDashboard", a),
+  mars_search: (a) => executeBridge("marsSearch", a),
+  music_search: (a) => executeBridge("musicSearch", a),
+  sports_watch: (a) => executeBridge("sportsWatch", a),
+  trading_analysis: (a) => executeBridge("tradingAnalysis", a),
+  two_factor_auth: (a) => executeBridge("twoFactor", a),
   file_convert: (a) => executeFileConvert(a),
   file_compress: (a) => executeFileCompress(a),
   spreadsheet_analyze: (a) => executeSpreadsheetAnalyze(a),
