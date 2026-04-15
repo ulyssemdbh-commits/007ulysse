@@ -3,7 +3,7 @@ import { aiRouter, type ChatMessage } from "../services/aiRouter";
 import { db } from "../db";
 import { superChatSessions, superChatMessages, conversations, messages } from "@shared/schema";
 import { eq, desc, asc, and, sql } from "drizzle-orm";
-import { ulysseToolsV2, executeToolCallV2 } from "../services/ulysseToolsServiceV2";
+import { ulysseToolsV2, executeToolCallV2, getToolsForPersona as getToolsForPersonaCentral } from "../services/ulysseToolsServiceV2";
 import { PERSONA_IDENTITIES } from "../config/personaMapping";
 import { cumulativeLearningEngine } from "../services/cumulativeLearningEngine";
 import { traceCollector } from "../services/traceCollector";
@@ -129,77 +129,8 @@ async function extractAndSaveIntelligence(
   }
 }
 
-const PERSONA_TOOLS: Record<string, string[]> = {
-  ulysse: [
-    "query_brain", "web_search", "read_url", "memory_save", "location_get_weather",
-    "email_list_inbox", "email_send", "calendar_list_events", "calendar_create_event",
-    "todoist_list_tasks", "todoist_create_task", "todoist_complete_task",
-    "discord_send_message", "discord_status", "spotify_control",
-    "generate_morning_briefing", "image_generate",
-    "query_sports_data", "query_match_intelligence", "query_football_db",
-    "query_stock_data", "smarthome_control",
-    "query_suguval_history", "sugu_full_overview",
-    "manage_ai_system", "devops_github", "devops_server",
-    "compute_business_health", "detect_anomalies",
-    "superchat_search",
-    "screen_monitor_manage"
-  ],
-  iris: [
-    // Famille & quotidien
-    "calendar_list_events", "calendar_create_event",
-    "todoist_list_tasks", "todoist_create_task", "todoist_complete_task",
-    "email_list_inbox", "email_send",
-    "web_search", "read_url", "location_get_weather",
-    "memory_save", "query_brain", "image_generate", "spotify_control",
-    // Commax — Community Management (Iris est la Senior CM exclusive)
-    "commax_manage"
-  ],
-  alfred: [
-    // SUGU — données business complètes
-    "query_suguval_history", "get_suguval_checklist", "send_suguval_shopping_list",
-    "manage_sugu_bank", "manage_sugu_purchases", "manage_sugu_expenses",
-    "search_sugu_data", "manage_sugu_employees", "manage_sugu_payroll",
-    "manage_sugu_files", "sugu_full_overview",
-    // Analytics & intelligence business
-    "compute_business_health", "detect_anomalies",
-    "query_hubrise", "query_apptoorder", "query_daily_summary",
-    // Communication
-    "email_list_inbox", "email_send",
-    // Mémoire & recherche
-    "query_brain", "web_search", "memory_save", "superchat_search",
-    // Commax — lecture analytics uniquement (ROI campagnes, stats sociales → Alfred calcule l'impact business)
-    "commax_manage",
-    // COBA (Chef Operator Business Assistant) — SaaS multi-tenant de Moe pour d'autres restaurants
-    "query_coba", "coba_business"
-  ],
-  maxai: [
-    // DevOps & infrastructure
-    "devops_github", "devops_server", "devops_intelligence",
-    "devmax_db", "dgm_manage", "monitoring_manage",
-    "manage_ai_system", "manage_feature_flags",
-    // Monitoring & dashboard
-    "query_apptoorder", "dashboard_screenshot",
-    // Task management (MaxAI orchestre les queues de tâches)
-    "task_queue_manage", "work_journal_manage",
-    // Fichiers & documentation (analyse code, génération rapports, kanban, PDF)
-    "analyze_file", "generate_file", "kanban_create_task", "pdf_master",
-    // Recherche & mémoire
-    "web_search", "read_url", "query_brain", "memory_save", "superchat_search",
-    // Commax — lecture analytics uniquement (MaxAI propose des automatisations basées sur les stats)
-    "commax_manage",
-    // COBA (Chef Operator Business Assistant) — MaxAI surveille les events, bugs et usage par tenant
-    "query_coba",
-    // Screen Monitor — MaxAI partage la prise en main avec Ulysse (monitoring, diagnostic, self_test)
-    "screen_monitor_manage"
-  ]
-};
-
 function getToolsForPersona(personaKey: string): ChatCompletionTool[] {
-  const allowedNames = PERSONA_TOOLS[personaKey] || [];
-  if (allowedNames.length === 0) return [];
-  return ulysseToolsV2.filter(t =>
-    t.type === "function" && allowedNames.includes(t.function.name)
-  );
+  return getToolsForPersonaCentral(personaKey);
 }
 
 const router = Router();

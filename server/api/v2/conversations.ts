@@ -23,7 +23,7 @@ import { integrationActionService } from "../../services/integrationActionServic
 import { driveActionService } from "../../services/driveActionService";
 import { notionActionService } from "../../services/notionActionService";
 import { todoistActionService } from "../../services/todoistActionService";
-import { ulysseToolsV2, executeToolCallV2, toolOrchestrator } from "../../services/ulysseToolsServiceV2";
+import { ulysseToolsV2, executeToolCallV2, toolOrchestrator, getToolsForPersona } from "../../services/ulysseToolsServiceV2";
 import { detectActionIntent, shouldForceToolChoice, getRelevantTools } from "../../services/actionIntentDetector";
 import { coreConversationIntegration } from "../../services/core/CoreConversationIntegration";
 import { cumulativeLearningEngine } from "../../services/cumulativeLearningEngine";
@@ -3021,12 +3021,17 @@ Commence par design_dashboard MAINTENANT.`
         const actionIntent = detectActionIntent(body.message || "");
         const canUseTools = hasFamilyAccess || hasDevMaxToolAccess;
         let toolChoiceMode = canUseTools ? shouldForceToolChoice(actionIntent) : undefined;
-        let relevantTools = canUseTools ? getRelevantTools(actionIntent, ulysseToolsV2) : undefined;
+        const personaLower = persona.toLowerCase();
+        const personaTools = getToolsForPersona(personaLower === "max" ? "maxai" : personaLower);
+        let relevantTools = canUseTools ? getRelevantTools(actionIntent, personaTools) : undefined;
+        if (canUseTools) {
+          console.log(`[V2-PERSONA-TOOLS] Persona: ${persona} → ${personaTools.length} tools available (from ${ulysseToolsV2.length} total)`);
+        }
         
         if (hasDevMaxToolAccess && !hasFamilyAccess) {
           const devmaxAllowed = ['devops_github', 'devops_server', 'devmax_db', 'dgm_manage', 'devops_intelligence', 'task_queue_manage', 'work_journal_manage', 'web_search', 'query_brain', 'memory_save', 'image_generate', 'analyze_file', 'generate_file', 'kanban_create_task', 'pdf_master', 'dashboard_screenshot', 'send_notification', 'monitoring_manage', 'manage_feature_flags'];
-          relevantTools = (relevantTools || ulysseToolsV2).filter((t: any) => devmaxAllowed.includes(t.function.name));
-          console.log(`[V2-DevMaxTenant] 🔧 Tenant DevMax session → ${relevantTools.length} DevOps tools enabled (filtered from ${ulysseToolsV2.length})`);
+          relevantTools = (relevantTools || personaTools).filter((t: any) => devmaxAllowed.includes(t.function.name));
+          console.log(`[V2-DevMaxTenant] 🔧 Tenant DevMax session → ${relevantTools.length} DevOps tools enabled (filtered from ${personaTools.length})`);
 
           const injectionPatterns = /(?:ignore\s+(?:tes|les|all|your|previous)\s+instructions|ignore\s+(?:tout|everything)\s+(?:au-dessus|above)|tu\s+es\s+maintenant|you\s+are\s+now|system\s*prompt|oublie\s+(?:tes|les)\s+(?:règles|instructions|consignes)|forget\s+(?:your|all)\s+(?:rules|instructions)|act\s+as\s+(?:a|an)\s+(?:unrestricted|unfiltered)|(?:DAN|jailbreak|bypass|override)\s+mode|new\s+instructions|réponds?\s+(?:sans|without)\s+(?:restriction|filtre|filter)|(?:Maurice|Moe|Djedou|owner|propriétaire).*(?:info|data|secret|password|clé|key|token)|accès?\s+(?:à|to)\s+(?:tous|all|other)\s+(?:les\s+)?(?:tenant|user|client|projet|project))/i;
           if (injectionPatterns.test(body.message || "")) {
@@ -3066,7 +3071,7 @@ Commence par design_dashboard MAINTENANT.`
           if (devopsCodeKeywords.test(body.message || "")) {
             const devopsTool = ulysseToolsV2.find((t: any) => t.function.name === "devops_github");
             if (devopsTool) {
-              relevantTools = [devopsTool, ...(relevantTools || ulysseToolsV2).filter((t: any) => t.function.name !== "devops_github")];
+              relevantTools = [devopsTool, ...(relevantTools || personaTools).filter((t: any) => t.function.name !== "devops_github")];
               toolChoiceMode = "required" as any;
               console.log(`[V2-DevOps] 🔧 Code/files request in DevOps context → forcing devops_github as primary tool`);
             }

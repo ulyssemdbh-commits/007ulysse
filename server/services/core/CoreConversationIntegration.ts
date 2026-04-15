@@ -1,5 +1,5 @@
 import { ulysseCoreEngine } from "./UlysseCoreEngine";
-import { ulysseToolsV2, executeToolCallV2, toolOrchestrator, OrchestrationResult } from "../ulysseToolsServiceV2";
+import { ulysseToolsV2, executeToolCallV2, toolOrchestrator, OrchestrationResult, getToolsForPersona } from "../ulysseToolsServiceV2";
 import OpenAI from "openai";
 import { getPreloadedContextAsPrompt } from "../context/preloader";
 import { autoLearningEngine } from "../autoLearningEngine";

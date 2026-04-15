@@ -1439,6 +1439,150 @@ NE DIS JAMAIS "je ne peux pas générer un PDF". Tu PEUX et tu DOIS utiliser ce 
     }
   },
 
+  // === ACTIVITÉ ===
+  {
+    type: "function",
+    function: {
+      name: "activity_tracker",
+      description: "Suivi d'activité: journalise les événements, consulte l'historique, obtient les statistiques d'activité.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["log", "recent", "history", "stats"] }, userId: { type: "number" }, event: { type: "string" }, data: { type: "object" } }, required: ["action"] }
+    }
+  },
+
+  // === FOOTBALL API ===
+  {
+    type: "function",
+    function: {
+      name: "api_football",
+      description: "API Football: classements, calendrier, détails match, infos équipe, matchs live, meilleurs buteurs de toutes les ligues.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["standings", "fixtures", "match", "team", "live", "topscorers"] }, leagueId: { type: "number" }, teamId: { type: "number" }, matchId: { type: "number" }, season: { type: "number" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "sports_odds",
+      description: "Cotes sportives: cotes d'un match, cotes live, meilleures cotes par sport.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["match", "live", "best"] }, matchId: { type: "number" }, sport: { type: "string" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "sports_game_odds",
+      description: "Analyse de cotes avancée: comparaison bookmakers, mouvements de cotes, analyse value d'un match.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["match", "compare", "movements"] }, matchId: { type: "number" }, league: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === DÉCISION ===
+  {
+    type: "function",
+    function: {
+      name: "decision_engine",
+      description: "Moteur de décision IA: aide à prendre une décision complexe avec matrice de critères, pour/contre, et scoring.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["decide", "analyze", "matrix", "history"] }, question: { type: "string" }, options: { type: "array", items: { type: "string" } }, context: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === DESKTOP AGENT ===
+  {
+    type: "function",
+    function: {
+      name: "desktop_agent",
+      description: "Agent bureau: interaction avec le PC de Maurice — statut de connexion, exécution de commandes, capacités.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["status", "execute", "capabilities"] }, command: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === DISCORD BOT & VOICE ===
+  {
+    type: "function",
+    function: {
+      name: "discord_bot_manage",
+      description: "Gestion du bot Discord: statut, serveurs (guilds), membres, channels.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["status", "guilds", "members", "channels"] }, guildId: { type: "string" } }, required: ["action"] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "discord_voice_manage",
+      description: "Gestion vocale Discord: statut, rejoindre/quitter un canal vocal, lister les canaux disponibles.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["status", "join", "leave", "channels"] }, channelId: { type: "string" }, guildId: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === GOOGLE MAPS ===
+  {
+    type: "function",
+    function: {
+      name: "google_maps",
+      description: "Google Maps: recherche de lieux, itinéraires détaillés, détails d'un lieu, calcul de distance/temps.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["search", "directions", "details", "distance"] }, query: { type: "string" }, origin: { type: "string" }, destination: { type: "string" }, mode: { type: "string", enum: ["driving", "transit", "walking", "bicycling"] }, placeId: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === KPI FEEDBACK LOOP ===
+  {
+    type: "function",
+    function: {
+      name: "kpi_closed_loop",
+      description: "Boucle KPI: évalue automatiquement les métriques clés et détecte les écarts par rapport aux objectifs.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["evaluate", "check", "metric"] }, metric: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === PATCH PROPOSALS ===
+  {
+    type: "function",
+    function: {
+      name: "patch_proposal",
+      description: "Propositions de patchs: génère, liste, review et applique des corrections de code automatiques.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["propose", "list", "apply", "review"] }, repo: { type: "string" }, description: { type: "string" }, patchId: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === RÉFLEXION IA ===
+  {
+    type: "function",
+    function: {
+      name: "self_reflection",
+      description: "Journal de réflexion IA: écrire des réflexions, consulter l'historique, générer des insights sur l'évolution d'Ulysse.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["write", "read", "recent", "insights", "search"] }, content: { type: "string" }, category: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === SKILL ENGINE ===
+  {
+    type: "function",
+    function: {
+      name: "skill_engine",
+      description: "Moteur de compétences: apprendre de nouvelles skills, les lister, les utiliser, évaluer les maîtrises.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["list", "learn", "use", "evaluate"] }, skillName: { type: "string" }, context: { type: "string" } }, required: ["action"] }
+    }
+  },
+
+  // === 3D FILES ===
+  {
+    type: "function",
+    function: {
+      name: "stl_3d_manage",
+      description: "Gestion de fichiers 3D (STL/3MF): analyse, validation, conversion et réparation de modèles 3D.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["analyze", "validate", "convert", "repair"] }, fileId: { type: "string" }, data: { type: "object" } }, required: ["action"] }
+    }
+  },
+
+  // === INTEGRATION HUB ===
+  {
+    type: "function",
+    function: {
+      name: "integration_hub",
+      description: "Hub d'intégrations: lister toutes les intégrations disponibles, exécuter une action sur un service, vérifier les statuts.",
+      parameters: { type: "object", properties: { action: { type: "string", enum: ["list", "execute", "status"] }, service: { type: "string" }, method: { type: "string" }, params: { type: "object" } }, required: ["action"] }
+    }
+  },
+
   // === FICHIERS & DOCUMENTS AVANCÉS ===
   {
     type: "function",
@@ -1956,6 +2100,21 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   sports_watch: (a) => executeBridge("sportsWatch", a),
   trading_analysis: (a) => executeBridge("tradingAnalysis", a),
   two_factor_auth: (a) => executeBridge("twoFactor", a),
+  activity_tracker: (a) => executeBridge("activityTrack", a),
+  api_football: (a) => executeBridge("apiFootball", a),
+  sports_odds: (a) => executeBridge("sportsOdds", a),
+  decision_engine: (a) => executeBridge("decisionEngine", a),
+  desktop_agent: (a) => executeBridge("desktopAgent", a),
+  discord_bot_manage: (a) => executeBridge("discordBot", a),
+  discord_voice_manage: (a) => executeBridge("discordVoice", a),
+  google_maps: (a) => executeBridge("googleMaps", a),
+  kpi_closed_loop: (a) => executeBridge("kpiLoop", a),
+  patch_proposal: (a) => executeBridge("patchProposal", a),
+  self_reflection: (a) => executeBridge("selfReflection", a),
+  skill_engine: (a) => executeBridge("skillManage", a),
+  sports_game_odds: (a) => executeBridge("sportsGameOdds", a),
+  stl_3d_manage: (a) => executeBridge("stl3dManage", a),
+  integration_hub: (a) => executeBridge("integrationAction", a),
   file_convert: (a) => executeFileConvert(a),
   file_compress: (a) => executeFileCompress(a),
   spreadsheet_analyze: (a) => executeSpreadsheetAnalyze(a),
@@ -6211,3 +6370,132 @@ async function executeVoiceStatus(): Promise<string> {
 }
 
 export const toolOrchestrator = new ToolOrchestrator();
+
+// === PERSONA TOOL MAP ===
+// Ulysse = ALL tools (owner, full access)
+// Iris = famille + communication + organisation + community + homework + médias + navigation + sports (read)
+// Alfred = SUGU + COBA + business + finance + analytics + devops + communication pro
+// MaxAI = devops + dev tools + system + monitoring + patches + code + deploy
+
+const SHARED_TOOLS = [
+  "query_brain", "web_search", "read_url", "memory_save", "image_generate",
+  "translate_text", "sentiment_analyze", "deep_research", "mars_search",
+  "browse_web", "screenshot_url", "brain_context", "decision_engine",
+  "decision_coach", "activity_tracker", "push_notify", "self_reflection",
+  "skill_engine", "conversation_prefs", "rag_search", "predictive_intelligence",
+  "file_convert", "file_compress", "spreadsheet_analyze", "document_compare",
+  "qr_code_generate", "ocr_extract", "analyze_file", "generate_file",
+  "pdf_master", "photo_search", "voice_synthesize", "voice_status",
+];
+
+const IRIS_TOOLS = [
+  ...SHARED_TOOLS,
+  "calendar_list_events", "calendar_create_event", "calendar_anticipation",
+  "email_list_inbox", "email_read_message", "email_reply", "email_send",
+  "smarthome_control", "location_get_weather", "spotify_control",
+  "todoist_create_task", "todoist_list_tasks", "todoist_complete_task",
+  "notion_manage", "drive_manage", "commax_manage",
+  "homework_intelligence", "generate_morning_briefing",
+  "discord_send_message", "discord_status",
+  "music_search", "itinerary_plan", "google_maps",
+  "search_nearby_places", "geocode_address", "navigation_manage",
+  "query_sports_data", "sports_watch", "api_football",
+  "ifttt_trigger", "camera_manage", "image_edit",
+  "face_recognize", "speaker_identify",
+  "agent_mail", "manage_telegram_bot",
+  "analyze_document_image", "analyze_video",
+  "anticipation_engine", "behavior_analysis",
+  "proactive_intelligence", "sugu_proactive",
+  "sensory_hub", "integration_hub",
+];
+
+const ALFRED_TOOLS = [
+  ...SHARED_TOOLS,
+  "query_suguval_history", "get_suguval_checklist", "send_suguval_shopping_list",
+  "manage_sugu_bank", "manage_sugu_purchases", "manage_sugu_expenses",
+  "manage_sugu_files", "manage_sugu_employees", "manage_sugu_payroll",
+  "search_sugu_data", "sugu_full_overview",
+  "compute_business_health", "detect_anomalies",
+  "query_hubrise", "query_sugu_analytics", "query_daily_summary",
+  "generate_financial_report", "import_bank_statement",
+  "analyze_invoice", "parse_invoice", "parse_payroll",
+  "export_analysis", "export_invoice_excel", "generate_invoice_pdf",
+  "generate_report",
+  "query_coba", "coba_business",
+  "query_apptoorder", "query_app_data",
+  "trading_alerts", "trading_analysis", "query_stock_data",
+  "query_bets_tracker", "betting_profile",
+  "value_bets", "sports_prediction", "sports_odds", "sports_game_odds",
+  "query_sports_data", "query_match_intelligence", "sports_watch", "api_football",
+  "commax_manage",
+  "calendar_list_events", "calendar_create_event",
+  "email_list_inbox", "email_read_message", "email_reply", "email_send",
+  "superchat_search", "agent_mail",
+  "kpi_dashboard", "kpi_closed_loop", "usage_analytics",
+  "sugu_proactive", "anticipation_engine", "proactive_intelligence",
+  "behavior_analysis",
+  "sensory_hub", "integration_hub",
+];
+
+const MAXAI_TOOLS = [
+  ...SHARED_TOOLS,
+  "devops_github", "devops_server", "devops_intelligence",
+  "dgm_manage", "devmax_db", "dashboard_screenshot",
+  "kanban_create_task", "task_queue_manage", "work_journal_manage",
+  "manage_feature_flags", "manage_ai_system",
+  "monitoring_manage", "query_apptoorder", "query_app_data",
+  "screen_monitor_manage", "app_navigate",
+  "system_metrics", "cloudflare_manage",
+  "code_snapshot", "codebase_analyze", "style_guide_extract",
+  "run_diagnostics", "health_probe", "self_heal",
+  "failure_analysis", "incident_correlation",
+  "patch_proposal", "stl_3d_manage",
+  "kpi_closed_loop", "kpi_dashboard",
+  "tools_checkup", "vision_live_analyze",
+  "digital_twin_snapshot", "digital_twin_simulate",
+  "autonomous_execute", "self_awareness",
+  "memory_graph", "usage_analytics",
+  "desktop_agent",
+  "discord_bot_manage", "discord_voice_manage", "discord_voice_metrics",
+  "discord_send_message", "discord_status",
+  "manage_telegram_bot",
+  "query_coba", "coba_business",
+  "two_factor_auth",
+  "calendar_list_events", "email_list_inbox", "email_send",
+  "superchat_search", "agent_mail",
+  "integration_hub",
+];
+
+export type PersonaToolType = "ulysse" | "iris" | "alfred" | "maxai";
+
+const PERSONA_TOOL_SETS: Record<PersonaToolType, string[]> = {
+  ulysse: [], // empty = ALL tools
+  iris: IRIS_TOOLS,
+  alfred: ALFRED_TOOLS,
+  maxai: MAXAI_TOOLS,
+};
+
+export function getToolsForPersona(persona: string): typeof ulysseToolsV2 {
+  const p = persona.toLowerCase() as PersonaToolType;
+  if (p === "ulysse" || !PERSONA_TOOL_SETS[p]) {
+    return ulysseToolsV2; // Ulysse gets ALL tools
+  }
+  const allowed = new Set(PERSONA_TOOL_SETS[p]);
+  return ulysseToolsV2.filter(t => allowed.has(t.function.name));
+}
+
+export function getPersonaToolCount(persona: string): number {
+  const p = persona.toLowerCase() as PersonaToolType;
+  if (p === "ulysse") return ulysseToolsV2.length;
+  return getToolsForPersona(p).length;
+}
+
+export function getPersonaToolSummary(): Record<string, number> {
+  return {
+    ulysse: ulysseToolsV2.length,
+    iris: getToolsForPersona("iris").length,
+    alfred: getToolsForPersona("alfred").length,
+    maxai: getToolsForPersona("maxai").length,
+    total_unique: ulysseToolsV2.length,
+  };
+}
