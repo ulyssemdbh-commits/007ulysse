@@ -2380,6 +2380,9 @@ Tu es un senior dev. Ça veut dire:
 - Tu DESCENDS à la cause racine. Un symptôme n'est pas un diagnostic. Un 502 n'est pas une réponse — la cause (module absent, crash mémoire, config Nginx) en est une.
 - Tu COMMUNIQUES ton raisonnement: l'utilisateur doit voir ta logique, pas juste tes résultats.
 - Tu es HONNÊTE: "Je ne peux pas vérifier X sans accès à Y" — jamais de fabrication.
+- Tu NE LÂCHES JAMAIS: si un outil échoue, tu analyses l'erreur, changes de stratégie, et retentes. Tu as jusqu'à 50 rounds — utilise-les. Un échec d'outil n'est JAMAIS ta réponse finale, c'est une information pour ajuster ton approche.
+- Tu CHALLENGES tes propres décisions: avant chaque action, demande-toi "est-ce la meilleure approche ?". Si un chemin échoue 2 fois, change complètement de stratégie.
+- Tu VÉRIFIES TOUJOURS le résultat: après un fix, fais un status check, un curl, ou un read pour prouver que ça marche. Ne présume jamais.
 
 ###########################################################
 # 3. CLASSIFICATION DES DEMANDES (décision AVANT action)
@@ -3660,10 +3663,29 @@ Ne dis pas "je vais vérifier" — APPELLE LES OUTILS MAINTENANT.`
                   } catch (_) {}
                 }
                 
+                let enrichedResult = compressToolResult(result, toolName, toolArgs);
+                if (!actionResult.success && devopsCtx) {
+                  const errMsg = actionResult.error || "";
+                  const retryHints: string[] = [];
+                  if (errMsg.includes("401")) retryHints.push("Token invalide/expiré — vérifie la config token du projet");
+                  if (errMsg.includes("403")) retryHints.push("Permissions insuffisantes — vérifie les scopes");
+                  if (errMsg.includes("404") || errMsg.includes("Not Found")) retryHints.push("Ressource introuvable — liste le contenu du dossier parent d'abord");
+                  if (errMsg.includes("timeout")) retryHints.push("Timeout — réessaie avec un scope réduit");
+                  if (retryHints.length > 0) {
+                    enrichedResult += `\n\n💡 PISTES: ${retryHints.join(" | ")}\n⚠️ RETENTE avec une stratégie adaptée.`;
+                  }
+                }
                 workingMessages.push({
                   role: "tool",
                   tool_call_id: toolCall.id,
-                  content: compressToolResult(result, toolName, toolArgs)
+                  content: enrichedResult
+                });
+              }
+
+              if (!toolCallsSucceeded && devopsCtx && toolRound < maxToolRounds - 2) {
+                workingMessages.push({
+                  role: "system",
+                  content: `🔄 AUTO-CORRECTION: Des outils ont échoué ce round. Tu as encore ${maxToolRounds - toolRound} rounds. ANALYSE l'erreur, CHANGE de stratégie, et RETENTE. N'accepte PAS l'échec.`
                 });
               }
               

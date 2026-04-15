@@ -368,7 +368,7 @@ export async function executeNavigationManage(args: Record<string, any>, userId:
                 return JSON.stringify({ type: "route_saved", success: true, ...saved });
             }
             case "list_routes": {
-                const routes = await itineraryService.getSavedRoutes(userId);
+                const routes = await itineraryService.getRoutes(userId);
                 return JSON.stringify({ type: "routes_list", count: routes.length, routes });
             }
             case "delete_route": {
@@ -394,7 +394,7 @@ export async function executeNavigationManage(args: Record<string, any>, userId:
 // ── VIDEO ANALYSIS ────────────────────────────────────────────────────────────
 export async function executeVideoAnalysis(args: Record<string, any>): Promise<string> {
     try {
-        const { videoAnalysisService } = await import("../videoAnalysisService");
+        const videoAnalysisService = await import("../videoAnalysisService");
         const { getOpenAI: getAI } = await import("../../services/core/openaiClient");
         const openai = getAI();
 

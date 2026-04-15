@@ -350,15 +350,25 @@ export const aiRouter = {
         });
 
         const toolResultsMapped = await Promise.all(toolPromises);
+        const failedTools: string[] = [];
         for (const tr of toolResultsMapped) {
           conversationMessages.push(tr);
+          if (tr.content?.includes('"error"') || tr.content?.startsWith('ÉCHEC OUTIL')) {
+            failedTools.push(tr.content.slice(0, 100));
+          }
         }
 
-        // Post-action validation: after critical tools, inject verification instruction
         if (hasCriticalAction && round < maxToolRounds - 1) {
           conversationMessages.push({
             role: "system",
             content: "⚡ POST-ACTION VALIDATION: Tu viens d'exécuter une action critique. AVANT de répondre à l'utilisateur, VÉRIFIE le résultat : appelle un outil de vérification si disponible (ex: devops_server status après un deploy, query après un write DB, etc.). Si la vérification échoue, tente un fix automatique ou signale clairement l'échec."
+          });
+        }
+
+        if (failedTools.length > 0 && round < maxToolRounds - 1) {
+          conversationMessages.push({
+            role: "system",
+            content: `🔄 AUTO-CORRECTION REQUISE: ${failedTools.length} outil(s) ont échoué ce round. Tu as encore ${maxToolRounds - round} rounds disponibles. ANALYSE l'erreur, CHANGE de stratégie si nécessaire, et RETENTE. N'accepte PAS l'échec comme réponse finale — trouve une solution alternative.`
           });
         }
 

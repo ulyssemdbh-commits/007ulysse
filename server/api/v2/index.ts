@@ -33,6 +33,10 @@ import mapsRouter from "./maps";
 import automationFeaturesRouter from "./automationFeatures";
 import unifiedAnalyticsRouter from "./unifiedAnalytics";
 import pushRouter from "../../routes/pushRoutes";
+import visionRouter from "./vision";
+import digitalTwinRouter from "./digitalTwin";
+import agentRouter from "./agent";
+import voiceModeRouter from "./voiceMode";
 import { db } from "../../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -200,6 +204,10 @@ router.use("/maps", mapsRouter);
 router.use("/automation", automationFeaturesRouter);
 router.use("/analytics", unifiedAnalyticsRouter);
 router.use("/push", pushRouter);
+router.use("/vision", visionRouter);
+router.use("/digital-twin", digitalTwinRouter);
+router.use("/agent", agentRouter);
+router.use("/voice", voiceModeRouter);
 
 router.get("/health", (req: Request, res: Response) => {
   res.json({

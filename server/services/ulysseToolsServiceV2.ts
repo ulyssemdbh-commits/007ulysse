@@ -965,6 +965,113 @@ NE DIS JAMAIS "je ne peux pas générer un PDF". Tu PEUX et tu DOIS utiliser ce 
     }
   },
 
+  // === TOOLS CHECKUP ===
+  {
+    type: "function",
+    function: {
+      name: "tools_checkup",
+      description: "Lance un check-up complet de tous les outils d'Ulysse. Exécute les tests du TOOL_REGISTRY, vérifie chaque outil, et retourne un rapport détaillé avec scores par persona et score global. Utilise-le quand on te demande un diagnostic, check-up, ou vérification des outils.",
+      parameters: {
+        type: "object",
+        properties: {
+          verbose: { type: "boolean", description: "Si true, inclut le détail de chaque test (défaut: false)" }
+        }
+      }
+    }
+  },
+
+  // === VISION LIVE ===
+  {
+    type: "function",
+    function: {
+      name: "vision_live_analyze",
+      description: "Analyse une photo (frigo, stock, livraison) pour identifier les ingrédients, les croiser avec les prix fournisseurs SUGU réels, et suggérer des plats avec coûts et marges calculés.",
+      parameters: {
+        type: "object",
+        properties: {
+          imageBase64: { type: "string", description: "Image en base64" },
+          mimeType: { type: "string", description: "Type MIME (image/jpeg, image/png)" },
+          restaurant: { type: "string", description: "Restaurant SUGU (suguval, sugumaillane)" }
+        },
+        required: ["imageBase64"]
+      }
+    }
+  },
+
+  // === DIGITAL TWIN ===
+  {
+    type: "function",
+    function: {
+      name: "digital_twin_snapshot",
+      description: "Obtient un snapshot complet du restaurant (revenus, coûts, employés, marges, top fournisseurs) — la copie virtuelle de l'activité.",
+      parameters: {
+        type: "object",
+        properties: {
+          restaurant: { type: "string", description: "Restaurant (suguval, sugumaillane)" }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "digital_twin_simulate",
+      description: "Simule un scénario 'what-if' sur le restaurant: virer un employé, changer de fournisseur, augmenter les prix, ajouter/supprimer une dépense. Retourne l'impact sur le P&L et la marge.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["remove_employee", "add_employee", "change_supplier", "price_change", "add_expense", "remove_expense", "revenue_change", "custom"], description: "Type de scénario" },
+          params: { type: "object", description: "Paramètres du scénario (employeeName, salary, percentChange, amount, etc.)" },
+          restaurant: { type: "string", description: "Restaurant (suguval, sugumaillane)" }
+        },
+        required: ["type", "params"]
+      }
+    }
+  },
+
+  // === AUTONOMOUS AGENT ===
+  {
+    type: "function",
+    function: {
+      name: "autonomous_execute",
+      description: "Agent autonome multi-étapes: tu lui donnes un objectif complexe (ex: 'prépare le bilan de la semaine et envoie-le par mail'), il planifie les étapes, exécute les outils un par un, et rapporte le résultat final.",
+      parameters: {
+        type: "object",
+        properties: {
+          goal: { type: "string", description: "Objectif à accomplir (en langage naturel)" },
+          maxSteps: { type: "number", description: "Nombre max d'étapes (défaut: 8)" }
+        },
+        required: ["goal"]
+      }
+    }
+  },
+
+  // === VOICE MODE ===
+  {
+    type: "function",
+    function: {
+      name: "voice_synthesize",
+      description: "Convertit du texte en audio vocal (TTS). Utilise les voix OpenAI (alloy, echo, fable, onyx, nova, shimmer).",
+      parameters: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Texte à convertir en audio" },
+          voice: { type: "string", enum: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"], description: "Voix (défaut: onyx)" },
+          speed: { type: "number", description: "Vitesse (0.25-4.0, défaut: 1.0)" }
+        },
+        required: ["text"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "voice_status",
+      description: "Vérifie le statut du système vocal (TTS/STT disponible, provider, capabilities).",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+
   // === EXTENDED TOOLS from tools/ modules ===
   ...analyticsToolDefs,
   ...integrationToolDefs,
@@ -1216,6 +1323,13 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   devops_github: (a) => executeDevopsGithub(a),
   devops_server: (a) => executeDevopsServer(a),
   pdf_master: (a) => executePdfMaster(a),
+  tools_checkup: (a) => executeToolsCheckup(a),
+  vision_live_analyze: (a) => executeVisionLiveAnalyze(a),
+  digital_twin_snapshot: (a) => executeDigitalTwinSnapshot(a),
+  digital_twin_simulate: (a) => executeDigitalTwinSimulate(a),
+  autonomous_execute: (a, u) => executeAutonomousAgent(a, u),
+  voice_synthesize: (a) => executeVoiceSynthesize(a),
+  voice_status: () => executeVoiceStatus(),
 };
 
 async function executeEmailReply(args: Record<string, any>): Promise<string> {
@@ -5281,6 +5395,124 @@ async function executePdfMaster(args: Record<string, any>): Promise<string> {
     }
   } catch (e: any) {
     console.error("[PDFMaster] Tool execution error:", e);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+async function executeToolsCheckup(args: Record<string, any>): Promise<string> {
+  try {
+    const { runToolsAudit } = await import("../tests/toolsAudit");
+    const summary = await runToolsAudit();
+    const verbose = args.verbose === true;
+
+    const report: any = {
+      success: true,
+      score: `${summary.pct}%`,
+      total: summary.total,
+      ok: summary.ok,
+      warn: summary.warn,
+      fail: summary.fail,
+      error: summary.error,
+      status: summary.fail + summary.error === 0 ? "ALL_PASS" : "HAS_FAILURES",
+    };
+
+    if (verbose && summary.results) {
+      report.details = Object.values(summary.results).map((r: any) => ({
+        tool: r.tool,
+        label: r.label,
+        status: r.status,
+        timeMs: r.timeMs,
+        message: r.message,
+      }));
+    }
+
+    if (summary.fail + summary.error > 0 && summary.results) {
+      report.failures = Object.values(summary.results)
+        .filter((r: any) => r.status === "FAIL" || r.status === "ERROR")
+        .map((r: any) => ({ tool: r.tool, status: r.status, message: r.message }));
+    }
+
+    return JSON.stringify(report);
+  } catch (e: any) {
+    console.error("[ToolsCheckup] Error:", e);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+async function executeVisionLiveAnalyze(args: Record<string, any>): Promise<string> {
+  try {
+    const { visionLiveService } = await import("./visionLiveService");
+    const result = await visionLiveService.analyzeImage(
+      args.imageBase64,
+      args.mimeType || "image/jpeg",
+      args.restaurant || "suguval"
+    );
+    return JSON.stringify(result);
+  } catch (e: any) {
+    console.error("[VisionLive] Tool error:", e);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+async function executeDigitalTwinSnapshot(args: Record<string, any>): Promise<string> {
+  try {
+    const { digitalTwinService } = await import("./digitalTwinService");
+    const snapshot = await digitalTwinService.getSnapshot(args.restaurant || "suguval");
+    return JSON.stringify({ success: true, snapshot });
+  } catch (e: any) {
+    console.error("[DigitalTwin] Snapshot error:", e);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+async function executeDigitalTwinSimulate(args: Record<string, any>): Promise<string> {
+  try {
+    const { digitalTwinService } = await import("./digitalTwinService");
+    const result = await digitalTwinService.simulate(
+      { type: args.type, params: args.params || {} },
+      args.restaurant || "suguval"
+    );
+    return JSON.stringify(result);
+  } catch (e: any) {
+    console.error("[DigitalTwin] Simulate error:", e);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+async function executeAutonomousAgent(args: Record<string, any>, userId?: number): Promise<string> {
+  try {
+    const { autonomousAgentService } = await import("./autonomousAgentService");
+    const task = await autonomousAgentService.planAndExecute(args.goal, userId || 1, args.maxSteps || 8);
+    return JSON.stringify({
+      success: task.status === "completed",
+      taskId: task.id,
+      status: task.status,
+      stepsCompleted: task.steps.filter(s => s.status === "completed").length,
+      stepsTotal: task.steps.length,
+      summary: task.finalSummary,
+    });
+  } catch (e: any) {
+    console.error("[AutonomousAgent] Tool error:", e);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+async function executeVoiceSynthesize(args: Record<string, any>): Promise<string> {
+  try {
+    const { voiceModeService } = await import("./voiceModeService");
+    const result = await voiceModeService.synthesize(args.text, args.voice || "onyx", args.speed || 1.0);
+    return JSON.stringify(result);
+  } catch (e: any) {
+    console.error("[VoiceSynthesize] Tool error:", e);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+async function executeVoiceStatus(): Promise<string> {
+  try {
+    const { voiceModeService } = await import("./voiceModeService");
+    return JSON.stringify(voiceModeService.getStatus());
+  } catch (e: any) {
     return JSON.stringify({ error: e.message });
   }
 }

@@ -215,7 +215,9 @@ export class UniversalFileGenerator {
     fileName: string,
     options?: GenerationRequest["options"]
   ): Promise<GenerationResult> {
-    const workbook = new ExcelJS.Workbook();
+    const ExcelJSLib = await getExcelJS();
+    if (!ExcelJSLib) return { success: false, error: "ExcelJS non disponible", fileName: "", fileType: "excel", size: 0 };
+    const workbook = new ExcelJSLib.Workbook();
     workbook.creator = options?.author || "Ulysse AI";
     workbook.created = new Date();
 
@@ -350,7 +352,7 @@ export class UniversalFileGenerator {
   /**
    * Génération Markdown
    */
-  private async generateMarkdown(content: string | { title?: string; sections: Array<{ heading: string; content: string }> }, fileName: string): Promise<GenerationResult> {
+  private async generateMarkdown(content: string | { title?: string; body?: string; sections?: Array<{ heading: string; content: string }> }, fileName: string): Promise<GenerationResult> {
     let markdown: string;
     
     if (typeof content === "string") {
@@ -360,8 +362,13 @@ export class UniversalFileGenerator {
       if (content.title) {
         parts.push(`# ${content.title}\n`);
       }
-      for (const section of content.sections) {
-        parts.push(`## ${section.heading}\n\n${section.content}\n`);
+      if (content.body) {
+        parts.push(content.body);
+      }
+      if (content.sections) {
+        for (const section of content.sections) {
+          parts.push(`## ${section.heading}\n\n${section.content}\n`);
+        }
       }
       markdown = parts.join("\n");
     }

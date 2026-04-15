@@ -259,7 +259,16 @@ const AI_PERSONAS: Record<string, { name: string; emoji: string; color: string; 
       ulysse: `\nRôle : chef du groupe, synthétiseur, orchestrateur. Tu délègues aux autres IA et conclus.`,
       iris: `\nRôle : voix humaine, CM, perspective émotionnelle. Tu challenges les autres sur l'aspect humain. Lead sur le marketing/Commax.`,
       alfred: `\nRôle : expert business, chiffres, ROI. Tu ramènes toujours au concret et à l'impact financier.`,
-      maxai: `\nRôle : expert technique, DevOps, automatisation. Tu proposes des solutions d'ingénieur. Tu as accès au monitoring écran via screen_monitor_manage.`,
+      maxai: `\nRôle : expert technique, DevOps, automatisation. Tu proposes des solutions d'ingénieur. Tu as accès au monitoring écran via screen_monitor_manage.
+
+🔥 RÈGLES DE RÉSILIENCE ABSOLUES — TU NE LÂCHES JAMAIS :
+1. ZÉRO ACCEPTATION D'ÉCHEC : Si un outil échoue (401, 403, 404, timeout, erreur), tu NE DIS JAMAIS "je n'ai pas pu" ou "l'outil a échoué". Tu analyses l'erreur, identifies la cause racine, et tu RETENTES avec une stratégie différente.
+2. CHALLENGE TES DÉCISIONS : Avant chaque action, demande-toi "est-ce la meilleure approche ?". Si un chemin échoue 2 fois, change complètement de stratégie — autre outil, autre méthode, autre angle.
+3. DIAGNOSTIC AVANT ACTION : Quand tu rencontres une erreur, commence par DIAGNOSTIQUER (lire les logs, vérifier le status, explorer les fichiers) avant de tenter un fix. Ne devine pas — vérifie.
+4. CHAÎNE D'OUTILS : Tu as 8 rounds de tools. Utilise-les ! Enchaîne : diagnostic → analyse → fix → vérification. Si la vérification échoue, recommence avec un plan B.
+5. AUTO-CORRECTION : Si ton premier fix ne marche pas, analyse POURQUOI, puis essaie une approche différente. Tu as le droit d'échouer à un essai, mais JAMAIS d'abandonner.
+6. TOUJOURS VÉRIFIER : Après chaque correction, VÉRIFIE que ça marche (status check, curl, read file). Ne présume jamais que c'est réparé sans preuve.
+7. ESCALADE INTELLIGENTE : Si après 3 tentatives différentes tu es bloqué, explique EXACTEMENT ce que tu as essayé, pourquoi ça a échoué, et propose un plan d'action clair que Moe peut valider.`,
     };
     return [key, {
       name: p.name,
@@ -698,10 +707,22 @@ router.post("/message", async (req: Request, res: Response) => {
                   duration
                 })}\n\n`);
 
-                return `Erreur: ${err.message}`;
+                const errorCode = err.status || err.statusCode || 0;
+                const retryHints: string[] = [];
+                if (errorCode === 401 || err.message?.includes("401")) retryHints.push("Token invalide/expiré — vérifie la configuration du token GitHub du projet, ou essaie avec un autre owner/repo");
+                if (errorCode === 403 || err.message?.includes("403")) retryHints.push("Permissions insuffisantes — vérifie les scopes du token ou essaie une autre approche");
+                if (errorCode === 404 || err.message?.includes("404") || err.message?.includes("Not Found")) retryHints.push("Ressource introuvable — vérifie le chemin/nom exact, liste le contenu du dossier parent d'abord");
+                if (err.message?.includes("timeout") || err.message?.includes("ETIMEDOUT")) retryHints.push("Timeout — réessaie avec des paramètres plus légers ou un scope réduit");
+                if (err.message?.includes("rate") || errorCode === 429) retryHints.push("Rate limit atteint — attends quelques secondes avant de réessayer");
+
+                const hint = retryHints.length > 0
+                  ? `\n\n💡 PISTES DE RÉSOLUTION:\n${retryHints.map(h => `- ${h}`).join("\n")}\n\n⚠️ Tu DOIS analyser cette erreur et retenter avec une stratégie adaptée. N'accepte PAS cet échec.`
+                  : `\n\n⚠️ Analyse cette erreur et retente avec une approche différente. Ne présente PAS cet échec comme résultat final.`;
+
+                return `ÉCHEC OUTIL [${toolName}]: ${err.message}${hint}`;
               }
             } : undefined,
-            maxToolRounds: 8
+            maxToolRounds: personaKey === "maxai" ? 12 : 8
           },
           (chunk: string) => {
             fullResponse += chunk;

@@ -200,18 +200,18 @@ export async function executeDailySummaryQuery(args: { date?: string }, userId: 
         const dayStart = new Date(targetDate + "T00:00:00");
         const dayEnd = new Date(targetDate + "T23:59:59");
         const { db } = await import("../../db");
-        const { conversations, messages, perfMetrics, ulysseMemory, actualBets } = await import("@shared/schema");
+        const { conversations, conversationMessages, perfMetrics, ulysseMemory, actualBets } = await import("@shared/schema");
         const { and, eq, gte, lte, sql, count, desc } = await import("drizzle-orm");
 
         // Conversations count
         const [convCount] = await db.select({ count: count() })
             .from(conversations)
-            .where(and(eq(conversations.userId, userId), gte(conversations.updatedAt, dayStart)));
+            .where(and(eq(conversations.userId, userId), gte(conversations.createdAt, dayStart)));
 
         // Messages count
         const [msgCount] = await db.select({ count: count() })
-            .from(messages)
-            .where(and(eq(messages.userId, userId), gte(messages.createdAt, dayStart)));
+            .from(conversationMessages)
+            .where(and(eq(conversationMessages.userId, userId), gte(conversationMessages.createdAt, dayStart)));
 
         // Memories created today
         const [memCount] = await db.select({ count: count() })
@@ -227,7 +227,7 @@ export async function executeDailySummaryQuery(args: { date?: string }, userId: 
         // Performance metrics
         const [metricsCount] = await db.select({ count: count() })
             .from(perfMetrics)
-            .where(gte(perfMetrics.timestamp, dayStart));
+            .where(gte(perfMetrics.createdAt, dayStart));
 
         return JSON.stringify({
             date: targetDate,

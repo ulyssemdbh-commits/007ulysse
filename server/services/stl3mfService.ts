@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import AdmZip = require("adm-zip");
+import AdmZip from "adm-zip";
 
 const GENERATED_DIR = path.join(process.cwd(), "generated_files");
 
