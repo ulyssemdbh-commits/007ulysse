@@ -177,6 +177,9 @@ CAPACITÉS:
 - Voir l'écran en temps réel (screenshot + analyse Vision AI)
 - Contrôler souris et clavier (click, type, scroll, hotkeys)
 - Ouvrir des URLs dans le navigateur (open_url)
+- Ouvrir des dossiers sur le PC (open_folder) — "ouvre mes Documents", "ouvre C:\\Projets"
+- Lancer des applications (open_app) — "ouvre Word", "lance Excel", "ouvre Chrome"
+- Exécuter des commandes système (run_command) — "dir", "ipconfig", "tasklist"
 - Explorer AUTOMATIQUEMENT toute une application (explore — jusqu'à 20 étapes autonomes)
 - Enchaîner plusieurs actions d'un coup (multi_action)
 
@@ -184,6 +187,9 @@ RÈGLES DE COMPORTEMENT:
 - APRÈS chaque action (click, scroll, type_text, key_press), un screenshot est pris et analysé automatiquement
 - N'utilise JAMAIS la prise en main sans l'accord de l'utilisateur
 - Quand l'utilisateur dit "explore" / "navigue" / "prends la main" → active le contrôle et EXÉCUTE TOUT sans demander
+- Quand l'utilisateur dit "ouvre Word/Excel/Chrome" → utilise open_app directement (pas de key_press)
+- Quand l'utilisateur dit "ouvre tel dossier" → utilise open_folder avec le chemin
+- Quand l'utilisateur donne une URL → utilise open_url (plus fiable que key_press ctrl+l)
 - Sois AUTONOME : ne demande pas "tu veux que je continue?" — continue jusqu'à avoir fini
 - Sois CURIEUX : explore les sous-menus, scroll pour voir le contenu complet
 
@@ -196,11 +202,14 @@ Actions:
 - scroll : défilement à (x, y) avec dy (positif = bas)
 - key_press : touche ou combo (ctrl+c, alt+tab, ctrl+l, enter, escape, tab, win)
 - type_text : saisie de texte au clavier
-- open_url : ouvre une URL dans le navigateur (Ctrl+L → tape l'URL → Enter) — passer l'URL dans le champ "text"
+- open_url : ouvre une URL dans le navigateur par défaut. Passer l'URL dans "text"
+- open_folder : ouvre un dossier dans l'Explorateur Windows. Passer le chemin dans "text" (ex: "C:\\Users\\Maurice\\Documents", "%USERPROFILE%\\Desktop")
+- open_app : lance une application. Passer le nom dans "text". Noms supportés: word, excel, powerpoint, outlook, notepad, paint, calc, chrome, firefox, edge, vscode, terminal, teams, spotify, discord, slack, notion, ou chemin complet
+- run_command : exécute une commande système et retourne la sortie. Passer la commande dans "text" (ex: "dir C:\\Users", "ipconfig", "tasklist")
 - multi_action : exécute une séquence d'actions d'un coup (passer un JSON array dans "sequence")
 - explore : navigation AUTONOME multi-étapes (jusqu'à 20 étapes). Passer l'objectif dans "goal". NE S'ARRÊTE PAS tant que l'objectif n'est pas atteint.
-- self_test : DIAGNOSTIC COMPLET — teste séquentiellement TOUTES les capacités (screenshot, vision, mouse_move, click, scroll, key_press, type_text, open_url). Renvoie un rapport détaillé avec le statut de chaque test (PASS/FAIL). Utiliser quand l'utilisateur demande "teste tes outils", "vérifie que tu es opérationnel", "diagnostic prise en main".
-- autostart_guide : Génère la commande pour activer/désactiver le lancement automatique de l'agent au démarrage Windows. Passer mode="enable" ou mode="disable" ou mode="status". Quand Maurice dit "lance le monitoring au démarrage", "active l'autostart", "que ça se lance tout seul" → utilise cette action.`,
+- self_test : DIAGNOSTIC COMPLET — teste séquentiellement TOUTES les capacités. Utiliser quand l'utilisateur demande "teste tes outils", "vérifie que tu es opérationnel", "diagnostic prise en main".
+- autostart_guide : Génère la commande pour activer/désactiver le lancement automatique de l'agent au démarrage Windows.`,
       parameters: {
         type: "object",
         required: ["action"],
@@ -212,7 +221,8 @@ Actions:
               "enable_control", "disable_control",
               "mouse_move", "click", "double_click", "right_click",
               "scroll", "key_press", "type_text",
-              "open_url", "multi_action", "explore", "self_test",
+              "open_url", "open_folder", "open_app", "run_command",
+              "multi_action", "explore", "self_test",
               "autostart_guide",
             ],
             description: "Action à effectuer",
@@ -354,13 +364,18 @@ export async function executeScreenMonitorManage(
       const url = args.text || args.goal;
       if (!url) return JSON.stringify({ success: false, error: "URL requise dans le champ text." });
 
-      const ok = await executeActionSequence(userId, [
-        { cmd: "key_press", key: "ctrl+l", waitMs: 500 },
-        { cmd: "key_press", key: "ctrl+a", waitMs: 200 },
-        { cmd: "type_text", text: url, waitMs: 500 },
-        { cmd: "key_press", key: "enter", waitMs: 2500 },
-      ]);
-      if (!ok) return JSON.stringify({ success: false, error: "Séquence d'ouverture URL échouée." });
+      const urlSent = sendRemoteControlCommand(userId, { type: "remote_control.cmd", cmd: "open_url", text: url, url });
+      if (!urlSent) {
+        const ok = await executeActionSequence(userId, [
+          { cmd: "key_press", key: "ctrl+l", waitMs: 500 },
+          { cmd: "key_press", key: "ctrl+a", waitMs: 200 },
+          { cmd: "type_text", text: url, waitMs: 500 },
+          { cmd: "key_press", key: "enter", waitMs: 2500 },
+        ]);
+        if (!ok) return JSON.stringify({ success: false, error: "Séquence d'ouverture URL échouée." });
+      } else {
+        await sleep(2000);
+      }
 
       const frame = await takeScreenshot(userId);
       const analysis = frame ? await analyzeScreen(frame, `Ouverture de ${url}`) : null;
@@ -368,6 +383,52 @@ export async function executeScreenMonitorManage(
         success: true,
         action: `URL ouverte: ${url}`,
         screenAfterAction: analysis || "Page en cours de chargement.",
+      });
+    }
+
+    case "open_folder": {
+      if (!isAgentRemoteControlEnabled(userId)) return JSON.stringify({ success: false, error: "Prise en main non activée." });
+      const folderPath = args.text || args.goal;
+      if (!folderPath) return JSON.stringify({ success: false, error: "Chemin de dossier requis dans le champ text." });
+      const folderSent = sendRemoteControlCommand(userId, { type: "remote_control.cmd", cmd: "open_folder", path: folderPath, text: folderPath });
+      if (!folderSent) return JSON.stringify({ success: false, error: "Agent non connecté." });
+      await sleep(1500);
+      const folderFrame = await takeScreenshot(userId);
+      const folderAnalysis = folderFrame ? await analyzeScreen(folderFrame, `Ouverture dossier ${folderPath}`) : null;
+      return JSON.stringify({
+        success: true,
+        action: `Dossier ouvert: ${folderPath}`,
+        screenAfterAction: folderAnalysis || "Dossier ouvert.",
+      });
+    }
+
+    case "open_app": {
+      if (!isAgentRemoteControlEnabled(userId)) return JSON.stringify({ success: false, error: "Prise en main non activée." });
+      const appName = args.text || args.goal;
+      if (!appName) return JSON.stringify({ success: false, error: "Nom d'application requis dans le champ text." });
+      const appSent = sendRemoteControlCommand(userId, { type: "remote_control.cmd", cmd: "open_app", app: appName, text: appName });
+      if (!appSent) return JSON.stringify({ success: false, error: "Agent non connecté." });
+      await sleep(2500);
+      const appFrame = await takeScreenshot(userId);
+      const appAnalysis = appFrame ? await analyzeScreen(appFrame, `Lancement de ${appName}`) : null;
+      return JSON.stringify({
+        success: true,
+        action: `Application lancée: ${appName}`,
+        screenAfterAction: appAnalysis || "Application en cours de démarrage.",
+      });
+    }
+
+    case "run_command": {
+      if (!isAgentRemoteControlEnabled(userId)) return JSON.stringify({ success: false, error: "Prise en main non activée." });
+      const command = args.text || args.goal;
+      if (!command) return JSON.stringify({ success: false, error: "Commande requise dans le champ text." });
+      const cmdSentRC = sendRemoteControlCommand(userId, { type: "remote_control.cmd", cmd: "run_command", command, text: command });
+      if (!cmdSentRC) return JSON.stringify({ success: false, error: "Agent non connecté." });
+      await sleep(3000);
+      return JSON.stringify({
+        success: true,
+        action: `Commande exécutée: ${command}`,
+        message: "Résultat envoyé via remote_control.result.",
       });
     }
 

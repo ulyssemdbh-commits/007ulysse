@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Ulysse Screen Monitor Agent - Windows Desktop Companion
-Captures screen in real-time and sends to Ulysse for analysis.
+Full remote control: screen capture, mouse, keyboard, app launch, file/URL open.
 
 Requirements:
-    pip install dxcam opencv-python pillow websocket-client pywin32
+    pip install dxcam opencv-python pillow websocket-client pywin32 psutil pyautogui
 
 Usage:
-    python ulysse_screen_agent.py --server wss://your-app.replit.app/ws/screen --token YOUR_AUTH_TOKEN
+    python ulysse_screen_agent.py --server wss://ulyssepro.org/ws/screen --token YOUR_AUTH_TOKEN
 """
 
 import argparse
@@ -17,23 +17,372 @@ import time
 import threading
 import sys
 import os
+import subprocess
+import platform
 from io import BytesIO
 from datetime import datetime
+
+HAS_PYAUTOGUI = False
+HAS_SCREEN = False
+
+try:
+    import websocket
+except ImportError:
+    print("Missing: websocket-client")
+    print("pip install websocket-client")
+    sys.exit(1)
 
 try:
     import dxcam
     import cv2
     import numpy as np
     from PIL import Image
-    import websocket
     import win32gui
     import win32process
     import psutil
+    HAS_SCREEN = True
 except ImportError as e:
-    print(f"Missing dependency: {e}")
-    print("\nInstall requirements with:")
-    print("pip install dxcam opencv-python pillow websocket-client pywin32 psutil")
-    sys.exit(1)
+    print(f"[WARN] Screen capture deps missing: {e}")
+    print("pip install dxcam opencv-python pillow pywin32 psutil")
+
+try:
+    import pyautogui
+    pyautogui.FAILSAFE = True
+    pyautogui.PAUSE = 0.05
+    HAS_PYAUTOGUI = True
+except ImportError:
+    print("[WARN] pyautogui not installed — remote control disabled")
+    print("pip install pyautogui")
+
+
+class RemoteControlHandler:
+    """Handles all remote control commands from Ulysse server."""
+
+    def __init__(self, agent):
+        self.agent = agent
+        self.enabled = False
+
+    def handle_message(self, data):
+        msg_type = data.get("type", "")
+
+        if msg_type == "remote_control.enable":
+            self.enabled = True
+            print("[RC] Remote control ENABLED")
+            self.send_status(True)
+            return True
+
+        if msg_type == "remote_control.disable":
+            self.enabled = False
+            print("[RC] Remote control DISABLED")
+            self.send_status(False)
+            return True
+
+        if msg_type == "remote_control.cmd":
+            return self.execute_command(data)
+
+        return False
+
+    def send_status(self, enabled):
+        if self.agent.ws:
+            try:
+                self.agent.ws.send(json.dumps({
+                    "type": "remote_control.status",
+                    "enabled": enabled,
+                    "timestamp": int(time.time() * 1000)
+                }))
+            except:
+                pass
+
+    def send_result(self, cmd, success, msg=""):
+        if self.agent.ws:
+            try:
+                self.agent.ws.send(json.dumps({
+                    "type": "remote_control.result",
+                    "cmd": cmd,
+                    "success": success,
+                    "msg": msg,
+                    "timestamp": int(time.time() * 1000)
+                }))
+            except:
+                pass
+
+    def execute_command(self, data):
+        cmd = data.get("cmd", "")
+
+        if cmd == "screenshot":
+            self._cmd_screenshot()
+            return True
+
+        if not self.enabled:
+            self.send_result(cmd, False, "Remote control not enabled")
+            return True
+
+        if not HAS_PYAUTOGUI and cmd not in ("screenshot", "open_folder", "open_app", "run_command"):
+            self.send_result(cmd, False, "pyautogui not installed")
+            return True
+
+        try:
+            handler = {
+                "mouse_move": self._cmd_mouse_move,
+                "click": self._cmd_click,
+                "double_click": self._cmd_double_click,
+                "right_click": self._cmd_right_click,
+                "scroll": self._cmd_scroll,
+                "key_press": self._cmd_key_press,
+                "type_text": self._cmd_type_text,
+                "open_url": self._cmd_open_url,
+                "open_folder": self._cmd_open_folder,
+                "open_app": self._cmd_open_app,
+                "run_command": self._cmd_run_command,
+            }.get(cmd)
+
+            if handler:
+                handler(data)
+            else:
+                self.send_result(cmd, False, f"Unknown command: {cmd}")
+        except Exception as e:
+            print(f"[RC][ERROR] {cmd}: {e}")
+            self.send_result(cmd, False, str(e))
+
+        return True
+
+    def _cmd_screenshot(self):
+        img = self.agent.capture_screen()
+        if img:
+            app_name, window_title = "", ""
+            if HAS_SCREEN:
+                app_name, window_title = self.agent.get_active_window_info()
+            if self.agent.ws:
+                self.agent.ws.send(json.dumps({
+                    "type": "frame",
+                    "frame": {
+                        "imageBase64": img,
+                        "activeApp": app_name,
+                        "activeWindow": window_title,
+                        "timestamp": int(time.time() * 1000)
+                    }
+                }))
+            self.send_result("screenshot", True)
+        else:
+            self.send_result("screenshot", False, "Capture failed")
+
+    def _cmd_mouse_move(self, data):
+        x, y = int(data.get("x", 0)), int(data.get("y", 0))
+        pyautogui.moveTo(x, y, duration=0.2)
+        self.send_result("mouse_move", True, f"Moved to ({x}, {y})")
+
+    def _cmd_click(self, data):
+        x = data.get("x")
+        y = data.get("y")
+        button = data.get("button", "left")
+        clicks = data.get("clicks", 1)
+        if x is not None and y is not None:
+            pyautogui.click(int(x), int(y), button=button, clicks=int(clicks))
+        else:
+            pyautogui.click(button=button, clicks=int(clicks))
+        self.send_result("click", True, f"Click at ({x}, {y})")
+
+    def _cmd_double_click(self, data):
+        x = data.get("x")
+        y = data.get("y")
+        if x is not None and y is not None:
+            pyautogui.doubleClick(int(x), int(y))
+        else:
+            pyautogui.doubleClick()
+        self.send_result("double_click", True, f"Double click at ({x}, {y})")
+
+    def _cmd_right_click(self, data):
+        x = data.get("x")
+        y = data.get("y")
+        if x is not None and y is not None:
+            pyautogui.rightClick(int(x), int(y))
+        else:
+            pyautogui.rightClick()
+        self.send_result("right_click", True, f"Right click at ({x}, {y})")
+
+    def _cmd_scroll(self, data):
+        x = data.get("x")
+        y = data.get("y")
+        dy = int(data.get("dy", 3))
+        if x is not None and y is not None:
+            pyautogui.moveTo(int(x), int(y))
+        pyautogui.scroll(-dy)
+        self.send_result("scroll", True, f"Scroll dy={dy}")
+
+    def _cmd_key_press(self, data):
+        key = data.get("key", "")
+        if not key:
+            self.send_result("key_press", False, "No key specified")
+            return
+
+        if "+" in key and len(key) > 1:
+            parts = [k.strip().lower() for k in key.split("+")]
+            key_map = {
+                "ctrl": "ctrl", "control": "ctrl",
+                "alt": "alt", "shift": "shift",
+                "win": "win", "windows": "win", "super": "win",
+                "cmd": "win", "command": "win",
+                "enter": "enter", "return": "enter",
+                "esc": "escape", "escape": "escape",
+                "tab": "tab", "space": "space",
+                "backspace": "backspace", "delete": "delete",
+                "up": "up", "down": "down", "left": "left", "right": "right",
+                "home": "home", "end": "end",
+                "pageup": "pageup", "pagedown": "pagedown",
+                "f1": "f1", "f2": "f2", "f3": "f3", "f4": "f4",
+                "f5": "f5", "f6": "f6", "f7": "f7", "f8": "f8",
+                "f9": "f9", "f10": "f10", "f11": "f11", "f12": "f12",
+            }
+            mapped = [key_map.get(p, p) for p in parts]
+            pyautogui.hotkey(*mapped)
+        else:
+            key_map_single = {
+                "enter": "enter", "return": "enter",
+                "esc": "escape", "escape": "escape",
+                "tab": "tab", "space": "space",
+                "backspace": "backspace", "delete": "delete",
+                "up": "up", "down": "down", "left": "left", "right": "right",
+                "win": "win", "windows": "win",
+            }
+            mapped_key = key_map_single.get(key.lower(), key)
+            pyautogui.press(mapped_key)
+
+        self.send_result("key_press", True, f"Key: {key}")
+
+    def _cmd_type_text(self, data):
+        text = data.get("text", "")
+        if not text:
+            self.send_result("type_text", False, "No text specified")
+            return
+        pyautogui.typewrite(text, interval=0.02) if text.isascii() else self._type_unicode(text)
+        self.send_result("type_text", True, f"Typed {len(text)} chars")
+
+    def _type_unicode(self, text):
+        import ctypes
+        for char in text:
+            if char == '\n':
+                pyautogui.press('enter')
+            elif char == '\t':
+                pyautogui.press('tab')
+            else:
+                try:
+                    vk = ctypes.windll.user32.VkKeyScanW(ord(char))
+                    if vk == -1:
+                        ctypes.windll.user32.keybd_event(0, 0, 0, 0)
+                        hwnd = ctypes.windll.user32.GetForegroundWindow()
+                        ctypes.windll.user32.SendMessageW(hwnd, 0x0102, ord(char), 0)
+                    else:
+                        shift = (vk >> 8) & 1
+                        actual_vk = vk & 0xFF
+                        if shift:
+                            ctypes.windll.user32.keybd_event(0x10, 0, 0, 0)
+                        ctypes.windll.user32.keybd_event(actual_vk, 0, 0, 0)
+                        ctypes.windll.user32.keybd_event(actual_vk, 0, 2, 0)
+                        if shift:
+                            ctypes.windll.user32.keybd_event(0x10, 0, 2, 0)
+                except:
+                    pass
+            time.sleep(0.01)
+
+    def _cmd_open_url(self, data):
+        url = data.get("text") or data.get("url", "")
+        if not url:
+            self.send_result("open_url", False, "No URL specified")
+            return
+        try:
+            os.startfile(url)
+            self.send_result("open_url", True, f"Opened: {url}")
+        except Exception as e:
+            try:
+                subprocess.Popen(["start", url], shell=True)
+                self.send_result("open_url", True, f"Opened: {url}")
+            except Exception as e2:
+                self.send_result("open_url", False, str(e2))
+
+    def _cmd_open_folder(self, data):
+        path = data.get("path") or data.get("text", "")
+        if not path:
+            self.send_result("open_folder", False, "No path specified")
+            return
+        path = os.path.expandvars(os.path.expanduser(path))
+        if not os.path.exists(path):
+            self.send_result("open_folder", False, f"Path not found: {path}")
+            return
+        try:
+            os.startfile(path)
+            self.send_result("open_folder", True, f"Opened: {path}")
+        except Exception as e:
+            self.send_result("open_folder", False, str(e))
+
+    def _cmd_open_app(self, data):
+        app = data.get("app") or data.get("text", "")
+        if not app:
+            self.send_result("open_app", False, "No app specified")
+            return
+
+        app_aliases = {
+            "word": "winword",
+            "excel": "excel",
+            "powerpoint": "powerpnt",
+            "ppt": "powerpnt",
+            "outlook": "outlook",
+            "notepad": "notepad",
+            "bloc-notes": "notepad",
+            "paint": "mspaint",
+            "calculatrice": "calc",
+            "calculator": "calc",
+            "calc": "calc",
+            "explorer": "explorer",
+            "explorateur": "explorer",
+            "cmd": "cmd",
+            "terminal": "wt",
+            "powershell": "powershell",
+            "chrome": "chrome",
+            "firefox": "firefox",
+            "edge": "msedge",
+            "code": "code",
+            "vscode": "code",
+            "teams": "ms-teams",
+            "spotify": "spotify",
+            "discord": "discord",
+            "slack": "slack",
+            "notion": "notion",
+        }
+
+        resolved = app_aliases.get(app.lower().strip(), app)
+
+        try:
+            if os.path.exists(resolved):
+                os.startfile(resolved)
+            else:
+                subprocess.Popen(resolved, shell=True)
+            self.send_result("open_app", True, f"Launched: {resolved}")
+        except FileNotFoundError:
+            try:
+                subprocess.Popen(f"start {resolved}", shell=True)
+                self.send_result("open_app", True, f"Launched via start: {resolved}")
+            except Exception as e2:
+                self.send_result("open_app", False, f"Not found: {resolved} — {e2}")
+        except Exception as e:
+            self.send_result("open_app", False, str(e))
+
+    def _cmd_run_command(self, data):
+        command = data.get("command") or data.get("text", "")
+        if not command:
+            self.send_result("run_command", False, "No command specified")
+            return
+        try:
+            result = subprocess.run(
+                command, shell=True, capture_output=True, text=True, timeout=30
+            )
+            output = result.stdout[:2000] if result.stdout else ""
+            error = result.stderr[:500] if result.stderr else ""
+            self.send_result("run_command", True, f"Exit {result.returncode}. Output: {output}{(' Error: ' + error) if error else ''}")
+        except subprocess.TimeoutExpired:
+            self.send_result("run_command", False, "Command timed out (30s)")
+        except Exception as e:
+            self.send_result("run_command", False, str(e))
+
 
 class ScreenMonitorAgent:
     def __init__(self, server_url: str, auth_token: str = None, user_id: int = None, 
@@ -57,6 +406,8 @@ class ScreenMonitorAgent:
         self.last_activity = time.time()
         self.inactivity_timeout = 120
         
+        self.rc = RemoteControlHandler(self)
+        
         self.quality_settings = {
             "low": {"resolution": (640, 480), "jpeg_quality": 50},
             "medium": {"resolution": (1024, 768), "jpeg_quality": 70},
@@ -70,7 +421,6 @@ class ScreenMonitorAgent:
         ]
 
     def get_active_window_info(self):
-        """Get information about the currently active window."""
         try:
             hwnd = win32gui.GetForegroundWindow()
             window_title = win32gui.GetWindowText(hwnd)
@@ -86,14 +436,12 @@ class ScreenMonitorAgent:
                 return app_name, "[Contenu sensible masqué]"
             
             return app_name, window_title[:100] if window_title else ""
-        except Exception as e:
+        except:
             return "Unknown", ""
 
     def should_filter_window(self, title: str, app_name: str) -> bool:
-        """Check if window content should be filtered for privacy."""
         if self.privacy_mode:
             return True
-        
         combined = f"{title} {app_name}".lower()
         for keyword in self.privacy_keywords:
             if keyword in combined:
@@ -101,8 +449,17 @@ class ScreenMonitorAgent:
         return False
 
     def capture_screen(self):
-        """Capture the current screen."""
         try:
+            if not HAS_SCREEN:
+                if HAS_PYAUTOGUI:
+                    screenshot = pyautogui.screenshot()
+                    settings = self.quality_settings.get(self.quality, self.quality_settings["medium"])
+                    screenshot = screenshot.resize(settings["resolution"], Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
+                    buffer = BytesIO()
+                    screenshot.save(buffer, format="JPEG", quality=settings["jpeg_quality"])
+                    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+                return None
+
             if not self.camera:
                 self.camera = dxcam.create(output_idx=0)
                 self.camera.start(target_fps=self.fps)
@@ -112,32 +469,33 @@ class ScreenMonitorAgent:
                 return None
             
             pil_img = Image.fromarray(frame)
-            
             settings = self.quality_settings.get(self.quality, self.quality_settings["medium"])
             pil_img = pil_img.resize(settings["resolution"], Image.Resampling.LANCZOS)
             
             buffer = BytesIO()
             pil_img.save(buffer, format="JPEG", quality=settings["jpeg_quality"])
-            img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-            
-            return img_base64
+            return base64.b64encode(buffer.getvalue()).decode("utf-8")
         except Exception as e:
             print(f"[ERROR] Capture failed: {e}")
             return None
 
     def on_message(self, ws, message):
-        """Handle incoming WebSocket messages."""
         try:
             data = json.loads(message)
             msg_type = data.get("type", "")
             
+            if msg_type.startswith("remote_control"):
+                self.rc.handle_message(data)
+                return
+            
             if msg_type == "connected":
-                print(f"[INFO] Connected to server, authenticating...")
+                print("[INFO] Connected to server, authenticating...")
                 self.send_auth()
                 
             elif msg_type == "auth.success":
                 self.authenticated = True
-                print(f"[INFO] Authenticated successfully as user {data.get('userId')}")
+                print(f"[INFO] Authenticated as user {data.get('userId')}")
+                self.send_capability()
                 self.start_monitoring()
                 
             elif msg_type == "auth.failed":
@@ -145,7 +503,7 @@ class ScreenMonitorAgent:
                 self.stop()
                 
             elif msg_type == "session.started":
-                print(f"[INFO] Monitoring session started (ID: {data.get('sessionId')})")
+                print(f"[INFO] Session started (ID: {data.get('sessionId')})")
                 
             elif msg_type == "session.paused":
                 self.paused = True
@@ -165,37 +523,32 @@ class ScreenMonitorAgent:
                 print(f"[ANALYSIS] {context} | Tags: {tags}")
                 if analysis.get("suggestions"):
                     for s in analysis["suggestions"]:
-                        print(f"  -> Suggestion: {s}")
+                        print(f"  -> {s}")
                         
             elif msg_type == "frame.received":
                 pass
-                
             elif msg_type == "pong":
                 pass
-                
             elif msg_type == "error":
-                print(f"[ERROR] Server error: {data.get('error')}")
+                print(f"[ERROR] Server: {data.get('error')}")
                 
         except json.JSONDecodeError:
-            print(f"[WARN] Invalid message received")
+            print("[WARN] Invalid message received")
 
     def on_error(self, ws, error):
-        """Handle WebSocket errors."""
-        print(f"[ERROR] WebSocket error: {error}")
+        print(f"[ERROR] WebSocket: {error}")
 
     def on_close(self, ws, close_status_code, close_msg):
-        """Handle WebSocket close."""
         self.connected = False
         self.authenticated = False
-        print(f"[INFO] Connection closed: {close_msg or 'Unknown reason'}")
+        self.rc.enabled = False
+        print(f"[INFO] Connection closed: {close_msg or 'Unknown'}")
 
     def on_open(self, ws):
-        """Handle WebSocket open."""
         self.connected = True
-        print("[INFO] WebSocket connection established")
+        print("[INFO] WebSocket connected")
 
     def send_auth(self):
-        """Send authentication message."""
         if self.ws:
             auth_msg = {
                 "type": "auth",
@@ -208,8 +561,28 @@ class ScreenMonitorAgent:
                 auth_msg["userId"] = self.user_id
             self.ws.send(json.dumps(auth_msg))
 
+    def send_capability(self):
+        if self.ws:
+            self.ws.send(json.dumps({
+                "type": "capability",
+                "remoteControl": HAS_PYAUTOGUI,
+                "platform": platform.system(),
+                "version": "2.0.0",
+                "features": {
+                    "screenshot": True,
+                    "mouse": HAS_PYAUTOGUI,
+                    "keyboard": HAS_PYAUTOGUI,
+                    "open_url": True,
+                    "open_folder": True,
+                    "open_app": True,
+                    "run_command": True,
+                    "type_unicode": True,
+                }
+            }))
+            caps = "FULL" if HAS_PYAUTOGUI else "SCREEN-ONLY"
+            print(f"[INFO] Capabilities sent: {caps}")
+
     def start_monitoring(self):
-        """Start the monitoring session."""
         if self.ws and self.authenticated:
             self.ws.send(json.dumps({
                 "type": "control",
@@ -217,33 +590,32 @@ class ScreenMonitorAgent:
             }))
 
     def send_frame(self):
-        """Capture and send a single frame."""
         if not self.authenticated or self.paused:
             return
         
-        app_name, window_title = self.get_active_window_info()
+        app_name, window_title = "", ""
+        if HAS_SCREEN:
+            app_name, window_title = self.get_active_window_info()
         img_base64 = self.capture_screen()
         
         if img_base64 and self.ws:
-            frame_msg = {
-                "type": "frame",
-                "frame": {
-                    "imageBase64": img_base64,
-                    "activeApp": app_name,
-                    "activeWindow": window_title,
-                    "timestamp": int(time.time() * 1000)
-                }
-            }
             try:
-                self.ws.send(json.dumps(frame_msg))
+                self.ws.send(json.dumps({
+                    "type": "frame",
+                    "frame": {
+                        "imageBase64": img_base64,
+                        "activeApp": app_name,
+                        "activeWindow": window_title,
+                        "timestamp": int(time.time() * 1000)
+                    }
+                }))
                 self.last_activity = time.time()
             except Exception as e:
                 print(f"[ERROR] Failed to send frame: {e}")
 
     def capture_loop(self):
-        """Main capture loop."""
         interval = 1.0 / self.fps
-        print(f"[INFO] Starting capture loop at {self.fps} FPS")
+        print(f"[INFO] Capture loop at {self.fps} FPS")
         
         while self.running:
             if self.connected and self.authenticated and not self.paused:
@@ -251,7 +623,6 @@ class ScreenMonitorAgent:
             time.sleep(interval)
 
     def heartbeat_loop(self):
-        """Send periodic heartbeats."""
         while self.running:
             if self.ws and self.connected:
                 try:
@@ -260,8 +631,18 @@ class ScreenMonitorAgent:
                     pass
             time.sleep(30)
 
+    def reconnect_loop(self):
+        while self.running:
+            time.sleep(10)
+            if not self.connected and self.running:
+                print("[INFO] Attempting reconnect...")
+                try:
+                    self.connect()
+                    self.ws.run_forever(ping_interval=60, ping_timeout=30, reconnect=5)
+                except:
+                    print("[WARN] Reconnect failed, retrying in 10s...")
+
     def connect(self):
-        """Connect to the WebSocket server."""
         websocket.enableTrace(False)
         self.ws = websocket.WebSocketApp(
             self.server_url,
@@ -272,27 +653,31 @@ class ScreenMonitorAgent:
         )
 
     def run(self):
-        """Start the agent."""
         self.running = True
         self.connect()
         
-        capture_thread = threading.Thread(target=self.capture_loop, daemon=True)
-        heartbeat_thread = threading.Thread(target=self.heartbeat_loop, daemon=True)
-        
-        capture_thread.start()
-        heartbeat_thread.start()
+        threading.Thread(target=self.capture_loop, daemon=True).start()
+        threading.Thread(target=self.heartbeat_loop, daemon=True).start()
         
         print(f"[INFO] Connecting to {self.server_url}...")
         print("[INFO] Press Ctrl+C to stop")
         
-        try:
-            self.ws.run_forever(ping_interval=60, ping_timeout=30)
-        except KeyboardInterrupt:
-            print("\n[INFO] Stopping...")
-            self.stop()
+        while self.running:
+            try:
+                self.ws.run_forever(ping_interval=60, ping_timeout=30)
+            except KeyboardInterrupt:
+                print("\n[INFO] Stopping...")
+                self.stop()
+                break
+            except Exception as e:
+                print(f"[ERROR] Connection lost: {e}")
+
+            if self.running:
+                print("[INFO] Reconnecting in 5s...")
+                time.sleep(5)
+                self.connect()
 
     def stop(self):
-        """Stop the agent."""
         self.running = False
         if self.ws:
             if self.authenticated:
@@ -367,9 +752,9 @@ def enable_autostart(server, token=None, user_id=None, device_id="windows-agent"
     with open(bat_path, "w") as f:
         f.write(bat_content)
 
-    print(f"[AUTOSTART] Enabled - agent will start automatically with Windows")
-    print(f"[AUTOSTART] Startup script: {bat_path}")
-    print(f"[AUTOSTART] Config saved: {AUTOSTART_CONFIG_FILE}")
+    print(f"[AUTOSTART] Enabled — starts with Windows")
+    print(f"[AUTOSTART] Script: {bat_path}")
+    print(f"[AUTOSTART] Config: {AUTOSTART_CONFIG_FILE}")
     return True
 
 def disable_autostart():
@@ -389,7 +774,7 @@ def disable_autostart():
         except:
             pass
     if removed:
-        print("[AUTOSTART] Disabled - agent will no longer start with Windows")
+        print("[AUTOSTART] Disabled")
     else:
         print("[AUTOSTART] Was not enabled")
     return removed
@@ -407,9 +792,9 @@ def autostart_status():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ulysse Screen Monitor Agent")
+    parser = argparse.ArgumentParser(description="Ulysse Screen Monitor Agent v2.0")
     parser.add_argument("--server", "-s",
-                        help="WebSocket server URL (e.g., wss://your-app.replit.app/ws/screen)")
+                        help="WebSocket server URL (e.g., wss://ulyssepro.org/ws/screen)")
     parser.add_argument("--token", "-t", 
                         help="Authentication token (JWT)")
     parser.add_argument("--user-id", "-u", type=int,
@@ -457,17 +842,21 @@ def main():
         print("[ERROR] Either --token or --user-id is required")
         sys.exit(1)
     
-    print("=" * 50)
-    print("  ULYSSE SCREEN MONITOR AGENT")
-    print("=" * 50)
-    print(f"  Server: {args.server}")
-    print(f"  Device: {args.device_name or args.device_id}")
-    print(f"  FPS: {args.fps}")
-    print(f"  Quality: {args.quality}")
-    print(f"  Privacy Mode: {'ON' if args.privacy else 'OFF'}")
+    print("=" * 55)
+    print("  ULYSSE SCREEN MONITOR AGENT v2.0")
+    print("  Full Remote Control Edition")
+    print("=" * 55)
+    print(f"  Server    : {args.server}")
+    print(f"  Device    : {args.device_name or args.device_id}")
+    print(f"  FPS       : {args.fps}")
+    print(f"  Quality   : {args.quality}")
+    print(f"  Privacy   : {'ON' if args.privacy else 'OFF'}")
+    print(f"  Screen    : {'dxcam' if HAS_SCREEN else ('pyautogui' if HAS_PYAUTOGUI else 'NONE')}")
+    print(f"  Mouse/KB  : {'YES' if HAS_PYAUTOGUI else 'NO (install pyautogui)'}")
+    print(f"  Apps/URLs : YES")
     status = autostart_status()
-    print(f"  Autostart: {'ON' if status['enabled'] else 'OFF'}")
-    print("=" * 50)
+    print(f"  Autostart : {'ON' if status['enabled'] else 'OFF'}")
+    print("=" * 55)
     print()
     
     agent = ScreenMonitorAgent(
