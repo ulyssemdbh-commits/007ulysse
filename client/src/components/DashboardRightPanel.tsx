@@ -78,7 +78,7 @@ export function DashboardRightPanel() {
 
   return (
     <aside className="w-72 shrink-0 flex flex-col gap-3 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-      <div className="border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3 flex flex-col">
+      <div className="border border-cyan-500/30 backdrop-blur-md rounded-xl p-3 flex flex-col bg-[#00000000]">
         <h3 className="text-[10px] font-mono text-cyan-500/70 tracking-widest uppercase mb-2 flex items-center gap-2 pb-2 border-b border-cyan-900/40">
           <Calendar className="w-3 h-3" /> Agenda du jour
         </h3>
@@ -100,12 +100,11 @@ export function DashboardRightPanel() {
           ))}
         </div>
       </div>
-
       <div className="flex gap-3">
         <div
           onClick={() => navigate("/finances")}
           data-testid="widget-solde"
-          className="flex-1 border border-cyan-500/30 bg-black/40 backdrop-blur-md rounded-xl p-3 cursor-pointer hover:border-cyan-400/50 transition-all active:scale-[0.98]"
+          className="flex-1 border border-cyan-500/30 backdrop-blur-md rounded-xl p-3 cursor-pointer hover:border-cyan-400/50 transition-all active:scale-[0.98] bg-[#00000000]"
         >
           <h3 className="text-[10px] font-mono text-cyan-500/70 tracking-widest uppercase mb-2 flex items-center gap-1">
             <CreditCard className="w-3 h-3" /> Solde
@@ -134,7 +133,6 @@ export function DashboardRightPanel() {
           </div>
         </div>
       </div>
-
       <div
         onClick={() => navigate("/diagnostics")}
         data-testid="widget-systemes"
@@ -163,7 +161,6 @@ export function DashboardRightPanel() {
           ))}
         </div>
       </div>
-
       {traceStats && (traceStats.totalTraces > 0 || (traceStats.agentStats && traceStats.agentStats.length > 0)) && (
         <div
           onClick={() => navigate("/traces")}
