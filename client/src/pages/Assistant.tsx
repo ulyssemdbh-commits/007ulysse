@@ -163,9 +163,9 @@ const MessageBubble = memo(function MessageBubble({
         "rounded-2xl px-4 py-3 shadow-md",
         isUser 
           ? "bg-primary text-primary-foreground" 
-          : "bg-secondary/80 text-foreground border border-border/50"
+          : "ai-bubble"
       )}>
-        <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_*]:text-foreground [&_a]:text-blue-500 dark:[&_a]:text-blue-400 [&_a]:underline">
+        <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_*]:text-gray-900 dark:[&_*]:text-gray-100 [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_a]:underline [&_strong]:font-semibold [&_h1]:text-gray-900 dark:[&_h1]:text-gray-100 [&_h2]:text-gray-900 dark:[&_h2]:text-gray-100 [&_h3]:text-gray-900 dark:[&_h3]:text-gray-100">
           <ReactMarkdown>{msg.content}</ReactMarkdown>
         </div>
         {!isUser && ttsSupported && (
@@ -800,8 +800,8 @@ export default function Assistant() {
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-md">
                         <Bot className="w-4 h-4" />
                       </div>
-                      <div className="rounded-2xl px-4 py-3 shadow-md ai-bubble border border-border/50">
-                        <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_*]:text-foreground [&_a]:text-blue-500 dark:[&_a]:text-blue-400 [&_a]:underline">
+                      <div className="rounded-2xl px-4 py-3 shadow-md ai-bubble">
+                        <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_*]:text-gray-900 dark:[&_*]:text-gray-100 [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_a]:underline [&_strong]:font-semibold">
                           <ReactMarkdown>{streamingContent}</ReactMarkdown>
                         </div>
                       </div>
