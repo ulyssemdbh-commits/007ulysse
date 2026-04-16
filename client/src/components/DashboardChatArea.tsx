@@ -89,7 +89,7 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
       <div className="flex-1 overflow-y-auto p-3 sm:p-5 flex flex-col gap-3 sm:gap-4" ref={scrollRef} role="log" aria-label="Messages de conversation" aria-live="polite">
         {lastMessages.length === 0 && !streamingContent && (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-center text-cyan-700 text-sm font-mono">
+            <p className="text-center text-blue-400 dark:text-cyan-700 text-sm font-mono">
               Parle a Ulysse pour commencer...
             </p>
           </div>
@@ -144,23 +144,23 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
                 <div className="flex items-center justify-between mt-1.5">
                   <div className="flex items-center gap-1">
                     {"confidenceLevel" in msg && msg.confidenceLevel === "certain" && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-500 dark:text-emerald-400">
                         <ShieldCheck className="w-3 h-3" /><span>Certain</span>
                       </span>
                     )}
                     {"confidenceLevel" in msg && msg.confidenceLevel === "probable" && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 dark:text-amber-400">
                         <ShieldAlert className="w-3 h-3" /><span>Probable</span>
                       </span>
                     )}
                     {"confidenceLevel" in msg && msg.confidenceLevel === "incertain" && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-red-400">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-red-500 dark:text-red-400">
                         <ShieldQuestion className="w-3 h-3" /><span>Incertain</span>
                       </span>
                     )}
                   </div>
                   <button
-                    className="p-1 rounded text-cyan-700 hover:text-cyan-400 transition-colors"
+                    className="p-1 rounded text-blue-400 dark:text-cyan-700 hover:text-blue-600 dark:hover:text-cyan-400 transition-colors"
                     onClick={() => {
                       navigator.clipboard.writeText(msg.content);
                       setCopiedMsgIdx(idx);
@@ -178,26 +178,26 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
         ))}
         {isStreaming && !streamingContent && (
           <div className="self-start max-w-[80%]">
-            <div className="text-[10px] font-mono text-cyan-600 mb-1 flex items-center gap-2">
+            <div className="text-[10px] font-mono text-blue-500 dark:text-cyan-600 mb-1 flex items-center gap-2">
               <Terminal className="w-3 h-3" /> {personaName.toUpperCase()} // TRAITEMENT
             </div>
-            <div className="p-3.5 rounded-xl rounded-tl-none bg-cyan-900/10 border border-cyan-500/30 relative">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500 shadow-[0_0_10px_#00d4ff] animate-pulse" />
+            <div className="p-3.5 rounded-xl rounded-tl-none bg-blue-50 dark:bg-cyan-900/10 border border-blue-200 dark:border-cyan-500/30 relative">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 dark:bg-cyan-500 dark:shadow-[0_0_10px_#00d4ff] animate-pulse" />
               <div className="flex items-center gap-2 py-1">
-                <motion.div className="w-8 h-1 bg-cyan-400/40 rounded-full" animate={{ width: ["32px", "48px", "32px"] }} transition={{ duration: 1.2, repeat: Infinity }} />
-                <motion.div className="w-12 h-1 bg-cyan-400/30 rounded-full" animate={{ width: ["48px", "64px", "48px"] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }} />
-                <motion.div className="w-6 h-1 bg-cyan-400/20 rounded-full" animate={{ width: ["24px", "40px", "24px"] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }} />
+                <motion.div className="w-8 h-1 bg-blue-300/40 dark:bg-cyan-400/40 rounded-full" animate={{ width: ["32px", "48px", "32px"] }} transition={{ duration: 1.2, repeat: Infinity }} />
+                <motion.div className="w-12 h-1 bg-blue-300/30 dark:bg-cyan-400/30 rounded-full" animate={{ width: ["48px", "64px", "48px"] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }} />
+                <motion.div className="w-6 h-1 bg-blue-300/20 dark:bg-cyan-400/20 rounded-full" animate={{ width: ["24px", "40px", "24px"] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }} />
               </div>
             </div>
           </div>
         )}
         {streamingContent && (
           <div className="self-start max-w-[80%]">
-            <div className="text-[10px] font-mono text-cyan-600 mb-1 flex items-center gap-2">
+            <div className="text-[10px] font-mono text-blue-500 dark:text-cyan-600 mb-1 flex items-center gap-2">
               <Terminal className="w-3 h-3" /> {personaName.toUpperCase()} // EN COURS
             </div>
-            <div className="p-3.5 rounded-xl rounded-tl-none bg-cyan-900/10 border border-cyan-500/30 relative overflow-hidden">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500 shadow-[0_0_10px_#00d4ff]" />
+            <div className="p-3.5 rounded-xl rounded-tl-none bg-white dark:bg-cyan-900/10 border border-blue-200 dark:border-cyan-500/30 relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 dark:bg-cyan-500 dark:shadow-[0_0_10px_#00d4ff]" />
               <div className="prose prose-sm max-w-full overflow-hidden dark:[&_*]:text-cyan-100 [&_a]:text-blue-500 [&_a]:underline leading-relaxed text-sm" style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}>
                 <ReactMarkdown>{streamingContent}</ReactMarkdown>
               </div>
@@ -270,14 +270,14 @@ export function DashboardChatArea(props: DashboardChatAreaProps) {
           </button>
         </form>
         {pendingFileAnalysis && (
-          <div className="mt-2 flex items-center gap-2 text-xs font-mono text-cyan-500">
-            <span className="px-2 py-1 bg-cyan-950/30 border border-cyan-900/30 rounded text-cyan-400">Fichier: {pendingFileAnalysis.fileName}</span>
+          <div className="mt-2 flex items-center gap-2 text-xs font-mono text-blue-500 dark:text-cyan-500">
+            <span className="px-2 py-1 bg-blue-50 dark:bg-cyan-950/30 border border-blue-200 dark:border-cyan-900/30 rounded text-blue-600 dark:text-cyan-400">Fichier: {pendingFileAnalysis.fileName}</span>
             {pendingFileAnalysis.imageDataUrl && (
-              <button type="button" className="px-2 py-1 border border-cyan-900/30 rounded text-cyan-600 hover:text-cyan-400 transition-colors" onClick={() => setShowImageEditor(true)} data-testid="button-edit-image">
+              <button type="button" className="px-2 py-1 border border-blue-200 dark:border-cyan-900/30 rounded text-blue-400 dark:text-cyan-600 hover:text-blue-600 dark:hover:text-cyan-400 transition-colors" onClick={() => setShowImageEditor(true)} data-testid="button-edit-image">
                 <Pencil className="w-3 h-3" />
               </button>
             )}
-            <button type="button" className="px-2 py-1 border border-cyan-900/30 rounded text-cyan-600 hover:text-red-400 transition-colors" onClick={() => setPendingFileAnalysis(null)} data-testid="button-remove-file">
+            <button type="button" className="px-2 py-1 border border-blue-200 dark:border-cyan-900/30 rounded text-blue-400 dark:text-cyan-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" onClick={() => setPendingFileAnalysis(null)} data-testid="button-remove-file">
               <X className="w-3 h-3" />
             </button>
           </div>

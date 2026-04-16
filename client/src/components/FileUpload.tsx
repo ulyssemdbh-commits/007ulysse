@@ -180,7 +180,39 @@ export function FileUpload({ onFileAnalyzed, compact = false }: FileUploadProps)
           const isImage = /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(file.name);
           const isText = /\.(txt|csv|json|xml)$/i.test(file.name);
           const isPdf = /\.pdf$/i.test(file.name);
+          const isExcel = /\.(xlsx|xls)$/i.test(file.name);
           
+          if (isExcel) {
+            try {
+              const XLSX = (await import("xlsx")).default || await import("xlsx");
+              const arrayBuffer = await file.arrayBuffer();
+              const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
+              const sheets: string[] = [];
+              for (const sheetName of workbook.SheetNames) {
+                const sheet = workbook.Sheets[sheetName];
+                const csv = XLSX.utils.sheet_to_csv(sheet);
+                const json = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+                const rowCount = json.length;
+                const colCount = json[0]?.length || 0;
+                sheets.push(`=== Feuille: ${sheetName} (${rowCount} lignes × ${colCount} colonnes) ===\n${csv}`);
+              }
+              const content = sheets.join("\n\n").slice(0, 50000);
+              console.log(`[FileUpload] Excel parsed client-side: ${workbook.SheetNames.length} sheets, ${content.length} chars`);
+              onFileAnalyzed({
+                fileName: file.name,
+                fileType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                content,
+                metadata: { clientSideRead: true, sheetNames: workbook.SheetNames, sheetCount: workbook.SheetNames.length },
+              }, file.name);
+              setSelectedFile(null);
+              setUploadStatus("idle");
+              resetInputs();
+              return;
+            } catch (xlsErr) {
+              console.error("[FileUpload] Client-side Excel parsing failed:", xlsErr);
+            }
+          }
+
           if (isImage) {
             const reader = new FileReader();
             reader.onload = () => {
