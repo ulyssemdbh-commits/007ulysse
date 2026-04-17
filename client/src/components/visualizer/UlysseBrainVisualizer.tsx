@@ -387,12 +387,13 @@ function BrainScene({ onSelectZone }: { onSelectZone: (id: BrainZoneId) => void 
           const coreColor = processing ? "#fde047" : "#7dd3fc";
           return (
             <>
-              <pointLight position={[0, 0, 0]} color={coreColor} intensity={1.5 + load / 50} distance={6} decay={2} />
-              <group scale={0.32}>
+              <pointLight position={[0, 0, 0]} color={coreColor} intensity={3 + load / 30} distance={10} decay={2} />
+              <group scale={0.96}>
                 <AnimatedOrb
                   isActive={processing}
                   isAnalyzing={load > 50}
-                  orbIntensity={Math.min(100, 30 + load)}
+                  orbColor={processing ? "#fef9c3" : "#e0f2fe"}
+                  orbIntensity={100}
                 />
               </group>
             </>
