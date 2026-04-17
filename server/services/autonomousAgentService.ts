@@ -111,6 +111,7 @@ class AutonomousAgentService {
     const availableTools = [
       "query_brain", "memory_save", "web_search", "read_url", "email_list_inbox", "email_send",
       "calendar_list_events", "calendar_create_event", "todoist_list_tasks", "todoist_create_task",
+      "homework_manage",
       "location_get_weather", "query_suguval_history", "sugu_full_overview", "compute_business_health",
       "detect_anomalies", "manage_sugu_bank", "manage_sugu_purchases", "manage_sugu_expenses",
       "manage_sugu_employees", "manage_sugu_payroll", "search_sugu_data", "query_sugu_analytics",

@@ -600,7 +600,7 @@ const CORE_TOOLS = new Set([
   "query_brain", "memory_save", "web_search", "read_url", "image_generate",
   "calendar_list_events", "calendar_create_event", "email_list_inbox", "email_send",
   "email_read_message", "email_reply", "email_forward",
-  "todoist_list_tasks", "todoist_create_task", "todoist_complete_task",
+  "todoist_list_tasks", "todoist_create_task", "todoist_complete_task", "homework_manage",
   "spotify_control", "smarthome_control", "location_get_weather",
   "discord_send_message", "discord_status", "notion_manage", "drive_manage",
   "query_sports_data", "query_match_intelligence", "query_stock_data",

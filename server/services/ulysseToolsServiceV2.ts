@@ -597,6 +597,35 @@ export const ulysseToolsV2: ChatCompletionTool[] = [
     }
   },
 
+  // === HOMEWORK / DEVOIRS (panneau Devoirs du dashboard) ===
+  {
+    type: "function",
+    function: {
+      name: "homework_manage",
+      description: "Gère les Devoirs (homework) de Maurice — la liste de tâches récurrentes/planifiées du panneau Devoirs du dashboard. Permet de lister, créer, mettre à jour, compléter, supprimer, exécuter manuellement, et consulter l'historique d'exécution. EXÉCUTE IMMÉDIATEMENT sans demander confirmation.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["list", "get", "create", "update", "complete", "delete", "execute", "history", "run_due"],
+            description: "list (tous les devoirs), get (détail d'un devoir), create (nouveau), update (modifier), complete (marquer fait), delete (supprimer), execute (lancer manuellement maintenant), history (historique d'exécutions d'un devoir), run_due (exécuter tous les devoirs dus aujourd'hui)"
+          },
+          id: { type: "number", description: "ID du devoir (pour get/update/complete/delete/execute/history)" },
+          title: { type: "string", description: "Titre du devoir (pour create/update)" },
+          description: { type: "string", description: "Description détaillée (pour create/update)" },
+          priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Priorité (default: medium)" },
+          recurrence: { type: "string", enum: ["none", "daily", "weekly", "monthly", "hourly"], description: "Récurrence (default: none)" },
+          status: { type: "string", enum: ["pending", "in_progress", "completed", "cancelled"], description: "Statut" },
+          due_date: { type: "string", description: "Date d'échéance ISO 8601 ou langage naturel (demain, lundi, ...)" },
+          notes: { type: "string", description: "Notes additionnelles" },
+          filter_status: { type: "string", enum: ["all", "pending", "completed", "due_today", "overdue"], description: "Filtre pour list (default: all)" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+
   // === KANBAN TOOLS (DevFlow internal tasks) ===
   {
     type: "function",
@@ -1993,6 +2022,7 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   todoist_create_task: (a, u) => executeTodoistCreateTask(a, u),
   todoist_list_tasks: (a) => executeTodoistListTasks(a),
   todoist_complete_task: (a) => executeTodoistCompleteTask(a),
+  homework_manage: (a, u) => executeHomeworkManage(a, u),
   kanban_create_task: (a, u) => executeKanbanCreateTask(a, u),
   task_queue_manage: (a, u) => executeTaskQueueManage(a, u),
   work_journal_manage: (a, u) => executeWorkJournalManage(a, u),
@@ -4837,6 +4867,137 @@ async function executeTodoistCompleteTask(args: { task_name: string }): Promise<
     return JSON.stringify({ success: false, error: "Échec de la complétion" });
   } catch (error: any) {
     return JSON.stringify({ success: false, error: error.message });
+  }
+}
+
+// === HOMEWORK / DEVOIRS TOOL IMPLEMENTATION ===
+
+async function executeHomeworkManage(
+  args: {
+    action: string;
+    id?: number;
+    title?: string;
+    description?: string;
+    priority?: string;
+    recurrence?: string;
+    status?: string;
+    due_date?: string;
+    notes?: string;
+    filter_status?: string;
+  },
+  userId: number
+): Promise<string> {
+  try {
+    const { storage } = await import("../storage");
+    const { homeworkExecutionService } = await import("./homeworkExecution");
+
+    const parseDueDate = (s?: string): Date | undefined => {
+      if (!s) return undefined;
+      const direct = new Date(s);
+      if (!isNaN(direct.getTime())) return direct;
+      const lower = s.toLowerCase().trim();
+      const now = new Date();
+      if (lower === "demain" || lower === "tomorrow") { now.setDate(now.getDate() + 1); now.setHours(9, 0, 0, 0); return now; }
+      if (lower === "aujourd'hui" || lower === "today") { now.setHours(18, 0, 0, 0); return now; }
+      const days = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+      const dayIdx = days.indexOf(lower);
+      if (dayIdx >= 0) {
+        const diff = (dayIdx - now.getDay() + 7) % 7 || 7;
+        now.setDate(now.getDate() + diff); now.setHours(9, 0, 0, 0); return now;
+      }
+      return undefined;
+    };
+
+    switch (args.action) {
+      case "list": {
+        const all = await storage.getHomework(userId);
+        const filter = args.filter_status || "all";
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+        let filtered = all;
+        if (filter === "pending") filtered = all.filter(h => h.status === "pending");
+        else if (filter === "completed") filtered = all.filter(h => h.status === "completed");
+        else if (filter === "due_today") filtered = all.filter(h => h.dueDate && new Date(h.dueDate) >= today && new Date(h.dueDate) < tomorrow);
+        else if (filter === "overdue") filtered = all.filter(h => h.dueDate && new Date(h.dueDate) < today && h.status !== "completed");
+        return JSON.stringify({
+          success: true,
+          count: filtered.length,
+          total: all.length,
+          filter,
+          homework: filtered.map(h => ({
+            id: h.id, title: h.title, description: h.description, status: h.status,
+            priority: h.priority, recurrence: h.recurrence,
+            dueDate: h.dueDate, lastExecutedAt: h.lastExecutedAt, notes: h.notes
+          }))
+        });
+      }
+      case "get": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const hw = await storage.getHomeworkItem(args.id, userId);
+        if (!hw) return JSON.stringify({ success: false, error: "Devoir introuvable" });
+        return JSON.stringify({ success: true, homework: hw });
+      }
+      case "create": {
+        if (!args.title) return JSON.stringify({ success: false, error: "title requis" });
+        const created = await storage.createHomework({
+          userId,
+          title: args.title,
+          description: args.description || null,
+          priority: args.priority || "medium",
+          recurrence: args.recurrence || "none",
+          status: "pending",
+          dueDate: parseDueDate(args.due_date) || null,
+          notes: args.notes || null,
+          nextOccurrence: null,
+        } as any);
+        return JSON.stringify({ success: true, action: "created", homework: created, message: `📝 Devoir "${created.title}" créé (id ${created.id})` });
+      }
+      case "update": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const update: any = {};
+        if (args.title !== undefined) update.title = args.title;
+        if (args.description !== undefined) update.description = args.description;
+        if (args.priority !== undefined) update.priority = args.priority;
+        if (args.recurrence !== undefined) update.recurrence = args.recurrence;
+        if (args.status !== undefined) update.status = args.status;
+        if (args.notes !== undefined) update.notes = args.notes;
+        if (args.due_date !== undefined) update.dueDate = parseDueDate(args.due_date) || null;
+        const updated = await storage.updateHomework(args.id, userId, update);
+        if (!updated) return JSON.stringify({ success: false, error: "Devoir introuvable" });
+        return JSON.stringify({ success: true, action: "updated", homework: updated });
+      }
+      case "complete": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const updated = await storage.updateHomework(args.id, userId, { status: "completed" } as any);
+        if (!updated) return JSON.stringify({ success: false, error: "Devoir introuvable" });
+        return JSON.stringify({ success: true, action: "completed", message: `✅ Devoir "${updated.title}" marqué comme terminé` });
+      }
+      case "delete": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        await storage.deleteHomework(args.id, userId);
+        return JSON.stringify({ success: true, action: "deleted", id: args.id });
+      }
+      case "execute": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const hw = await storage.getHomeworkItem(args.id, userId);
+        if (!hw) return JSON.stringify({ success: false, error: "Devoir introuvable" });
+        const result = await homeworkExecutionService.executeHomework(userId, hw, "manual");
+        return JSON.stringify({ success: true, action: "executed", id: args.id, result });
+      }
+      case "history": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const history = await homeworkExecutionService.getExecutionHistory(userId, args.id, 20);
+        return JSON.stringify({ success: true, count: history.length, history });
+      }
+      case "run_due": {
+        const triggered = await homeworkExecutionService.executeDailyTasks(userId);
+        return JSON.stringify({ success: true, action: "run_due", triggered_count: triggered });
+      }
+      default:
+        return JSON.stringify({ success: false, error: `Action inconnue: ${args.action}` });
+    }
+  } catch (error: any) {
+    return JSON.stringify({ success: false, error: error?.message || String(error) });
   }
 }
 

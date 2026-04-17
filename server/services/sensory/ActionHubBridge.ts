@@ -61,6 +61,7 @@ const TOOL_CATEGORY_MAP: Record<string, ActionCategory> = {
   todoist_create_task: "tool_call",
   todoist_list_tasks: "tool_call",
   todoist_complete_task: "tool_call",
+  homework_manage: "tool_call",
   // Kanban & Task Queue
   kanban_create_task: "tool_call",
   task_queue_manage: "tool_call",
