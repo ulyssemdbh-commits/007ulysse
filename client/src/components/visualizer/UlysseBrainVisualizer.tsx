@@ -73,7 +73,7 @@ function ZoneCluster({
         (seedRand(seed, i * 3 + 1) - 0.5) * 1.1,
         (seedRand(seed, i * 3 + 2) - 0.5) * 1.1,
       ] as [number, number, number],
-      size: 0.025 + seedRand(seed, i * 7) * 0.04,
+      size: 0.012 + seedRand(seed, i * 7) * 0.018,
     }));
   }, [zone.neurons, seed]);
 
@@ -375,26 +375,38 @@ function BrainScene({ onSelectZone }: { onSelectZone: (id: BrainZoneId) => void 
 
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <pointLight position={[5, 5, 5]} intensity={0.6} />
+      <ambientLight intensity={0.4} />
+      <pointLight position={[5, 5, 5]} intensity={0.5} />
       <Stars radius={40} depth={30} count={1200} factor={2} fade speed={0.3} />
       <group ref={groupRef}>
-        {/* Central core = real cognitive load. Outer halo + inner core. */}
-        <Sphere args={[0.32, 24, 24]}>
-          <meshBasicMaterial
-            color="#1e3a8a"
-            transparent
-            opacity={0.18 + activity.consciousness.cognitiveLoad / 300}
-            depthWrite={false}
-          />
-        </Sphere>
-        <Sphere args={[0.13, 16, 16]}>
-          <meshBasicMaterial
-            color={activity.consciousness.processing ? "#fbbf24" : "#60a5fa"}
-            transparent
-            opacity={0.75}
-          />
-        </Sphere>
+        {/* Central core = real cognitive load. Glowing luminous core with halos. */}
+        {(() => {
+          const processing = activity.consciousness.processing;
+          const load = activity.consciousness.cognitiveLoad;
+          const coreColor = processing ? "#fde047" : "#7dd3fc";
+          const coreIntensity = 1.5 + load / 50;
+          return (
+            <>
+              {/* Real light source — illuminates everything around */}
+              <pointLight position={[0, 0, 0]} color={coreColor} intensity={coreIntensity} distance={6} decay={2} />
+              {/* Outer soft halo */}
+              <Sphere args={[0.42, 24, 24]}>
+                <meshBasicMaterial color={coreColor} transparent opacity={0.06 + load / 600} depthWrite={false} />
+              </Sphere>
+              {/* Mid halo */}
+              <Sphere args={[0.26, 24, 24]}>
+                <meshBasicMaterial color={coreColor} transparent opacity={0.16 + load / 400} depthWrite={false} />
+              </Sphere>
+              {/* Bright inner core — pure white center, glows */}
+              <Sphere args={[0.14, 24, 24]}>
+                <meshBasicMaterial color={coreColor} transparent opacity={0.85} />
+              </Sphere>
+              <Sphere args={[0.07, 16, 16]}>
+                <meshBasicMaterial color="#ffffff" transparent opacity={0.95} />
+              </Sphere>
+            </>
+          );
+        })()}
 
         {/* Live signal flow zone ↔ central core (Ulysse data flow) */}
         {activity.zones.map(zone => (
