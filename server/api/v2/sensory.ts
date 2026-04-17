@@ -1,7 +1,58 @@
 import { Router, Request, Response } from "express";
 import { sensorySystem, hearingHub, voiceOutputHub, visionHub, actionHub, brainHub, getAllBridgeStats } from "../../services/sensory";
+import { brainPulseBus, type BrainPulseEvent } from "../../services/sensory/BrainPulse";
 
 const router = Router();
+
+// ============================================================
+// SSE: real-time brain pulse stream (no polling).
+// Any tab/window subscribes once and receives every pulse pushed by the server.
+// ============================================================
+router.get("/stream", (req: Request, res: Response) => {
+  if (!(req as any).isOwner) {
+    return res.status(403).json({ error: "Owner access required" });
+  }
+
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders?.();
+
+  const send = (event: string, data: unknown) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Initial snapshot so the brain renders immediately.
+  try {
+    send("snapshot", {
+      counters: brainPulseBus.getCounters(),
+      recent: brainPulseBus.getRecent(50),
+      stats: sensorySystem.getStats(),
+    });
+  } catch { /* best-effort */ }
+
+  const onPulse = (evt: BrainPulseEvent) => {
+    try { send("pulse", evt); } catch { /* client likely gone */ }
+  };
+  brainPulseBus.on("pulse", onPulse);
+
+  // Heartbeat every 25s to keep proxies from closing the connection.
+  const heartbeat = setInterval(() => {
+    try { res.write(`: ping\n\n`); } catch { /* gone */ }
+  }, 25_000);
+
+  const cleanup = () => {
+    clearInterval(heartbeat);
+    brainPulseBus.off("pulse", onPulse);
+    try { res.end(); } catch { /* already closed */ }
+  };
+  req.on("close", cleanup);
+  req.on("aborted", cleanup);
+});
 
 function requireOwner(req: Request, res: Response, next: Function) {
   if (!(req as any).isOwner) {

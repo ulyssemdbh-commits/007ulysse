@@ -17,6 +17,7 @@
  *   - association → INTUITIONS  (cross-AI, cross-domain bridges, proactive insights)
  */
 
+import { EventEmitter } from "events";
 import { sensorySystem } from "./index";
 import { brainHub } from "./BrainHub";
 
@@ -42,7 +43,7 @@ export interface BrainPulseEvent {
   intensity?: number;
 }
 
-class BrainPulseBus {
+class BrainPulseBus extends EventEmitter {
   private readonly counters: Record<BrainPulseZone, number> = {
     prefrontal: 0,
     motor: 0,
@@ -98,6 +99,14 @@ class BrainPulseBus {
     } catch {
       /* sensorySystem.recordPulse may not exist yet during startup */
     }
+
+    // Real-time push: SSE subscribers.
+    try { this.emit("pulse", evt); } catch { /* best-effort */ }
+  }
+
+  constructor() {
+    super();
+    this.setMaxListeners(50);
   }
 
   getCounters(): Readonly<Record<BrainPulseZone, number>> {

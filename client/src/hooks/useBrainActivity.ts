@@ -105,6 +105,48 @@ export interface BrainActivity {
 
 const POLL_MS = 1000;
 
+// SSE: real-time push of brain pulses. Drives instant cross-tab/cross-window updates.
+function useBrainPulseStream(enabled: boolean, onPulse: (zone: BrainZoneId) => void) {
+  useEffect(() => {
+    if (!enabled) return;
+    let es: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryDelay = 1000;
+    let cancelled = false;
+
+    const connect = () => {
+      if (cancelled) return;
+      try {
+        es = new EventSource("/api/v2/sensory/stream", { withCredentials: true });
+        es.addEventListener("pulse", (e: MessageEvent) => {
+          try {
+            const evt = JSON.parse(e.data) as { zone: BrainZoneId };
+            if (evt?.zone) onPulse(evt.zone);
+          } catch { /* ignore */ }
+          retryDelay = 1000;
+        });
+        es.onerror = () => {
+          try { es?.close(); } catch { /* */ }
+          es = null;
+          if (cancelled) return;
+          retryTimer = setTimeout(connect, retryDelay);
+          retryDelay = Math.min(retryDelay * 2, 15_000);
+        };
+      } catch {
+        retryTimer = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, 15_000);
+      }
+    };
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      try { es?.close(); } catch { /* */ }
+    };
+  }, [enabled, onPulse]);
+}
+
 // Map BrainHub's current focus state → zones that should appear active.
 // This catches sub-second processing windows that delta-detection misses.
 const FOCUS_TO_ZONES: Record<string, BrainZoneId[]> = {
@@ -155,6 +197,14 @@ export function useBrainActivity(enabled = true): BrainActivity {
   });
 
   const [pulses, setPulses] = useState<BrainZoneId[]>([]);
+
+  // Real-time SSE: instant pulse on any zone, any tab.
+  const ssePulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useBrainPulseStream(enabled, (zone) => {
+    setPulses((prev) => (prev.includes(zone) ? prev : [...prev, zone]));
+    if (ssePulseTimerRef.current) clearTimeout(ssePulseTimerRef.current);
+    ssePulseTimerRef.current = setTimeout(() => setPulses([]), 900);
+  });
 
   // Derive raw totals from real APIs.
   const rawTotals = useMemo(() => {
