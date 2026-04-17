@@ -1,9 +1,10 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
-const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
 const EXEMPT_USERNAMES = new Set([
+  "MauriceDjedouadmin",
   "KellyIris001",
   "LennyIris002",
   "MickyIris003",
