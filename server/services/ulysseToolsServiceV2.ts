@@ -692,6 +692,94 @@ export const ulysseToolsV2: ChatCompletionTool[] = [
     }
   },
 
+  // === CONVERSATIONS HISTORY (page Historique) ===
+  {
+    type: "function",
+    function: {
+      name: "conversations_manage",
+      description: "Accès à l'historique complet des conversations textuelles d'Ulysse avec Maurice (table conversations + messages, panneau Historique). Actions: list (toutes les conversations), get (détail + messages d'une conversation), search (full-text), update_title, delete. Permet à Ulysse de se relire et d'analyser ses échanges passés.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list", "get", "search", "update_title", "delete"] },
+          id: { type: "number", description: "ID de la conversation" },
+          query: { type: "string", description: "Recherche full-text dans titres/contenus (pour search)" },
+          title: { type: "string", description: "Nouveau titre (pour update_title)" },
+          limit: { type: "number", description: "Limite de résultats (default 20)" },
+          offset: { type: "number" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+
+  // === TRACES (page /traces - logs d'exécution agents) ===
+  {
+    type: "function",
+    function: {
+      name: "traces_query",
+      description: "Consulte les traces d'exécution des agents (table agent_traces, page /traces). Permet à Ulysse de s'auto-analyser : voir ses propres exécutions passées, identifier patterns d'erreurs, comprendre ses temps de réponse. Actions: list (avec filtres), get (détail d'une trace + steps).",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list", "get"] },
+          trace_id: { type: "string", description: "ID de la trace (pour get)" },
+          agent: { type: "string", description: "Filtrer par agent (ulysse, iris, alfred...)" },
+          domain: { type: "string", description: "Filtrer par domaine" },
+          status: { type: "string", description: "Filtrer par statut (success, error, timeout...)" },
+          source: { type: "string" },
+          model: { type: "string" },
+          from: { type: "string", description: "Date début ISO 8601" },
+          to: { type: "string", description: "Date fin ISO 8601" },
+          limit: { type: "number" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+
+  // === SECURITY (page /security - audit logs) ===
+  {
+    type: "function",
+    function: {
+      name: "security_audit",
+      description: "Consulte les events de sécurité et logs d'audit (table audit_logs, page /security). Permet à Ulysse de surveiller les logins, accès, anomalies, actions sensibles. Actions: list (récents), filter (par action/resource/userId).",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list", "filter"] },
+          filter_action: { type: "string", description: "Filtrer par type d'action (login, logout, denied, ...)" },
+          resource: { type: "string", description: "Filtrer par ressource" },
+          target_user_id: { type: "number", description: "Filtrer par utilisateur" },
+          from: { type: "string", description: "Date début ISO 8601" },
+          limit: { type: "number", description: "Default 50" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+
+  // === SUPERCHAT (page /superchat - full management) ===
+  {
+    type: "function",
+    function: {
+      name: "superchat_manage",
+      description: "Gère les messages du SuperChat collaboratif (table superchat_messages, page /superchat). Actions: list_messages (par session), send_message, delete_message. Étend superchat_search (lecture-seule existante).",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list_messages", "send_message", "delete_message"] },
+          session_id: { type: "number", description: "ID de session SuperChat" },
+          message_id: { type: "number", description: "ID du message (pour delete)" },
+          content: { type: "string", description: "Contenu du message (pour send)" },
+          sender_name: { type: "string", description: "Nom de l'expéditeur (default: Ulysse)" },
+          limit: { type: "number" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+
   // === KANBAN TOOLS (DevFlow internal tasks) ===
   {
     type: "function",
@@ -2092,6 +2180,10 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   notes_manage: (a, u) => executeNotesManage(a, u),
   projects_manage: (a, u) => executeProjectsManage(a, u),
   tasks_manage: (a, u) => executeTasksManage(a, u),
+  conversations_manage: (a, u) => executeConversationsManage(a, u),
+  traces_query: (a, u) => executeTracesQuery(a, u),
+  security_audit: (a, u) => executeSecurityAudit(a, u),
+  superchat_manage: (a, u) => executeSuperchatManage(a, u),
   kanban_create_task: (a, u) => executeKanbanCreateTask(a, u),
   task_queue_manage: (a, u) => executeTaskQueueManage(a, u),
   work_journal_manage: (a, u) => executeWorkJournalManage(a, u),
@@ -5275,6 +5367,128 @@ async function executeTasksManage(args: any, userId: number): Promise<string> {
         if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
         await storage.deleteTask(args.id, userId);
         return JSON.stringify({ success: true, action: "deleted", id: args.id });
+      }
+      default:
+        return JSON.stringify({ success: false, error: `Action inconnue: ${args.action}` });
+    }
+  } catch (e: any) {
+    return JSON.stringify({ success: false, error: e?.message || String(e) });
+  }
+}
+
+// === CONVERSATIONS / TRACES / SECURITY / SUPERCHAT IMPLEMENTATIONS ===
+
+async function executeConversationsManage(args: any, userId: number): Promise<string> {
+  try {
+    const { chatStorage } = await import("../replit_integrations/chat/storage");
+    switch (args.action) {
+      case "list": {
+        const convs = await chatStorage.getAllConversations(userId, args.limit || 20, args.offset || 0);
+        return JSON.stringify({ success: true, count: convs.length, conversations: convs });
+      }
+      case "get": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const conv = await chatStorage.getConversation(args.id, userId);
+        if (!conv) return JSON.stringify({ success: false, error: "Conversation introuvable" });
+        const msgs = await chatStorage.getMessagesByConversation(args.id, userId);
+        return JSON.stringify({ success: true, conversation: conv, messages: msgs, message_count: msgs.length });
+      }
+      case "search": {
+        if (!args.query) return JSON.stringify({ success: false, error: "query requis" });
+        const results = await chatStorage.searchConversations({ query: args.query, limit: args.limit || 20 } as any, userId);
+        return JSON.stringify({ success: true, count: results.length, results });
+      }
+      case "update_title": {
+        if (!args.id || !args.title) return JSON.stringify({ success: false, error: "id et title requis" });
+        const updated = await chatStorage.updateConversationTitle(args.id, userId, args.title);
+        return JSON.stringify(updated ? { success: true, conversation: updated } : { success: false, error: "Introuvable" });
+      }
+      case "delete": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        await chatStorage.deleteConversation(args.id, userId);
+        return JSON.stringify({ success: true, action: "deleted", id: args.id });
+      }
+      default:
+        return JSON.stringify({ success: false, error: `Action inconnue: ${args.action}` });
+    }
+  } catch (e: any) {
+    return JSON.stringify({ success: false, error: e?.message || String(e) });
+  }
+}
+
+async function executeTracesQuery(args: any, userId: number): Promise<string> {
+  try {
+    const { traceCollector } = await import("./traceCollector");
+    if (args.action === "get") {
+      if (!args.trace_id) return JSON.stringify({ success: false, error: "trace_id requis" });
+      const trace = await traceCollector.getTrace(args.trace_id);
+      return JSON.stringify(trace ? { success: true, trace } : { success: false, error: "Trace introuvable" });
+    }
+    // list
+    const result = await traceCollector.getTraces({
+      userId,
+      agent: args.agent,
+      domain: args.domain,
+      status: args.status,
+      source: args.source,
+      model: args.model,
+      from: args.from ? new Date(args.from) : undefined,
+      to: args.to ? new Date(args.to) : undefined,
+      limit: args.limit || 30,
+    });
+    return JSON.stringify({ success: true, count: result.traces.length, total: result.total, traces: result.traces });
+  } catch (e: any) {
+    return JSON.stringify({ success: false, error: e?.message || String(e) });
+  }
+}
+
+async function executeSecurityAudit(args: any, _userId: number): Promise<string> {
+  try {
+    const { db } = await import("../db");
+    const { auditLogs } = await import("@shared/schema");
+    const { eq, and, gte, desc } = await import("drizzle-orm");
+    const conditions: any[] = [];
+    if (args.filter_action) conditions.push(eq(auditLogs.action, args.filter_action));
+    if (args.resource) conditions.push(eq(auditLogs.resource, args.resource));
+    if (args.target_user_id) conditions.push(eq(auditLogs.userId, args.target_user_id));
+    if (args.from) conditions.push(gte(auditLogs.timestamp, new Date(args.from)));
+    const where = conditions.length ? and(...conditions) : undefined;
+    const rows = await db.select().from(auditLogs).where(where as any).orderBy(desc(auditLogs.timestamp)).limit(args.limit || 50);
+    return JSON.stringify({ success: true, count: rows.length, events: rows });
+  } catch (e: any) {
+    return JSON.stringify({ success: false, error: e?.message || String(e) });
+  }
+}
+
+async function executeSuperchatManage(args: any, userId: number): Promise<string> {
+  try {
+    const { db } = await import("../db");
+    const { superChatMessages } = await import("@shared/schema");
+    const { eq, desc } = await import("drizzle-orm");
+    switch (args.action) {
+      case "list_messages": {
+        if (!args.session_id) return JSON.stringify({ success: false, error: "session_id requis" });
+        const rows = await db.select().from(superChatMessages)
+          .where(eq(superChatMessages.sessionId, args.session_id))
+          .orderBy(desc(superChatMessages.createdAt))
+          .limit(args.limit || 50);
+        return JSON.stringify({ success: true, count: rows.length, messages: rows });
+      }
+      case "send_message": {
+        if (!args.session_id || !args.content) return JSON.stringify({ success: false, error: "session_id et content requis" });
+        const [created] = await db.insert(superChatMessages).values({
+          sessionId: args.session_id,
+          sender: "ulysse",
+          senderName: args.sender_name || "Ulysse",
+          content: args.content,
+          metadata: { fromTool: true, userId },
+        } as any).returning();
+        return JSON.stringify({ success: true, action: "sent", message: created });
+      }
+      case "delete_message": {
+        if (!args.message_id) return JSON.stringify({ success: false, error: "message_id requis" });
+        await db.delete(superChatMessages).where(eq(superChatMessages.id, args.message_id));
+        return JSON.stringify({ success: true, action: "deleted", id: args.message_id });
       }
       default:
         return JSON.stringify({ success: false, error: `Action inconnue: ${args.action}` });

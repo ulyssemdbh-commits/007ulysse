@@ -602,6 +602,7 @@ const CORE_TOOLS = new Set([
   "email_read_message", "email_reply", "email_forward",
   "todoist_list_tasks", "todoist_create_task", "todoist_complete_task", "homework_manage",
   "notes_manage", "projects_manage", "tasks_manage",
+  "conversations_manage", "traces_query", "security_audit", "superchat_manage",
   "spotify_control", "smarthome_control", "location_get_weather",
   "discord_send_message", "discord_status", "notion_manage", "drive_manage",
   "query_sports_data", "query_match_intelligence", "query_stock_data",

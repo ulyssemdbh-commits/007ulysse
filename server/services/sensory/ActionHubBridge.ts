@@ -65,6 +65,10 @@ const TOOL_CATEGORY_MAP: Record<string, ActionCategory> = {
   notes_manage: "tool_call",
   projects_manage: "tool_call",
   tasks_manage: "tool_call",
+  conversations_manage: "tool_call",
+  traces_query: "tool_call",
+  security_audit: "tool_call",
+  superchat_manage: "tool_call",
   // Kanban & Task Queue
   kanban_create_task: "tool_call",
   task_queue_manage: "tool_call",
