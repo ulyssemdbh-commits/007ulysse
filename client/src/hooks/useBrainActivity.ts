@@ -89,6 +89,15 @@ export interface BrainActivity {
     events: number;
     uptime: number;
   };
+  /** Cumulative growth metrics — drives brain size, neuron density, connection count. */
+  evolution: {
+    /** Total accumulated knowledge: memories + concepts + bridges + outputs. */
+    knowledge: number;
+    /** Brain scale multiplier 1.0 → 1.6 based on log(knowledge). */
+    scale: number;
+    /** How many extra cross-zone synapses to render (0..20). */
+    extraSynapses: number;
+  };
   pulses: BrainZoneId[];
   recentEvents: Array<{ type: string; timestamp: number; summary?: string }>;
   ready: boolean;
@@ -244,8 +253,8 @@ export function useBrainActivity(enabled = true): BrainActivity {
       const dtSec = Math.max(0.5, (now - prev.ts) / 1000);
       // Real Hz: events since last delta / time elapsed. Decays naturally between events.
       const firingHz = prev.total > 0 ? Math.max(0, (total - prev.total) / dtSec) : 0;
-      // Neuron count grows with real usage. Min 8, asymptote ~60.
-      const neurons = Math.min(60, 8 + Math.floor(Math.sqrt(total) * 3));
+      // Neuron count grows with real usage. Min 8, asymptote ~200 — brain DOIT grandir.
+      const neurons = Math.min(200, 8 + Math.floor(Math.sqrt(total) * 5));
       const detail =
         id === "prefrontal" ? `focus: ${focus === "idle" ? "repos" : focus}` :
         id === "motor"      ? `${total} actions exécutées` :
@@ -269,8 +278,26 @@ export function useBrainActivity(enabled = true): BrainActivity {
     });
   }, [rawTotals, pulses, focus, focusActiveZones]);
 
+  // Evolution: brain grows with cumulative knowledge.
+  const knowledge =
+    rawTotals.hippocampus +     // souvenirs
+    rawTotals.concept +          // notions apprises
+    rawTotals.feature +          // pensées vectorielles
+    rawTotals.association * 2 +  // bridges/intuitions count double
+    rawTotals.language +
+    rawTotals.motor;
+  // Scale 1.0 → 1.6 logarithmically (no overflow even at 100k events).
+  const evolutionScale = Math.min(1.6, 1 + Math.log10(Math.max(1, knowledge + 1)) / 12);
+  // Extra synapses: 0 at 0 bridges → 20 at 100+ bridges.
+  const extraSynapses = Math.min(20, Math.floor(Math.sqrt(rawTotals.association) * 2));
+
   return {
     zones,
+    evolution: {
+      knowledge,
+      scale: evolutionScale,
+      extraSynapses,
+    },
     consciousness: {
       cognitiveLoad,
       focus,

@@ -368,11 +368,29 @@ function BrainScene({ onSelectZone }: { onSelectZone: (id: BrainZoneId) => void 
   const activity = useBrainActivity(true);
   const groupRef = useRef<THREE.Group>(null);
 
+  // Smoothly interpolate brain scale toward evolution scale (so it visibly grows when new memories arrive).
+  const targetScale = activity.evolution.scale;
   useFrame((_, delta) => {
     if (groupRef.current) {
       groupRef.current.rotation.y += delta * 0.06;
+      const cur = groupRef.current.scale.x;
+      const next = cur + (targetScale - cur) * Math.min(1, delta * 0.8);
+      groupRef.current.scale.setScalar(next);
     }
   });
+
+  // Build a deterministic list of extra synapses from cross-zone pairs not in CONNECTIONS.
+  const extraConnections = useMemo(() => {
+    const ids = Object.keys(ZONE_POSITIONS) as BrainZoneId[];
+    const existing = new Set(CONNECTIONS.map(([a, b]) => `${a}|${b}`).concat(CONNECTIONS.map(([a, b]) => `${b}|${a}`)));
+    const candidates: Array<[BrainZoneId, BrainZoneId]> = [];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        if (!existing.has(`${ids[i]}|${ids[j]}`)) candidates.push([ids[i], ids[j]]);
+      }
+    }
+    return candidates.slice(0, activity.evolution.extraSynapses);
+  }, [activity.evolution.extraSynapses]);
 
   return (
     <>
@@ -405,7 +423,7 @@ function BrainScene({ onSelectZone }: { onSelectZone: (id: BrainZoneId) => void 
           <SignalFlow key={`flow-${zone.id}`} zone={zone} zonePos={ZONE_POSITIONS[zone.id]} />
         ))}
 
-        {/* Inter-zone axons */}
+        {/* Inter-zone axons (base architecture) */}
         {CONNECTIONS.map(([a, b], i) => {
           const zoneA = activity.zones.find(z => z.id === a);
           const zoneB = activity.zones.find(z => z.id === b);
@@ -413,6 +431,21 @@ function BrainScene({ onSelectZone }: { onSelectZone: (id: BrainZoneId) => void 
           return (
             <AxonConnection
               key={i}
+              from={ZONE_POSITIONS[a]}
+              to={ZONE_POSITIONS[b]}
+              active={active}
+            />
+          );
+        })}
+
+        {/* Acquired synapses — grow with bridges/cross-hub intuitions */}
+        {extraConnections.map(([a, b], i) => {
+          const zoneA = activity.zones.find(z => z.id === a);
+          const zoneB = activity.zones.find(z => z.id === b);
+          const active = !!(zoneA?.active || zoneB?.active);
+          return (
+            <AxonConnection
+              key={`extra-${i}`}
               from={ZONE_POSITIONS[a]}
               to={ZONE_POSITIONS[b]}
               active={active}
