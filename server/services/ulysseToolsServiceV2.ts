@@ -626,6 +626,72 @@ export const ulysseToolsV2: ChatCompletionTool[] = [
     }
   },
 
+  // === NOTES (panneau Notes / page /notes) ===
+  {
+    type: "function",
+    function: {
+      name: "notes_manage",
+      description: "Gère les Notes de Maurice (page /notes). Permet list, get, create, update, delete, search. EXÉCUTE IMMÉDIATEMENT.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list", "get", "create", "update", "delete", "search"] },
+          id: { type: "number" },
+          project_id: { type: "number", description: "Filtrer / attacher à un projet" },
+          title: { type: "string" },
+          content: { type: "string" },
+          tags: { type: "array", items: { type: "string" } },
+          query: { type: "string", description: "Recherche full-text (pour search)" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+
+  // === PROJECTS (page /projects) ===
+  {
+    type: "function",
+    function: {
+      name: "projects_manage",
+      description: "Gère les Projets de Maurice (page /projects). Actions: list, get, create, update, delete. EXÉCUTE IMMÉDIATEMENT.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list", "get", "create", "update", "delete"] },
+          id: { type: "number" },
+          name: { type: "string" },
+          description: { type: "string" },
+          status: { type: "string", description: "active, archived, completed..." },
+          color: { type: "string" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+
+  // === TASKS (page /tasks - table tasks) ===
+  {
+    type: "function",
+    function: {
+      name: "tasks_manage",
+      description: "Gère les Tâches de Maurice de la page /tasks (table tasks principale, distincte de Todoist et de Devoirs). Actions: list, get, create, update, complete, delete. EXÉCUTE IMMÉDIATEMENT.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list", "get", "create", "update", "complete", "delete"] },
+          id: { type: "number" },
+          project_id: { type: "number" },
+          title: { type: "string" },
+          description: { type: "string" },
+          status: { type: "string", description: "pending, in_progress, completed, etc." },
+          priority: { type: "string", enum: ["low", "medium", "high", "urgent"] },
+          due_date: { type: "string" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+
   // === KANBAN TOOLS (DevFlow internal tasks) ===
   {
     type: "function",
@@ -2023,6 +2089,9 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   todoist_list_tasks: (a) => executeTodoistListTasks(a),
   todoist_complete_task: (a) => executeTodoistCompleteTask(a),
   homework_manage: (a, u) => executeHomeworkManage(a, u),
+  notes_manage: (a, u) => executeNotesManage(a, u),
+  projects_manage: (a, u) => executeProjectsManage(a, u),
+  tasks_manage: (a, u) => executeTasksManage(a, u),
   kanban_create_task: (a, u) => executeKanbanCreateTask(a, u),
   task_queue_manage: (a, u) => executeTaskQueueManage(a, u),
   work_journal_manage: (a, u) => executeWorkJournalManage(a, u),
@@ -4998,6 +5067,162 @@ async function executeHomeworkManage(
     }
   } catch (error: any) {
     return JSON.stringify({ success: false, error: error?.message || String(error) });
+  }
+}
+
+// === NOTES / PROJECTS / TASKS TOOL IMPLEMENTATIONS ===
+
+async function executeNotesManage(args: any, userId: number): Promise<string> {
+  try {
+    const { storage } = await import("../storage");
+    switch (args.action) {
+      case "list": {
+        const notes = await storage.getNotes(userId, args.project_id);
+        return JSON.stringify({ success: true, count: notes.length, notes });
+      }
+      case "get": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const notes = await storage.getNotes(userId);
+        const note = notes.find((n: any) => n.id === args.id);
+        return JSON.stringify(note ? { success: true, note } : { success: false, error: "Note introuvable" });
+      }
+      case "create": {
+        if (!args.title) return JSON.stringify({ success: false, error: "title requis" });
+        const created = await storage.createNote({
+          userId, title: args.title, content: args.content || "",
+          projectId: args.project_id || null, tags: args.tags || []
+        } as any);
+        return JSON.stringify({ success: true, action: "created", note: created });
+      }
+      case "update": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const update: any = {};
+        if (args.title !== undefined) update.title = args.title;
+        if (args.content !== undefined) update.content = args.content;
+        if (args.tags !== undefined) update.tags = args.tags;
+        if (args.project_id !== undefined) update.projectId = args.project_id;
+        const updated = await storage.updateNote(args.id, userId, update);
+        return JSON.stringify(updated ? { success: true, note: updated } : { success: false, error: "Note introuvable" });
+      }
+      case "delete": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        await storage.deleteNote(args.id, userId);
+        return JSON.stringify({ success: true, action: "deleted", id: args.id });
+      }
+      case "search": {
+        if (!args.query) return JSON.stringify({ success: false, error: "query requis" });
+        const all = await storage.getNotes(userId);
+        const q = args.query.toLowerCase();
+        const matches = all.filter((n: any) =>
+          (n.title || "").toLowerCase().includes(q) || (n.content || "").toLowerCase().includes(q)
+        );
+        return JSON.stringify({ success: true, count: matches.length, notes: matches });
+      }
+      default:
+        return JSON.stringify({ success: false, error: `Action inconnue: ${args.action}` });
+    }
+  } catch (e: any) {
+    return JSON.stringify({ success: false, error: e?.message || String(e) });
+  }
+}
+
+async function executeProjectsManage(args: any, userId: number): Promise<string> {
+  try {
+    const { storage } = await import("../storage");
+    switch (args.action) {
+      case "list": {
+        const projects = await storage.getProjects(userId);
+        return JSON.stringify({ success: true, count: projects.length, projects });
+      }
+      case "get": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const all = await storage.getProjects(userId);
+        const p = all.find((x: any) => x.id === args.id);
+        return JSON.stringify(p ? { success: true, project: p } : { success: false, error: "Projet introuvable" });
+      }
+      case "create": {
+        if (!args.name) return JSON.stringify({ success: false, error: "name requis" });
+        const created = await storage.createProject({
+          userId, name: args.name, description: args.description || null,
+          status: args.status || "active", color: args.color || null
+        } as any);
+        return JSON.stringify({ success: true, action: "created", project: created });
+      }
+      case "update": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const update: any = {};
+        if (args.name !== undefined) update.name = args.name;
+        if (args.description !== undefined) update.description = args.description;
+        if (args.status !== undefined) update.status = args.status;
+        if (args.color !== undefined) update.color = args.color;
+        const updated = await storage.updateProject(args.id, userId, update);
+        return JSON.stringify(updated ? { success: true, project: updated } : { success: false, error: "Projet introuvable" });
+      }
+      case "delete": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        await storage.deleteProject(args.id, userId);
+        return JSON.stringify({ success: true, action: "deleted", id: args.id });
+      }
+      default:
+        return JSON.stringify({ success: false, error: `Action inconnue: ${args.action}` });
+    }
+  } catch (e: any) {
+    return JSON.stringify({ success: false, error: e?.message || String(e) });
+  }
+}
+
+async function executeTasksManage(args: any, userId: number): Promise<string> {
+  try {
+    const { storage } = await import("../storage");
+    switch (args.action) {
+      case "list": {
+        const tasks = await storage.getTasks(userId, args.project_id);
+        return JSON.stringify({ success: true, count: tasks.length, tasks });
+      }
+      case "get": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const all = await storage.getTasks(userId);
+        const t = all.find((x: any) => x.id === args.id);
+        return JSON.stringify(t ? { success: true, task: t } : { success: false, error: "Tâche introuvable" });
+      }
+      case "create": {
+        if (!args.title) return JSON.stringify({ success: false, error: "title requis" });
+        const { storage: s2 } = await import("../storage");
+        const created = await (s2 as any).createTask({
+          userId,
+          projectId: args.project_id || null,
+          title: args.title,
+          description: args.description || null,
+          status: args.status || "pending",
+          priority: args.priority || "medium",
+          dueDate: args.due_date ? new Date(args.due_date) : null
+        });
+        return JSON.stringify({ success: true, action: "created", task: created });
+      }
+      case "update":
+      case "complete": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        const update: any = {};
+        if (args.action === "complete") update.status = "completed";
+        if (args.title !== undefined) update.title = args.title;
+        if (args.description !== undefined) update.description = args.description;
+        if (args.status !== undefined) update.status = args.status;
+        if (args.priority !== undefined) update.priority = args.priority;
+        if (args.due_date !== undefined) update.dueDate = args.due_date ? new Date(args.due_date) : null;
+        if (args.project_id !== undefined) update.projectId = args.project_id;
+        const updated = await storage.updateTask(args.id, userId, update);
+        return JSON.stringify(updated ? { success: true, task: updated } : { success: false, error: "Tâche introuvable" });
+      }
+      case "delete": {
+        if (!args.id) return JSON.stringify({ success: false, error: "id requis" });
+        await storage.deleteTask(args.id, userId);
+        return JSON.stringify({ success: true, action: "deleted", id: args.id });
+      }
+      default:
+        return JSON.stringify({ success: false, error: `Action inconnue: ${args.action}` });
+    }
+  } catch (e: any) {
+    return JSON.stringify({ success: false, error: e?.message || String(e) });
   }
 }
 
