@@ -110,6 +110,15 @@ export class MemoryService {
         );
       }
     }
+    try {
+      const { sensorySystemService } = await import("./sensory/index.js");
+      sensorySystemService.recordPulse?.({
+        zones: ["hippocampus", "association"],
+        intensity: 0.7,
+        source: "memory.updateOrCreate",
+        meta: { userId, category, key },
+      });
+    } catch {}
   }
 
   // Get only verified memories (for critical operations)
