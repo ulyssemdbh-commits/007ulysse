@@ -56,12 +56,24 @@ export function useOpenAIRealtime(options: UseOpenAIRealtimeOptions = {}) {
   const [error, setError] = useState<string | null>(null);
 
   // ---- Audio playback (PCM16 24kHz) ----
+  // iOS Safari requires AudioContext creation + resume INSIDE a user gesture,
+  // so we pre-create both contexts in startCall() below. enqueuePCM16 is called
+  // from the WS handler (not a user gesture), so we only *use* contexts here.
   const enqueuePCM16 = useCallback((base64: string) => {
     if (!playbackContextRef.current) {
-      playbackContextRef.current = new (window.AudioContext ||
-        (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      // Fallback if somehow we receive audio before startCall (shouldn't happen)
+      try {
+        playbackContextRef.current = new (window.AudioContext ||
+          (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      } catch {
+        playbackContextRef.current = new (window.AudioContext ||
+          (window as any).webkitAudioContext)();
+      }
     }
     const ctx = playbackContextRef.current;
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
     const buffer = base64ToArrayBuffer(base64);
     const pcm16 = new Int16Array(buffer);
     const float32 = new Float32Array(pcm16.length);
@@ -249,7 +261,46 @@ export function useOpenAIRealtime(options: UseOpenAIRealtimeOptions = {}) {
     setVoiceState("idle");
   }, [stopMic]);
 
+  // Pre-warm both AudioContexts INSIDE the user gesture. iOS Safari will mute
+  // any AudioContext created outside a tap/click. Called from startCall.
+  const primeAudioContexts = useCallback(async () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext ||
+          (window as any).webkitAudioContext)();
+      }
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+      if (!playbackContextRef.current) {
+        try {
+          playbackContextRef.current = new (window.AudioContext ||
+            (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        } catch {
+          // iOS < 14.5 may throw on sampleRate option — fall back to default rate,
+          // Web Audio will resample the 24kHz buffers automatically.
+          playbackContextRef.current = new (window.AudioContext ||
+            (window as any).webkitAudioContext)();
+        }
+      }
+      if (playbackContextRef.current.state === "suspended") {
+        await playbackContextRef.current.resume();
+      }
+      // iOS trick: play a 1-sample silent buffer to fully unlock the context
+      const silent = playbackContextRef.current.createBuffer(1, 1, 22050);
+      const src = playbackContextRef.current.createBufferSource();
+      src.buffer = silent;
+      src.connect(playbackContextRef.current.destination);
+      src.start(0);
+    } catch (err) {
+      console.warn("[OpenAIRealtime] primeAudioContexts failed:", err);
+    }
+  }, []);
+
   const startCall = useCallback(async () => {
+    // CRITICAL for iOS: do this FIRST, inside the user gesture
+    await primeAudioContexts();
+
     if (connectionState !== "authenticated") {
       connect();
       // Wait for auth then start
