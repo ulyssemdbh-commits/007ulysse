@@ -63,6 +63,7 @@ interface VoiceSession {
   pendingTranscript?: string;
   channel: VoiceChannel;
   hasValidHeader: boolean;
+  headerSearchBuffer?: Buffer;
   bargeInRequested: boolean;
 }
 
@@ -359,19 +360,35 @@ function handleAudioChunk(session: VoiceSession, data: Buffer) {
     return;
   }
   
-  // WebM header validation: Only accept first chunk if it has valid EBML header
-  // MediaRecorder sends header (0x1A 0x45 0xDF 0xA3) only in first chunk
+  // WebM header validation: search for EBML magic (0x1A 0x45 0xDF 0xA3) across chunks.
+  // MediaRecorder may fragment the very first chunks (1 byte then 261 bytes etc.),
+  // so we buffer the prefix until the magic is found instead of rejecting per-chunk.
   if (!session.isInCallMode && !session.hasValidHeader) {
-    const hasHeader = data.length >= 4 && 
-      data[0] === 0x1A && data[1] === 0x45 && data[2] === 0xDF && data[3] === 0xA3;
-    
-    if (!hasHeader) {
-      console.log(`[Voice] Ignoring chunk without header (awaiting valid WebM header): ${data.slice(0, 4).toString('hex')}`);
+    session.headerSearchBuffer = Buffer.concat([
+      session.headerSearchBuffer ?? Buffer.alloc(0),
+      data,
+    ]);
+    const buf = session.headerSearchBuffer;
+    let idx = -1;
+    for (let i = 0; i + 3 < buf.length; i++) {
+      if (buf[i] === 0x1A && buf[i + 1] === 0x45 && buf[i + 2] === 0xDF && buf[i + 3] === 0xA3) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx === -1) {
+      // Cap search buffer to avoid unbounded growth (8KB is far more than any EBML header)
+      if (buf.length > 8192) {
+        console.warn(`[Voice] Dropping ${buf.length} bytes - no EBML header found, resetting search buffer`);
+        session.headerSearchBuffer = Buffer.alloc(0);
+      }
       return;
     }
-    
+    // Found the header — keep the slice from idx onward as the first valid chunk
+    data = buf.slice(idx);
     session.hasValidHeader = true;
-    console.log(`[Voice] Valid WebM header received, buffering started`);
+    session.headerSearchBuffer = undefined;
+    console.log(`[Voice] Valid WebM header found at offset ${idx} (${data.length} bytes assembled), buffering started`);
   }
   
   // Call mode: use TurnDetector for robust end-of-speech detection
@@ -1050,7 +1067,7 @@ async function handleControlMessage(session: VoiceSession, message: any) {
         return;
       }
       session.audioChunks = [];
-      session.hasValidHeader = false;
+      session.hasValidHeader = false; session.headerSearchBuffer = undefined;
       session.conversationId = message.conversationId;
       session.ws.send(JSON.stringify({ type: "listening_started" }));
       break;
@@ -1092,7 +1109,7 @@ async function handleControlMessage(session: VoiceSession, message: any) {
 
       // Clear WebM audio buffers (not needed anymore), keep pcmBuffer for speaker verification
       session.audioChunks = [];
-      session.hasValidHeader = false;
+      session.hasValidHeader = false; session.headerSearchBuffer = undefined;
       session.pendingTranscript = "";
       session.turnDetector?.reset();
 
@@ -1113,7 +1130,7 @@ async function handleControlMessage(session: VoiceSession, message: any) {
       session.isProcessing = false;
       session.audioChunks = [];
       session.pcmBuffer = [];
-      session.hasValidHeader = false;
+      session.hasValidHeader = false; session.headerSearchBuffer = undefined;
       session.ws.send(JSON.stringify({ type: "cancelled" }));
       break;
 
@@ -1183,7 +1200,7 @@ async function processAudioAndRespond(session: VoiceSession, context: any[]) {
     if (!isValidWebm) {
       console.log(`[Voice] Invalid WebM format, magic bytes: ${audioBuffer.slice(0, 4).toString('hex')}`);
       session.isProcessing = false;
-      session.hasValidHeader = false;
+      session.hasValidHeader = false; session.headerSearchBuffer = undefined;
       return;
     }
 
@@ -1740,14 +1757,14 @@ async function generateAndStreamResponse(session: VoiceSession, userMessage: str
     sendToSession(session, { type: "done" });
     session.isProcessing = false;
     session.audioChunks = [];
-    session.hasValidHeader = false;
+    session.hasValidHeader = false; session.headerSearchBuffer = undefined;
 
   } catch (error) {
     console.error("Response generation error:", error);
     sendToSession(session, { type: "error", message: "Erreur de génération" });
     session.isProcessing = false;
     session.audioChunks = [];
-    session.hasValidHeader = false;
+    session.hasValidHeader = false; session.headerSearchBuffer = undefined;
   }
 }
 
