@@ -23,6 +23,22 @@ const lazy = {
   selfReflection: () => loadService("selfReflection", () => import("./selfReflectionJournal")),
 };
 
+// Map a scheduled job to brain zones based on keywords in id/name.
+function inferJobBrainZones(id: string, name: string): string[] {
+  const k = `${id} ${name}`.toLowerCase();
+  const zones = new Set<string>(["prefrontal"]);
+  if (/(homework|task|execute|action|run)/.test(k)) zones.add("motor");
+  if (/(learn|knowledge|sync|sport.*pred|optim|memor|reflect|digest)/.test(k)) { zones.add("hippocampus"); zones.add("concept"); }
+  if (/(cross-domain|association|pattern|behavior)/.test(k)) zones.add("association");
+  if (/(email|mail|agentmail|sugumail|suguval)/.test(k)) { zones.add("language"); zones.add("sensory"); }
+  if (/(discord|notif|broadcast)/.test(k)) zones.add("language");
+  if (/(monitor|website|ssl|url|geofence|location|screen|vision|watch)/.test(k)) zones.add("sensory");
+  if (/(sport|stock|foot|finance|news|data|fetch|crawl|collect)/.test(k)) zones.add("feature");
+  if (/(cleanup|cache|optim|metrics|stats)/.test(k)) zones.add("association");
+  if (/(autonomous|initiative|proactive|anticipat|self|reflect)/.test(k)) zones.add("thinking");
+  return Array.from(zones);
+}
+
 interface ScheduledJob {
   id: string;
   name: string;
@@ -71,8 +87,21 @@ class JobScheduler {
     if (this.isLightMode() && !this.lightJobIds.has(job.id)) {
       enabled = false;
     }
+
+    // Wrap execute so EVERY scheduled job pulses the 3D brain automatically.
+    const originalExecute = job.execute;
+    const wrappedExecute = async () => {
+      try {
+        const { brainPulse } = await import("./sensory/BrainPulse");
+        const zones = inferJobBrainZones(job.id, job.name);
+        brainPulse(zones, `job:${job.id}`, job.name, { autonomous: true, intensity: 2 });
+      } catch { /* best-effort */ }
+      return originalExecute();
+    };
+
     this.jobs.set(job.id, {
       ...job,
+      execute: wrappedExecute,
       enabled,
       lastRun: 0
     });
