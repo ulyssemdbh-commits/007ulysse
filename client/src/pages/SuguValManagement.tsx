@@ -5,6 +5,7 @@ import { useTheme } from "@/components/theme-provider";
 import { ArrowLeft, Menu, Upload, Sun, Moon, LogOut, X, ShoppingCart, Receipt, Landmark, Users } from "lucide-react";
 
 import { SuguThemeCtx } from "./suguval/context";
+import { useTabListener } from "@/hooks/useAppNavigation";
 import { TABS } from "./suguval/types";
 import { DashboardTab } from "./suguval/DashboardTab";
 import { AchatsTab } from "./suguval/AchatsTab";
@@ -163,6 +164,18 @@ export default function SuguValManagement() {
 
 function SuguValManagementInner() {
     const [tab, setTab] = useState("dashboard");
+    useTabListener(setTab, TABS.map(t => t.id), {
+        "accueil": "dashboard", "vue": "dashboard", "apercu": "dashboard",
+        "achat": "achats",
+        "frais generaux": "frais", "frais généraux": "frais", "generaux": "frais",
+        "journal": "caisse", "journal de caisse": "caisse",
+        "gestion rh": "rh", "ressources humaines": "rh", "employes": "rh", "employés": "rh", "paie": "rh",
+        "fournisseur": "fournisseurs",
+        "audit": "audit",
+        "comptabilite": "comptabilite", "comptabilité": "comptabilite", "compta": "comptabilite",
+        "archive": "archives",
+        "hub": "hubrise", "hubrise": "hubrise",
+    });
     const [, navigate] = useLocation();
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [compactCards, setCompactCards] = useState(true);

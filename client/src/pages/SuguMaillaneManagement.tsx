@@ -7,6 +7,7 @@ import {
     Upload, Archive, Gauge, Building2, Sun, Moon, LogOut,
 } from "lucide-react";
 import { SuguThemeCtx } from "./sugumaillane/shared";
+import { useTabListener } from "@/hooks/useAppNavigation";
 import { DashboardTab } from "./sugumaillane/DashboardTab";
 import { AchatsTab } from "./sugumaillane/AchatsTab";
 import { FraisTab } from "./sugumaillane/FraisTab";
@@ -169,6 +170,16 @@ export default function SuguMaillaneManagement() {
 
 function SuguMaillaneManagementInner() {
     const [tab, setTab] = useState("dashboard");
+    useTabListener(setTab, TABS.map(t => t.id), {
+        "accueil": "dashboard", "vue": "dashboard", "apercu": "dashboard",
+        "achat": "achats", "achats": "achats",
+        "frais generaux": "frais", "frais généraux": "frais", "generaux": "frais",
+        "journal": "caisse", "journal de caisse": "caisse",
+        "gestion rh": "rh", "ressources humaines": "rh", "employes": "rh", "employés": "rh", "paie": "rh",
+        "fournisseur": "fournisseurs",
+        "audit": "audit", "audits": "audit",
+        "archive": "archives",
+    });
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [compactCards, setCompactCards] = useState(false);
     const { user, logout } = useAuth();

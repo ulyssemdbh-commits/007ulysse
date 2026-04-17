@@ -174,7 +174,7 @@ export const integrationToolDefs: ChatCompletionTool[] = [
 // ── NOTION ────────────────────────────────────────────────────────────────────
 export async function executeNotionManage(args: Record<string, any>): Promise<string> {
     try {
-        const { notionService } = await import("../notionService");
+        const notionService: any = await import("../notionService");
         const { action, query, databaseId, pageId, title, content, parentId, limit } = args;
 
         switch (action) {
@@ -225,7 +225,7 @@ export async function executeNotionManage(args: Record<string, any>): Promise<st
 // ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
 export async function executeDriveManage(args: Record<string, any>): Promise<string> {
     try {
-        const { googleDriveService } = await import("../googleDriveService");
+        const googleDriveService: any = await import("../googleDriveService");
         const { action, query, folderId, name, parentId, fileId, limit } = args;
 
         switch (action) {

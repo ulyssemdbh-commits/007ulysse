@@ -138,6 +138,28 @@ const ACTION_PATTERNS: IntentPattern[] = [
     priority: 10
   },
   
+  // PC DESKTOP - Contrôle direct (open_folder, open_app, run_command)
+  {
+    patterns: [
+      /(?:ouvre|open).*(?:dossier|folder|répertoire|directory)/i,
+      /(?:ouvre|open).*(?:sur mon bureau|on my desktop|desktop)/i,
+      /(?:ouvre|open).*(?:mes documents|my documents|documents|téléchargements|downloads)/i,
+      /(?:ouvre|open|lance|start|démarre|run).*(?:word|excel|powerpoint|outlook|notepad|paint|chrome|firefox|edge|vscode|terminal|teams|spotify|discord|slack|notion|explorateur|explorer)/i,
+      /(?:lance|exécute|run|execute).*(?:commande|command|cmd|powershell|terminal)/i,
+      /(?:prends? la main|take control|contrôle|prise en main|remote control)/i,
+      /(?:capture|screenshot|écran|screen).*(?:pc|bureau|desktop|ordi)/i,
+      /(?:clique|click|tape|type|scroll|défile)/i,
+      /(?:ouvre|open)\s+(?:le\s+)?(?:fichier|file)/i,
+      /(?:va|navigue|navigate).*(?:sur mon pc|on my pc|sur l'ordi)/i,
+      /(?:lance|joue|démarre|start|play|appuie sur|appuie sur le|clique sur).*(?:vidéo|video|film|youtube|player|lecture|play)/i,
+      /\b(?:utilise|bouge|déplace|move|use)\b.*(?:souris|mouse|clavier|keyboard|curseur|cursor)/i,
+      /(?:appuie|tape|press|hit).*(?:touche|key|entrée|enter|espace|space|escape|tab)/i,
+      /(?:fais|effectue|do).*(?:un|le)?\s*(?:clic|click)/i,
+    ],
+    tools: ["screen_monitor_manage"],
+    priority: 10
+  },
+
   // DOMOTIQUE - Contrôle
   {
     patterns: [
@@ -246,10 +268,14 @@ const ACTION_PATTERNS: IntentPattern[] = [
   {
     patterns: [
       /(?:achat|fournisseur|approvisionnement).*(?:sugu|restaurant)/i,
-      /(?:sugu|restaurant).*(?:achat|fournisseur)/i
+      /(?:sugu|restaurant).*(?:achat|fournisseur)/i,
+      /(?:metro|promocash|transgourmet|brake|davigel|pomona)/i,
+      /(?:facture|prix|tarif|co[uû]t).*(?:metro|promocash|transgourmet|fournisseur)/i,
+      /(?:compl[eè]te|remplis|mets|ajoute).*(?:prix|tarif|tableau|stock)/i,
+      /stock\s+sugu/i,
     ],
-    tools: ["manage_sugu_purchases"],
-    priority: 9
+    tools: ["manage_sugu_purchases", "search_sugu_data"],
+    priority: 10
   },
   {
     patterns: [

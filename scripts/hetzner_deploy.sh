@@ -10,7 +10,7 @@ echo "[$(date -Iseconds)] =============================="
 cd "$DIR"
 
 echo "[$(date -Iseconds)] [1/6] Git fetch + reset..."
-git fetch 007ulysse main 2>&1 || git fetch origin main 2>&1
+git fetch origin main 2>&1
 git reset --hard FETCH_HEAD 2>&1
 
 echo "[$(date -Iseconds)] [2/6] Full dependency install..."

@@ -176,6 +176,21 @@ export class ScreenMonitorService {
     return prefs;
   }
 
+  async ensurePreferencesEnabled(userId: number) {
+    const prefs = await this.getPreferences(userId);
+    if (!prefs) {
+      await db.insert(screenMonitorPreferences)
+        .values({ userId, isEnabled: true })
+        .returning();
+      console.log(`${LOG_PREFIX} Auto-created preferences for user ${userId} (enabled)`);
+    } else if (!prefs.isEnabled) {
+      await db.update(screenMonitorPreferences)
+        .set({ isEnabled: true, updatedAt: new Date() })
+        .where(eq(screenMonitorPreferences.userId, userId));
+      console.log(`${LOG_PREFIX} Auto-enabled preferences for user ${userId}`);
+    }
+  }
+
   async setPreferences(userId: number, data: Partial<typeof screenMonitorPreferences.$inferInsert>) {
     const existing = await this.getPreferences(userId);
     
@@ -191,6 +206,21 @@ export class ScreenMonitorService {
       .values({ userId, ...data })
       .returning();
     return created;
+  }
+
+  async ensurePersistentSession(userId: number, deviceId: string, deviceName?: string) {
+    const existing = this.activeSessions.get(userId);
+    if (existing) {
+      const [sess] = await db.select()
+        .from(screenMonitorSessions)
+        .where(and(eq(screenMonitorSessions.id, existing.sessionId), eq(screenMonitorSessions.status, "active")))
+        .limit(1);
+      if (sess) {
+        console.log(`${LOG_PREFIX} Reusing existing session #${sess.id} for user ${userId}`);
+        return sess;
+      }
+    }
+    return this.startSession(userId, deviceId, deviceName);
   }
 
   async startSession(userId: number, deviceId: string, deviceName?: string) {

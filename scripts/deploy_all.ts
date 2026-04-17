@@ -3,7 +3,8 @@ import { readFileSync, existsSync, statSync } from "fs";
 
 const HETZNER_HOST = "65.21.209.102";
 const HETZNER_USER = "root";
-const REMOTE_DIR = "/var/www/ulysse";
+const APP_NAME = process.env.DEPLOY_APP_NAME || "007ulysse";
+const REMOTE_DIR = `/var/www/apps/${APP_NAME}`;
 const DIST_CJS = "dist/index.cjs";
 const DIST_PUBLIC = "dist/public";
 const DIST_HTML = "dist/html";
@@ -207,7 +208,7 @@ async function main() {
     errors.push(`Upload failed: ${e.message?.slice(0, 200)}`);
     log("!!", "ERREUR UPLOAD — tentative de rollback...");
     try {
-      sshCmd(`cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs 2>/dev/null && pm2 restart ulysse`);
+      sshCmd(`cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs 2>/dev/null && pm2 restart ${APP_NAME}`);
       log("<<", "Rollback effectué — ancienne version restaurée");
     } catch { log("!!", "Rollback échoué aussi"); }
     throw new Error("Deploy échoué à l'upload");
@@ -231,7 +232,7 @@ async function main() {
       }
     }
 
-    sshCmd("pm2 flush ulysse 2>/dev/null; pm2 restart ulysse", 15_000);
+    sshCmd(`pm2 flush ${APP_NAME} 2>/dev/null; pm2 restart ${APP_NAME}`, 15_000);
     log("OK", "PM2 redémarré");
 
     let healthy = false;
@@ -254,7 +255,7 @@ async function main() {
     if (!healthy) {
       errors.push("Health check failed after 6 attempts");
       log("!!", "HEALTH CHECK ÉCHOUÉ — rollback automatique...");
-      sshCmd(`cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs 2>/dev/null && pm2 restart ulysse`);
+      sshCmd(`cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs 2>/dev/null && pm2 restart ${APP_NAME}`);
       run("sleep 15", { silent: true, timeout: 20_000 });
       const rollbackHealth = sshCmd("curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:5000/api/v2/health 2>/dev/null || echo '000'").trim();
       log("<<", `Rollback: HTTP ${rollbackHealth}`);
@@ -306,7 +307,7 @@ async function main() {
       const pmStatus = sshCmd("pm2 jlist 2>/dev/null || echo '[]'");
       try {
         const procs = JSON.parse(pmStatus);
-        const ulysse = procs.find((p: any) => p.name === "ulysse");
+        const ulysse = procs.find((p: any) => p.name === APP_NAME);
         const isOnline = ulysse?.pm2_env?.status === "online";
         postTests.push({ name: "PM2 process online", pass: isOnline, detail: `status=${ulysse?.pm2_env?.status || "not found"}` });
       } catch {
@@ -384,7 +385,7 @@ async function main() {
     errors.forEach(e => console.log(`  !! ${e}`));
   }
   console.log(`\n  Durée: ${elapsed}s`);
-  console.log(`  Rollback: sshpass -p $HETZNER_SSH_PASSWORD ssh root@${HETZNER_HOST} "cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs && pm2 restart ulysse"`);
+  console.log(`  Rollback: sshpass -p $HETZNER_SSH_PASSWORD ssh root@${HETZNER_HOST} "cp ${REMOTE_DIR}/dist/_backup/index.cjs.bak ${REMOTE_DIR}/dist/index.cjs && pm2 restart ${APP_NAME}"`);
   console.log("========================================\n");
 }
 

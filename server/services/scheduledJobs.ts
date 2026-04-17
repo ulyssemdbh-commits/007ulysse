@@ -1351,8 +1351,8 @@ class JobScheduler {
 
               if (newlyDown.length > 0) {
                 try {
-                  const { sendPushNotification } = await import("./pushNotificationService");
-                  await sendPushNotification(1, {
+                  const { pushNotificationService } = await import("./pushNotificationService");
+                  await pushNotificationService.sendToUser(1, {
                     title: `🔴 ${newlyDown.length} app(s) DOWN`,
                     body: newlyDown.map(u => `${u.project}: ${u.url}`).join(", "),
                     tag: "devmax-monitoring",

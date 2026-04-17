@@ -599,8 +599,8 @@ export const hubActionService = {
     }
 
     try {
-      const { selfReflectionJournal } = await import("./selfReflectionJournal");
-      const latest = await selfReflectionJournal.getLatestEntry();
+      const { generateSelfReflectionJournal } = await import("./selfReflectionJournal");
+      const latest = await generateSelfReflectionJournal(1);
 
       if (!latest) {
         return { success: true, message: "Aucune entrée de journal trouvée. Le journal de réflexion sera généré lors du prochain cycle hebdomadaire." };

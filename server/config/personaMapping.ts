@@ -375,7 +375,7 @@ Dans le SuperChat, tu COMMANDES ces IA. Hors SuperChat, tu les mentionnes quand 
 • Créateur de l'écosystème Ulysse, de DevMax, de COBA (SaaS restaurant) et de multiples projets tech
 • Son ambition : utiliser la tech pour automatiser, optimiser et dominer chaque aspect de sa vie
 
-🔧 TON ARSENAL — 170 OUTILS RÉELS CONNECTÉS :
+🔧 TON ARSENAL — {{TOOL_COUNT}} OUTILS RÉELS CONNECTÉS :
 📧 Communication : Gmail (lire/envoyer/répondre/transférer), Discord (messages/réactions/fichiers/invitations/bot Ulysse Project), push notifications VAPID
 📅 Organisation : Google Calendar (CRUD complet), Todoist (tâches/rappels/projets), Notion (pages/bases de données), Google Drive (fichiers/dossiers)
 🏪 Business SUGU : Achats, dépenses, caisse, banque (CRUD), employés, paie, absences (Convention HCR), fichiers, fournisseurs (apprentissage auto), analytics business, consultation IA quotidienne (23h55), email récap (23h59), health business, détection d'anomalies — données des DEUX restos
@@ -403,9 +403,9 @@ Si l'agent PC n'est pas connecté → dis-lui de lancer ulysse_screen_agent.py s
 • Stack : React + Express + TypeScript, PostgreSQL + Drizzle ORM
 • Dev : UlysseProject.org (Replit)
 • Prod : UlyssePro.org → Hetzner VPS 65.21.209.102, PM2 process manager
-• Repos GitHub : ulysseproject + 007ulysse (org ulyssemdbh-commits)
+• Repo GitHub : ulysseproject (org ulyssemdbh-commits)
 
-⚡ RÈGLE ABSOLUE : NE DIS JAMAIS "je ne peux pas", "je n'ai pas accès", "ce n'est pas possible". Tu as 86 outils réels, tu EXÉCUTES. Si un outil échoue, tu donnes l'erreur exacte, tu ne te caches pas derrière des excuses.`
+⚡ RÈGLE ABSOLUE : NE DIS JAMAIS "je ne peux pas", "je n'ai pas accès", "ce n'est pas possible". Tu as {{TOOL_COUNT}} outils réels, tu EXÉCUTES. Si un outil échoue, tu donnes l'erreur exacte, tu ne te caches pas derrière des excuses.`
   },
   iris: {
     name: "Iris",
@@ -603,8 +603,8 @@ Tu connais tes pairs, tu sais ce que chacun fait, et tu collabores avec eux dans
 • Stack : React + Express + TypeScript, PostgreSQL + Drizzle ORM
 • Dev : UlysseProject.org (Replit)
 • Prod : UlyssePro.org → Hetzner VPS 65.21.209.102, PM2 process manager
-• Système : 170 ActionHub executors, circuit breakers, auto-healing, 249+ capabilities
-• Repos GitHub : ulysseproject + 007ulysse (org ulyssemdbh-commits)
+• Système : {{TOOL_COUNT}} ActionHub executors, circuit breakers, auto-healing
+• Repo GitHub : ulysseproject (org ulyssemdbh-commits)
 • Plateformes : DevMax (multi-tenant project management), AppToOrder monitoring, COBA (SaaS restaurant multi-tenant via macommande.shop)
 • Deploy pipeline : vitest (549 tests) → Playwright E2E → build → backup → upload → PM2 restart → 11 post-deploy checks → GitHub push
 
@@ -718,10 +718,43 @@ Tu signales les tendances anormales (pics d'erreurs, baisse d'usage), proposes d
   }
 };
 
+/**
+ * Compte d'outils résolu paresseusement (évite l'import circulaire avec ActionHub).
+ * Mis en cache 30s pour éviter de re-scanner la Map à chaque prompt.
+ */
+let _toolCountCache: { value: number; expiresAt: number } | null = null;
+function resolveToolCount(): number {
+  const now = Date.now();
+  if (_toolCountCache && _toolCountCache.expiresAt > now) {
+    return _toolCountCache.value;
+  }
+  let count = 0;
+  try {
+    // require synchrone : ActionHub.ts est déjà chargé en mémoire au moment où une persona parle
+    // (les routes/services qui appellent getPersonaPromptContext arrivent toujours après l'init du hub).
+    const mod = require("../services/sensory/ActionHub");
+    const hub = mod.actionHub ?? mod.ActionHub?.getInstance?.();
+    if (hub && typeof hub.getRegisteredToolCount === "function") {
+      count = hub.getRegisteredToolCount();
+    }
+  } catch {
+    // En cas de problème de chargement on retourne 0 — le placeholder restera mais le prompt fonctionne.
+  }
+  _toolCountCache = { value: count, expiresAt: now + 30_000 };
+  return count;
+}
+
 export function getPersonaPromptContext(config: PersonaConfig): string {
   const identity = PERSONA_IDENTITIES[config.persona];
   let prompt = identity ? identity.identity : `Tu es une IA assistante.`;
-  
+
+  // Substitution dynamique du compte d'outils (placeholder {{TOOL_COUNT}})
+  if (prompt.includes("{{TOOL_COUNT}}")) {
+    const n = resolveToolCount();
+    const replacement = n > 0 ? String(n) : "plusieurs dizaines de";
+    prompt = prompt.split("{{TOOL_COUNT}}").join(replacement);
+  }
+
   if (config.displayName !== "Inconnu") {
     prompt += ` Tu parles à ${config.displayName}.`;
   }

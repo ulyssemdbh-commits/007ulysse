@@ -37,16 +37,51 @@ const PAGE_ROUTES: Record<string, string> = {
   "security": "/security",
   "analytics": "/analytics",
   "insights": "/ulysse-insights",
-  "suguval": "/courses/suguval",
-  "sugumaillane": "/courses/sugumaillane",
+  "ulysse-insights": "/ulysse-insights",
+  "skills": "/skills",
+  "skill": "/skills",
+  "capacites": "/skills",
+  "capacités": "/skills",
+  "capabilities": "/skills",
+  "traces": "/traces",
+  "trace": "/traces",
+  "logs": "/traces",
+  "commax": "/commax",
+  "cm": "/commax",
+  "community-manager": "/commax",
+  "screen-monitor": "/screen-monitor",
+  "screenmonitor": "/screen-monitor",
+  "monitoring": "/screen-monitor",
+  "ecran": "/screen-monitor",
+  "écran": "/screen-monitor",
+  "suguval": "/suguval",
+  "valentine": "/suguval",
+  "val": "/suguval",
+  "courses-suguval": "/courses/suguval",
+  "sugumaillane": "/sugumaillane",
+  "maillane": "/sugumaillane",
+  "courses-sugumaillane": "/courses/sugumaillane",
   "iris": "/iris",
   "alfred": "/max",
+  "max": "/max",
+  "devmax": "/devmax",
+  "devopsmax": "/devmax",
+  "devops-max": "/devmax",
+  "devops-iris": "/devops-iris",
   "talking": "/talking",
+  "talking-v2": "/talking-v2",
   "vocal": "/talking",
+  "voix": "/talking",
+  "parler": "/talking",
   "footalmanach": "/sports/predictions/footalmanach",
+  "almanach": "/sports/predictions/footalmanach",
   "superchat": "/superchat",
   "super chat": "/superchat",
   "groupe": "/superchat",
+  "iris-homework": "/iris-homework",
+  "devoirs": "/iris-homework",
+  "iris-files": "/iris-files",
+  "iris-talking": "/iris-talking",
 };
 
 export function resolvePageRoute(page: string): string | null {
@@ -137,23 +172,35 @@ export function useAppNavigation() {
   }, [handleNavCommand]);
 }
 
-export function useTabListener(setActiveTab: (tab: string) => void, validTabs?: string[]) {
+export function useTabListener(
+  setActiveTab: (tab: string) => void,
+  validTabs?: string[],
+  aliases?: Record<string, string>
+) {
   useEffect(() => {
     const handler = (e: Event) => {
       const tab = (e as CustomEvent).detail?.tab;
-      if (tab) {
-        const normalized = tab.toLowerCase().trim();
-        if (validTabs) {
-          const match = validTabs.find(t =>
-            t === normalized || t.includes(normalized) || normalized.includes(t)
-          );
-          if (match) setActiveTab(match);
-        } else {
-          setActiveTab(normalized);
-        }
+      if (!tab) return;
+      const normalized = String(tab).toLowerCase().trim()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      if (aliases && aliases[normalized]) {
+        setActiveTab(aliases[normalized]);
+        return;
       }
+      if (!validTabs) {
+        setActiveTab(normalized);
+        return;
+      }
+      const exact = validTabs.find(t => t.toLowerCase() === normalized);
+      if (exact) { setActiveTab(exact); return; }
+      const fuzzy = validTabs.find(t => {
+        const tn = t.toLowerCase();
+        return tn.includes(normalized) || normalized.includes(tn);
+      });
+      if (fuzzy) setActiveTab(fuzzy);
     };
     window.addEventListener("ulysse:switch-tab", handler);
     return () => window.removeEventListener("ulysse:switch-tab", handler);
-  }, [setActiveTab, validTabs]);
+  }, [setActiveTab, validTabs, aliases]);
 }

@@ -37,6 +37,23 @@ let screenWss: WebSocketServer | null = null;
 
 const latestFrames = new Map<number, { imageBase64: string; activeApp?: string; activeWindow?: string; timestamp: number }>();
 const frameWaiters = new Map<number, { resolve: (frame: { imageBase64: string; activeApp?: string; activeWindow?: string; timestamp: number }) => void; timer: NodeJS.Timeout }>();
+
+type RCResult = { cmd: string; success: boolean; msg: string };
+const rcResultWaiters = new Map<number, { resolve: (result: RCResult) => void; timer: NodeJS.Timeout }>();
+
+export function waitForRCResult(userId: number, timeoutMs = 8000): Promise<RCResult | null> {
+  return new Promise((resolve) => {
+    const existing = rcResultWaiters.get(userId);
+    if (existing) { clearTimeout(existing.timer); existing.resolve(null as any); }
+    const timer = setTimeout(() => { rcResultWaiters.delete(userId); resolve(null); }, timeoutMs);
+    rcResultWaiters.set(userId, { resolve: (r) => { clearTimeout(timer); rcResultWaiters.delete(userId); resolve(r); }, timer });
+  });
+}
+
+function notifyRCResultWaiters(userId: number, result: RCResult) {
+  const waiter = rcResultWaiters.get(userId);
+  if (waiter) waiter.resolve(result);
+}
 const frameListeners = new Map<number, Set<(info: { activeApp?: string; activeWindow?: string; timestamp: number }) => void>>();
 
 export function addFrameListener(userId: number, cb: (info: { activeApp?: string; activeWindow?: string; timestamp: number }) => void): () => void {
@@ -159,19 +176,12 @@ export function setupScreenMonitorWs(): WebSocketServer {
     });
 
     ws.on("close", async () => {
-      console.log(`${LOG_PREFIX} Screen client disconnected`);
-      // Clear auth timeout on disconnect
+      console.log(`${LOG_PREFIX} Screen client disconnected (userId=${ws.userId || '?'})`);
       if ((ws as any).authTimeout) {
         clearTimeout((ws as any).authTimeout);
         delete (ws as any).authTimeout;
       }
-      // Clean up httpRequest reference to prevent memory leak
       ws.httpRequest = undefined;
-      
-      if (ws.isAuthenticated && ws.userId) {
-        await screenMonitorService.endSession(ws.userId);
-      }
-      
       connectedScreenClients.delete(ws);
     });
 
@@ -254,6 +264,29 @@ async function handleAuth(ws: AuthenticatedScreenSocket, message: ScreenMonitorM
       userId: authenticatedUserId,
       timestamp: Date.now()
     }));
+
+    if (message.deviceId) {
+      try {
+        await screenMonitorService.ensurePreferencesEnabled(authenticatedUserId);
+        const session = await screenMonitorService.ensurePersistentSession(authenticatedUserId, ws.deviceId!, ws.deviceName);
+        ws.send(JSON.stringify({
+          type: "session.started",
+          sessionId: session.id,
+          autoStarted: true,
+          timestamp: Date.now()
+        }));
+        console.log(`${LOG_PREFIX} Persistent session #${session.id} for userId=${authenticatedUserId}`);
+
+        broadcastToUser(authenticatedUserId, {
+          type: "memory.updated" as any,
+          userId: authenticatedUserId,
+          data: { event: "screen_monitor_connected", deviceId: ws.deviceId },
+          timestamp: Date.now()
+        });
+      } catch (e) {
+        console.error(`${LOG_PREFIX} Session error:`, e);
+      }
+    }
   }
 }
 
@@ -262,19 +295,12 @@ async function handleControl(ws: AuthenticatedScreenSocket, message: ScreenMonit
 
   switch (message.action) {
     case "start":
-      const session = await screenMonitorService.startSession(ws.userId, ws.deviceId!, ws.deviceName);
+      const session = await screenMonitorService.ensurePersistentSession(ws.userId, ws.deviceId!, ws.deviceName);
       ws.send(JSON.stringify({
         type: "session.started",
         sessionId: session.id,
         timestamp: Date.now()
       }));
-      
-      broadcastToUser(ws.userId, {
-        type: "memory.updated" as any,
-        userId: ws.userId,
-        data: { event: "screen_monitor_started", deviceId: ws.deviceId },
-        timestamp: Date.now()
-      });
       break;
 
     case "pause":
@@ -301,8 +327,22 @@ async function handleControl(ws: AuthenticatedScreenSocket, message: ScreenMonit
   }
 }
 
+const lastFrameTime = new Map<number, number>();
+
 async function handleFrame(ws: AuthenticatedScreenSocket, message: ScreenMonitorMessage) {
   if (!ws.userId || !message.frame) return;
+
+  const now = Date.now();
+  const lastTime = lastFrameTime.get(ws.userId) || 0;
+  const hasWaiter = frameWaiters.has(ws.userId);
+
+  // Throttle only UNSOLICITED periodic frames. On-demand screenshots
+  // (explore/screen_monitor tools) register a waiter via waitForNextFrame —
+  // those MUST always pass through.
+  if (!hasWaiter && now - lastTime < 3000) {
+    return;
+  }
+  lastFrameTime.set(ws.userId, now);
 
   const frame: ScreenFrame = {
     imageBase64: message.frame.imageBase64,
@@ -318,32 +358,10 @@ async function handleFrame(ws: AuthenticatedScreenSocket, message: ScreenMonitor
     timestamp: frame.timestamp
   });
 
-  const analysis = await screenMonitorService.processFrame(ws.userId, frame);
-
-  if (analysis) {
-    ws.send(JSON.stringify({
-      type: "analysis",
-      data: analysis,
-      timestamp: Date.now()
-    }));
-
-    broadcastToUser(ws.userId, {
-      type: "memory.updated" as any,
-      userId: ws.userId,
-      data: {
-        event: "screen_context_update",
-        context: analysis.context,
-        tags: analysis.tags,
-        suggestions: analysis.suggestions
-      },
-      timestamp: Date.now()
-    });
-  } else {
-    ws.send(JSON.stringify({
-      type: "frame.received",
-      timestamp: Date.now()
-    }));
-  }
+  ws.send(JSON.stringify({
+    type: "frame.received",
+    timestamp: Date.now()
+  }));
 }
 
 function handleCapability(ws: AuthenticatedScreenSocket, message: any) {
@@ -352,12 +370,24 @@ function handleCapability(ws: AuthenticatedScreenSocket, message: any) {
   ws.remoteControlCapable = capable;
   console.log(`${LOG_PREFIX} Agent capability: remoteControl=${capable}, platform=${message.platform}`);
 
+  if (capable) {
+    ws.remoteControlEnabled = true;
+    try {
+      ws.send(JSON.stringify({ type: "remote_control.enable", timestamp: Date.now() }));
+      ws.send(JSON.stringify({ type: "session.paused", timestamp: Date.now() }));
+      console.log(`${LOG_PREFIX} Auto-enabled RC + paused capture for user ${ws.userId}`);
+    } catch (e) {
+      console.error(`${LOG_PREFIX} Failed to auto-enable RC:`, e);
+    }
+  }
+
   broadcastToUser(ws.userId, {
     type: "memory.updated" as any,
     userId: ws.userId,
     data: {
       event: "screen_agent_capability",
       remoteControlCapable: capable,
+      remoteControlEnabled: capable,
       platform: message.platform,
       deviceId: ws.deviceId
     },
@@ -371,6 +401,15 @@ function handleRemoteControlFeedback(ws: AuthenticatedScreenSocket, message: any
   if (message.type === "remote_control.status") {
     ws.remoteControlEnabled = !!message.enabled;
     console.log(`${LOG_PREFIX} Remote control ${message.enabled ? "ENABLED" : "DISABLED"} for user ${ws.userId}`);
+  }
+
+  if (message.type === "remote_control.result") {
+    console.log(`${LOG_PREFIX} RC result: cmd=${message.cmd} success=${message.success} msg=${message.msg}`);
+    notifyRCResultWaiters(ws.userId, {
+      cmd: message.cmd || "",
+      success: !!message.success,
+      msg: message.msg || ""
+    });
   }
 
   broadcastToUser(ws.userId, {

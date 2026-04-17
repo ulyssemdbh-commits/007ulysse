@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, QueryClientProvider } from "@tanstack/react-query";
+import { useTabListener } from "@/hooks/useAppNavigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +108,28 @@ function DevmaxDashboard() {
   const { logout, activeProject, setActiveProject } = useDevmaxAuth();
   const shouldAutoAudit = !!activeProject?._triggerAudit;
   const [activeTab, setActiveTab] = useState(shouldAutoAudit ? "chat" : "overview");
+  useTabListener(setActiveTab, DEVMAX_TABS.map(t => t.id), {
+    "apercu": "overview", "accueil": "overview", "vue": "overview",
+    "branche": "branches",
+    "commit": "commits",
+    "pr": "prs", "pull request": "prs", "pull requests": "prs",
+    "ci": "cicd", "cd": "cicd", "pipeline": "cicd", "pipelines": "cicd",
+    "fichier": "files", "fichiers": "files",
+    "test": "files-test", "tests": "files-test",
+    "deploy": "deploy", "deployer": "deploy", "déployer": "deploy", "deploiement": "deploy", "déploiement": "deploy",
+    "apercu-preview": "preview",
+    "variables": "envvars", "env": "envvars", "env var": "envvars", "env vars": "envvars", "secret": "envvars", "secrets": "envvars",
+    "log": "logs",
+    "metrique": "metrics", "metriques": "metrics", "métriques": "metrics",
+    "domaine": "domains", "domaines": "domains",
+    "cout": "costs", "couts": "costs", "coût": "costs", "coûts": "costs",
+    "event": "events", "evenements": "events", "événements": "events",
+    "sante": "health", "santé": "health",
+    "maxai": "chat", "ia": "chat", "bot": "chat",
+    "trace": "traces",
+    "competence": "skills", "competences": "skills", "compétences": "skills", "capacites": "skills", "capacités": "skills",
+    "compte": "account", "parametres": "account", "paramètres": "account",
+  });
   const [time, setTime] = useState(new Date().toLocaleTimeString("fr-FR", { hour12: false }));
   const pid = activeProject?.id || "";
 

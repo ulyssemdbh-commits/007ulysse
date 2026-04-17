@@ -160,6 +160,22 @@ RAPPEL: Sur les sujets critiques (argent, paris, décisions), demande-toi TOUJOU
 Si la réponse est "bof" → nuance, propose de vérifier, ou signale le manque de données.`;
   }
 
+  setMinConfidence(domain: string, value: number): boolean {
+    const c = this.criteria.find(x => x.domain === domain);
+    if (!c) return false;
+    c.minConfidence = Math.max(40, Math.min(95, Math.round(value)));
+    return true;
+  }
+
+  getMinConfidence(domain: string): number | null {
+    const c = this.criteria.find(x => x.domain === domain);
+    return c ? c.minConfidence : null;
+  }
+
+  getAllThresholds(): Record<string, number> {
+    return Object.fromEntries(this.criteria.map(c => [c.domain, c.minConfidence]));
+  }
+
   getStats(): { totalEvaluations: number; passRate: number; avgConfidence: number; byDomain: Record<string, { pass: number; fail: number }> } {
     const byDomain: Record<string, { pass: number; fail: number }> = {};
     let totalConfidence = 0;

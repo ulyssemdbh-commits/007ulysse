@@ -5279,7 +5279,7 @@ async function downloadFromObjectStorage(storagePath: string): Promise<string | 
   const pathMod = await import("path");
   try {
     console.log(`[FileAnalysis] Downloading from object storage: ${storagePath}`);
-    const { objectStorageClient } = await import("../../replit_integrations/object_storage/objectStorage");
+    const { objectStorageClient } = await import("../replit_integrations/object_storage/objectStorage");
     const client = objectStorageClient;
     if (!client) return null;
     const cleanPath = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;

@@ -14,9 +14,7 @@ const CHUNK_SIZE = 200;
 
 const TARGET_REPO = process.env.TARGET_REPO || "both";
 const ALL_REPOS = [
-  { owner: "ulyssemdbh-commits", repo: "007ulysse", branch: "main" },
   { owner: "ulyssemdbh-commits", repo: "ulysseproject", branch: "main" },
-  { owner: "ulyssemdbh-commits", repo: "007ulysse-test", branch: "main" },
 ];
 
 const SOURCE_DIRS = ["server", "client/src", "client/public", "shared", "script", "scripts", "tools", "speaker_recognition"];

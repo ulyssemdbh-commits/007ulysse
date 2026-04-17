@@ -608,12 +608,13 @@ class BrainHub extends EventEmitter {
       'todo', 'reminder', 'alarm', 'spotify', 'smarthome',
       'discord_send', 'todoist',
     ];
-    if (intent && actionIntents.some(a => intent.toLowerCase().includes(a))) {
+    const intentStr = typeof intent === 'string' ? intent.toLowerCase() : '';
+    if (intentStr && actionIntents.some(a => intentStr.includes(a))) {
       return { mode: 'action_only', maxSpokenSeconds: 10 };
     }
 
     const explanationIntents = ['explain', 'tutorial', 'debug', 'analyze', 'detail', 'compare'];
-    if (intent && explanationIntents.some(e => intent.toLowerCase().includes(e))) {
+    if (intentStr && explanationIntents.some(e => intentStr.includes(e))) {
       return { mode: 'step_by_step', maxSpokenSeconds: 45 };
     }
 
@@ -631,7 +632,8 @@ class BrainHub extends EventEmitter {
     const prev = this.dialogueStates.get(userId);
     const resolved = this.resolveDialogueMode(domain, intent, isVoice);
 
-    if (prev?.awaitingConfirmation && intent && ['oui', 'yes', 'continue', 'suite', 'go'].some(w => intent.toLowerCase().includes(w))) {
+    const intentLc = typeof intent === 'string' ? intent.toLowerCase() : '';
+    if (prev?.awaitingConfirmation && intentLc && ['oui', 'yes', 'continue', 'suite', 'go'].some(w => intentLc.includes(w))) {
       const state: UserDialogueState = {
         ...resolved,
         lastDomain: domain,

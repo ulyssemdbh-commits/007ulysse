@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useTabListener } from "@/hooks/useAppNavigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1160,6 +1161,13 @@ function SignalBadge({ signal }: { signal: string }) {
 // ═══════════════════════════════════════════════════════════════════
 
 export default function Finances() {
+    const [activeTab, setActiveTab] = useState("overview");
+    useTabListener(setActiveTab, ["overview", "watchlist", "detail", "portfolio", "expert", "forex"], {
+        "marches": "overview", "marchés": "overview", "marche": "overview",
+        "analyse": "detail", "detail": "detail", "détail": "detail",
+        "portefeuille": "portfolio", "portfolio": "portfolio",
+        "crypto": "forex", "change": "forex",
+    });
     return (
         <div className="min-h-screen bg-background">
             {/* Top bar */}
@@ -1184,7 +1192,7 @@ export default function Finances() {
 
             {/* Content */}
             <div className="max-w-7xl mx-auto px-4 py-6">
-                <Tabs defaultValue="overview" className="space-y-6">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                     <TabsList className="bg-background/60 backdrop-blur border border-border/30 rounded-xl h-auto p-1 gap-0.5 flex-wrap">
                         <TabsTrigger value="overview" className="text-xs font-medium gap-1.5 rounded-lg data-[state=active]:shadow-md"><Globe className="w-3.5 h-3.5" /> Marchés</TabsTrigger>
                         <TabsTrigger value="watchlist" className="text-xs font-medium gap-1.5 rounded-lg data-[state=active]:shadow-md"><Eye className="w-3.5 h-3.5" /> Watchlist</TabsTrigger>

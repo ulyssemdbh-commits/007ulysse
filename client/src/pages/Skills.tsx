@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useTabListener } from "@/hooks/useAppNavigation";
 
 function tryParseJSON(str: string): any {
   try { return JSON.parse(str); } catch { /* ignore */ }
@@ -187,6 +188,11 @@ function formatMs(ms: number | null) {
 export default function SkillsPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("catalog");
+  useTabListener(setActiveTab, ["catalog", "executions"], {
+    "catalogue": "catalog", "skills": "catalog", "competences": "catalog",
+    "execution": "executions", "exécutions": "executions", "runs": "executions", "historique": "executions",
+  });
   const [selectedSkillId, setSelectedSkillId] = useState<number | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -367,7 +373,7 @@ export default function SkillsPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="catalog" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-gray-900/50 border border-gray-800">
             <TabsTrigger value="catalog" data-testid="tab-catalog">Catalogue</TabsTrigger>
             <TabsTrigger value="executions" data-testid="tab-executions">Exécutions</TabsTrigger>

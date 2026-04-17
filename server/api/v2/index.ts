@@ -168,6 +168,195 @@ router.get("/screen-monitor/download-agent", (_req: Request, res: Response) => {
   fs.createReadStream(agentPath).pipe(res);
 });
 
+router.get("/screen-monitor/install-script", (req: Request, res: Response) => {
+  const userId = req.query.uid || "1";
+  const script = `# Ulysse Screen Agent v2.2 — Installation robuste
+$ErrorActionPreference = "Stop"
+$agentDir = "$env:USERPROFILE\\.ulysse"
+$agentFile = "$agentDir\\ulysse_screen_agent.py"
+
+Write-Host "============================================" -ForegroundColor Cyan
+Write-Host "  ULYSSE - Installation Agent Bureau v2.2" -ForegroundColor Cyan
+Write-Host "============================================" -ForegroundColor Cyan
+
+if (!(Test-Path $agentDir)) { New-Item -ItemType Directory -Path $agentDir -Force | Out-Null }
+
+# --- 1. Detection d'un Python exploitable (skip le Store alias) ---
+Write-Host "[1/5] Detection de Python..." -ForegroundColor Yellow
+$py = $null
+try {
+    $pyCmd = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyCmd) { $py = "py -3" }
+} catch {}
+if (-not $py) {
+    $candidates = @(
+        "$env:LOCALAPPDATA\\Programs\\Python\\Python312\\python.exe",
+        "$env:LOCALAPPDATA\\Programs\\Python\\Python311\\python.exe",
+        "$env:LOCALAPPDATA\\Programs\\Python\\Python310\\python.exe",
+        "C:\\Python312\\python.exe","C:\\Python311\\python.exe","C:\\Python310\\python.exe"
+    )
+    foreach ($c in $candidates) { if (Test-Path $c) { $py = '"' + $c + '"'; break } }
+}
+if (-not $py) {
+    Write-Host "Python absent - installation via winget..." -ForegroundColor Yellow
+    winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
+    $py = '"' + $env:LOCALAPPDATA + '\\Programs\\Python\\Python312\\python.exe"'
+}
+Write-Host "   -> $py" -ForegroundColor Gray
+
+# --- 2. Telechargement agent ---
+Write-Host "[2/5] Telechargement de l'agent..." -ForegroundColor Yellow
+Invoke-WebRequest -Uri "https://ulyssepro.org/api/v2/screen-monitor/download-agent" -OutFile $agentFile -UseBasicParsing
+
+# --- 3. pip upgrade ---
+Write-Host "[3/5] Mise a jour de pip..." -ForegroundColor Yellow
+& cmd /c "$py -m pip install --upgrade pip --quiet"
+
+# --- 4. Installation deps ---
+Write-Host "[4/5] Installation des dependances..." -ForegroundColor Yellow
+$deps = @("pillow","websocket-client","pywin32","psutil","pyautogui","pygetwindow","pyperclip","dxcam","opencv-python","numpy","mss","keyboard")
+foreach ($d in $deps) {
+    $r = & cmd /c "$py -m pip install $d --quiet --disable-pip-version-check" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "   X $d echec, retry verbeux..." -ForegroundColor Red
+        & cmd /c "$py -m pip install $d --disable-pip-version-check"
+    } else {
+        Write-Host "   OK $d" -ForegroundColor Green
+    }
+}
+
+# --- 5. Verification modules critiques ---
+Write-Host "[5/5] Verification des modules critiques..." -ForegroundColor Yellow
+$check = & cmd /c "$py -c ""import pyautogui, PIL, websocket, psutil, win32api; print('OK')"" 2>&1"
+if ($check -notmatch "OK") {
+    Write-Host "ECHEC import. Sortie: $check" -ForegroundColor Red
+    Read-Host "Appuie sur Entree pour fermer"
+    exit 1
+}
+Write-Host "Tous les modules sont OK." -ForegroundColor Green
+Write-Host ""
+
+$q = [char]34
+& cmd /c "$py $q$agentFile$q --server wss://ulyssepro.org/ws/screen --user-id ${userId} --device-name $q$env:COMPUTERNAME$q --autostart enable"
+& cmd /c "$py $q$agentFile$q --server wss://ulyssepro.org/ws/screen --user-id ${userId} --device-name $q$env:COMPUTERNAME$q"
+`;
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.send(script);
+});
+
+router.get("/screen-monitor/install.bat", (req: Request, res: Response) => {
+  const userId = req.query.uid || "1";
+  const bat = `@echo off
+chcp 65001 >nul
+title Ulysse Agent - Installation v2.2
+setlocal enabledelayedexpansion
+
+echo ============================================
+echo   ULYSSE - Installation Agent Bureau v2.2
+echo ============================================
+echo.
+
+set "AGENT_DIR=%USERPROFILE%\\.ulysse"
+set "AGENT_FILE=%AGENT_DIR%\\ulysse_screen_agent.py"
+set "LOG_FILE=%AGENT_DIR%\\install.log"
+
+if not exist "%AGENT_DIR%" mkdir "%AGENT_DIR%"
+
+REM === [1/5] Detection Python (prefer py launcher, skip WindowsApps/Store alias) ===
+echo [1/5] Detection de Python...
+set "PY="
+
+where py >nul 2>&1
+if not errorlevel 1 (
+    py -3 --version >nul 2>&1
+    if not errorlevel 1 set "PY=py -3"
+)
+
+if not defined PY (
+    for %%P in (
+        "%LOCALAPPDATA%\\Programs\\Python\\Python312\\python.exe"
+        "%LOCALAPPDATA%\\Programs\\Python\\Python311\\python.exe"
+        "%LOCALAPPDATA%\\Programs\\Python\\Python310\\python.exe"
+        "C:\\Python312\\python.exe"
+        "C:\\Python311\\python.exe"
+        "C:\\Python310\\python.exe"
+    ) do (
+        if exist %%P set "PY=%%P"
+    )
+)
+
+if not defined PY (
+    echo Python non trouve. Installation via winget...
+    winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
+    set "PY=%LOCALAPPDATA%\\Programs\\Python\\Python312\\python.exe"
+    set "PATH=%LOCALAPPDATA%\\Programs\\Python\\Python312;%LOCALAPPDATA%\\Programs\\Python\\Python312\\Scripts;%PATH%"
+)
+
+echo    -^> !PY!
+!PY! --version
+if errorlevel 1 (
+    echo ECHEC: Python non fonctionnel.
+    pause & exit /b 1
+)
+
+REM === [2/5] Telechargement agent ===
+echo [2/5] Telechargement de l'agent...
+powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'https://ulyssepro.org/api/v2/screen-monitor/download-agent' -OutFile '%AGENT_FILE%' -UseBasicParsing } catch { exit 1 }"
+if errorlevel 1 (
+    echo ECHEC telechargement agent.
+    pause & exit /b 1
+)
+
+REM === [3/5] Upgrade pip ===
+echo [3/5] Mise a jour de pip...
+!PY! -m pip install --upgrade pip --quiet --disable-pip-version-check >> "%LOG_FILE%" 2>&1
+
+REM === [4/5] Installation deps (force python -m pip pour eviter les environnements fantomes) ===
+echo [4/5] Installation des dependances...
+set "DEPS=pillow websocket-client pywin32 psutil pyautogui pygetwindow pyperclip dxcam opencv-python numpy mss keyboard"
+
+for %%D in (!DEPS!) do (
+    !PY! -m pip install %%D --quiet --disable-pip-version-check >> "%LOG_FILE%" 2>&1
+    if errorlevel 1 (
+        echo    X %%D echec silencieux, retry verbeux...
+        !PY! -m pip install %%D --disable-pip-version-check
+        if errorlevel 1 (
+            echo ECHEC install %%D - voir %LOG_FILE%
+            pause & exit /b 1
+        )
+    ) else (
+        echo    OK %%D
+    )
+)
+
+REM === [5/5] Verification import critique ===
+echo [5/5] Verification des modules critiques...
+!PY! -c "import pyautogui, PIL, websocket, psutil, win32api; print('IMPORT_OK')" > "%AGENT_DIR%\\check.out" 2>&1
+findstr /C:"IMPORT_OK" "%AGENT_DIR%\\check.out" >nul
+if errorlevel 1 (
+    echo.
+    echo ECHEC IMPORT - pyautogui ou dep manquante:
+    type "%AGENT_DIR%\\check.out"
+    echo.
+    echo Log complet: %LOG_FILE%
+    pause & exit /b 1
+)
+echo    OK tous les modules importables.
+echo.
+echo ============================================
+echo   Installation reussie. Lancement de l'agent
+echo ============================================
+echo.
+
+!PY! "%AGENT_FILE%" --server wss://ulyssepro.org/ws/screen --user-id ${userId} --device-name "%COMPUTERNAME%" --autostart enable
+!PY! "%AGENT_FILE%" --server wss://ulyssepro.org/ws/screen --user-id ${userId} --device-name "%COMPUTERNAME%"
+pause
+`;
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="ulysse_install.bat"`);
+  res.send(bat);
+});
+
 router.use(v2AuthMiddleware);
 
 router.use("/conversations", conversationsRouter);

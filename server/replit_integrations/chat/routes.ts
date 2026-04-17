@@ -1962,8 +1962,8 @@ export function registerChatRoutes(app: Express): void {
 
       if (intent === "calendar_list_events" || /\bcalendrier\b|agenda|rdv|réunion|événement|calendar/i.test(content)) {
         try {
-          const { googleCalendarService } = await import("../../services/googleCalendarService");
-          const events = await googleCalendarService.listUpcomingEvents(10);
+          const { calendarService } = await import("../../services/googleCalendarService");
+          const events = await calendarService.listUpcomingEvents(10);
           fetchedData.calendarEvents = events;
         } catch (err) {
           console.warn("[Prefetch] Calendar fetch failed:", err);
@@ -1999,6 +1999,21 @@ export function registerChatRoutes(app: Express): void {
       const conversationId = parseInt(req.params.id);
       const { content, imageDataUrl, pdfPageImages, pdfBase64Full, pdfFileName } = req.body;
       console.log(`[CHAT-DEBUG] Processing message for user ${userId}, conversation ${conversationId}${imageDataUrl ? ` with image (${(imageDataUrl.length / 1024).toFixed(1)}KB)` : ""}${pdfPageImages?.length ? ` with ${pdfPageImages.length} PDF page images` : ""}${pdfBase64Full ? ` with PDF base64 (${(pdfBase64Full.length / 1024).toFixed(1)}KB)` : ""}`);
+
+      // === SENSORY: Notify HearingHub that Ulysse "heard" a chat input ===
+      // Fires immediately so the BrainHub focus flips to "listening" and the
+      // 3D brain visualizer lights up the ÉCOUTE zone before AI processing starts.
+      if (content && typeof content === "string") {
+        try {
+          const { hearFromChatViaBridge } = await import("../../services/sensory");
+          // Fire and forget — must not block chat flow.
+          hearFromChatViaBridge(content, userId, "ulysse", conversationId).catch((err: any) => {
+            console.warn("[CHAT-SENSORY] HearingHub bridge failed:", err?.message);
+          });
+        } catch (sensoryErr: any) {
+          console.warn("[CHAT-SENSORY] HearingHub import failed:", sensoryErr?.message);
+        }
+      }
 
       if (pdfBase64Full) {
         const resolvedPdfFileName = pdfFileName || content.match(/\[(?:FICHIER[^:]*:|PDF:)\s*([^\]\(]+?)(?:\s*\(|])/)?.[1]?.trim() || `upload-${Date.now()}.pdf`;
@@ -5449,6 +5464,20 @@ SANS CE MARQUEUR = L'EMAIL NE PART PAS. Tu utilises AgentMail, PAS Gmail.`
             sendTTSToTalking(userId, cleanTextForTTS, "chat");
             console.log(`[CHAT] Sent response to /talking for TTS (priority mode)`);
           }
+        }
+
+        // === SENSORY: Notify VoiceOutputHub that Ulysse "spoke" the response ===
+        // Lights up PAROLE zone in the 3D brain visualizer.
+        try {
+          const finalResponseForBrain = messageAppendix ? fullResponse + messageAppendix : fullResponse;
+          if (finalResponseForBrain && finalResponseForBrain.trim().length > 0) {
+            const { respondToChatViaBridge } = await import("../../services/sensory");
+            respondToChatViaBridge(finalResponseForBrain, userId, "ulysse", conversationId).catch((err: any) => {
+              console.warn("[CHAT-SENSORY] VoiceOutputHub bridge failed:", err?.message);
+            });
+          }
+        } catch (sensoryErr: any) {
+          console.warn("[CHAT-SENSORY] VoiceOutputHub import failed:", sensoryErr?.message);
         }
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);

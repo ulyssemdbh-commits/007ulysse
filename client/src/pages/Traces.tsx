@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Activity, ArrowLeft, Clock, Cpu, MessageSquare, ThumbsUp, ThumbsDown, Zap, BarChart3, TrendingUp, Wrench, ChevronRight, ChevronDown, X, CheckCircle2, XCircle, Loader2, Globe, Bot, Cog, BookOpen, MapPin, AlertTriangle, Hash } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useTabListener } from "@/hooks/useAppNavigation";
 import { cn } from "@/lib/utils";
 
 interface Trace {
@@ -215,6 +216,11 @@ function StepTimeline({ steps, totalMs }: { steps: TraceStep[]; totalMs: number 
 export default function TracesPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("list");
+  useTabListener(setActiveTab, ["list", "stats"], {
+    "liste": "list", "traces": "list",
+    "statistiques": "stats", "stat": "stats",
+  });
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
@@ -294,7 +300,7 @@ export default function TracesPage() {
       </div>
 
       <div className="max-w-[1500px] mx-auto px-4 sm:px-6 py-4">
-        <Tabs defaultValue="list" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-[#0a0e1a] border border-cyan-900/30 p-1">
             <TabsTrigger value="list" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-300 text-cyan-700" data-testid="tab-list">
               <Activity className="w-3.5 h-3.5 mr-1.5" /> Liste

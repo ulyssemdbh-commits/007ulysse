@@ -319,6 +319,14 @@ async function initializeServices() {
   } catch (error: any) {
     console.error("[Startup] Discord Bot initialization error:", error.message);
   }
+
+  // Meta-learning auto-tuner: closes the loop between system metrics and tunable params
+  try {
+    const { metaLearningService } = await import("./services/metaLearningService");
+    await metaLearningService.init();
+  } catch (error: any) {
+    console.error("[Startup] MetaLearning init error:", error.message);
+  }
 }
 
 // =============================================================================

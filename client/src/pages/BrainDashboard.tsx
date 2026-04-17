@@ -9,6 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Brain, RefreshCw, Download, AlertTriangle, TrendingUp, Activity, Zap, Target, Home } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
+import { useTabListener } from "@/hooks/useAppNavigation";
 
 interface DomainStats {
   count: number;
@@ -52,6 +54,12 @@ interface TopPattern {
 }
 
 export default function BrainDashboard() {
+  const [__brainActiveTab, __setBrainActiveTab] = useState("domains");
+  useTabListener(__setBrainActiveTab, ["domains", "patterns", "health"], {
+    "domaine": "domains", "domaines": "domains",
+    "pattern": "patterns", "top": "patterns",
+    "sante": "health", "santé": "health",
+  });
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -234,7 +242,7 @@ export default function BrainDashboard() {
           </Card>
         )}
 
-        <Tabs defaultValue="domains">
+        <Tabs value={__brainActiveTab} onValueChange={__setBrainActiveTab}>
           <TabsList>
             <TabsTrigger value="domains" data-testid="tab-domains">Domaines</TabsTrigger>
             <TabsTrigger value="patterns" data-testid="tab-patterns">Top Patterns</TabsTrigger>

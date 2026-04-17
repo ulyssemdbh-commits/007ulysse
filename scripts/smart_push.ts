@@ -1,6 +1,6 @@
 /**
  * SMART PUSH — Only modified files since last GitHub commit
- * Pushes to both 007ulysse and ulysseproject
+ * Pushes to ulysseproject
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -10,8 +10,8 @@ const PAT = process.env.MAURICE_GITHUB_PAT!;
 const ROOT = process.cwd();
 
 const ALL_REPOS = [
-  { owner: "ulyssemdbh-commits", repo: "007ulysse", branch: "main" },
   { owner: "ulyssemdbh-commits", repo: "ulysseproject", branch: "main" },
+  { owner: "ulyssemdbh-commits", repo: "007ulysse", branch: "main" },
   { owner: "ulyssemdbh-commits", repo: "007ulysse-test", branch: "main" },
 ];
 

@@ -1,8 +1,114 @@
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, CreditCard, Trophy, Activity, ChevronRight, TrendingUp, Zap } from "lucide-react";
+import { Calendar, CreditCard, Trophy, Activity, ChevronRight, TrendingUp, Zap, Minimize2, Maximize2, Expand, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { useLocation } from "wouter";
+
+const UlysseBrainVisualizer = lazy(() =>
+  import("@/components/visualizer/UlysseBrainVisualizer").then(m => ({ default: m.UlysseBrainVisualizer }))
+);
+
+type BrainSize = "s" | "m" | "l";
+const BRAIN_HEIGHTS: Record<BrainSize, number> = { s: 160, m: 260, l: 380 };
+
+function BrainPanel() {
+  const [size, setSize] = useState<BrainSize>(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("ulysse-brain-size") : null;
+    return (saved as BrainSize) || "m";
+  });
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("ulysse-brain-size", size);
+  }, [size]);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setFullscreen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
+
+  const cycleSize = () => setSize(s => (s === "s" ? "m" : s === "m" ? "l" : "s"));
+  const shrink = () => setSize(s => (s === "l" ? "m" : "s"));
+
+  return (
+    <>
+      <div className="relative" data-testid="brain-panel-right">
+        <Suspense
+          fallback={
+            <div
+              className="w-full rounded-xl border border-blue-900/40 bg-slate-950 flex items-center justify-center text-[10px] font-mono text-blue-400/60"
+              style={{ height: BRAIN_HEIGHTS[size] }}
+            >
+              loading brain…
+            </div>
+          }
+        >
+          <UlysseBrainVisualizer height={BRAIN_HEIGHTS[size]} />
+        </Suspense>
+        <div className="absolute bottom-2 right-2 flex gap-1">
+          <button
+            onClick={shrink}
+            disabled={size === "s"}
+            data-testid="button-brain-shrink"
+            className="p-1 rounded bg-slate-900/80 border border-blue-700/40 text-blue-300 hover:bg-slate-800 disabled:opacity-30"
+            title="Réduire"
+          >
+            <Minimize2 className="w-3 h-3" />
+          </button>
+          <button
+            onClick={cycleSize}
+            data-testid="button-brain-cycle-size"
+            className="px-1.5 rounded bg-slate-900/80 border border-blue-700/40 text-blue-300 hover:bg-slate-800 text-[9px] font-mono uppercase"
+            title="Taille"
+          >
+            {size}
+          </button>
+          <button
+            onClick={() => setSize(s => (s === "s" ? "m" : "l"))}
+            disabled={size === "l"}
+            data-testid="button-brain-grow"
+            className="p-1 rounded bg-slate-900/80 border border-blue-700/40 text-blue-300 hover:bg-slate-800 disabled:opacity-30"
+            title="Agrandir"
+          >
+            <Maximize2 className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => setFullscreen(true)}
+            data-testid="button-brain-fullscreen"
+            className="p-1 rounded bg-slate-900/80 border border-blue-700/40 text-blue-300 hover:bg-slate-800"
+            title="Plein écran"
+          >
+            <Expand className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+      {fullscreen && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex flex-col"
+          data-testid="brain-fullscreen-overlay"
+        >
+          <div className="flex justify-between items-center p-3 text-blue-200 font-mono text-xs">
+            <span className="tracking-widest">ULYSSE · BRAIN — FULLSCREEN</span>
+            <button
+              onClick={() => setFullscreen(false)}
+              data-testid="button-brain-close-fullscreen"
+              className="p-2 rounded bg-slate-900 border border-blue-700/50 hover:bg-slate-800"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 p-4">
+            <Suspense fallback={<div className="text-blue-400/60 font-mono text-sm">loading…</div>}>
+              <UlysseBrainVisualizer height={typeof window !== "undefined" ? window.innerHeight - 100 : 800} />
+            </Suspense>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 interface MarseilleData {
   time: string;
@@ -78,6 +184,7 @@ export function DashboardRightPanel() {
 
   return (
     <aside className="w-72 shrink-0 flex flex-col gap-3 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+      <BrainPanel />
       <div className="border border-blue-200 dark:border-cyan-500/30 backdrop-blur-md rounded-xl p-3 flex flex-col bg-white dark:bg-[#00000000] shadow-sm dark:shadow-none">
         <h3 className="text-[10px] font-mono text-blue-500 dark:text-cyan-500/70 tracking-widest uppercase mb-2 flex items-center gap-2 pb-2 border-b border-blue-100 dark:border-cyan-900/40">
           <Calendar className="w-3 h-3" /> Agenda du jour

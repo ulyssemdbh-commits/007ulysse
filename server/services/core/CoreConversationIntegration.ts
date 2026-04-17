@@ -17,6 +17,7 @@ import { plannerService } from "./PlannerExecutorVerifier";
 import { autonomousInitiativeEngine } from "../autonomousInitiativeEngine";
 import { conversationalPreferencesService } from "../conversationalPreferencesService";
 import { traceCollector } from "../traceCollector";
+import { memoryGraphService } from "../memoryGraphService";
 
 interface ConversationContext {
   userId: number;
@@ -375,6 +376,15 @@ class CoreConversationIntegration {
 
     // 7. Record model performance
     smartModelRouter.recordOutcome(detectedDomain, modelRoute.provider, modelRoute.model, providerProcessingMs, !!response.content);
+
+    // 7b. Hebbian reinforcement: feed critique outcome back into memory graph
+    // Positive signal when response went out clean, negative when disclaimer was needed
+    try {
+      const reinforceSignal = !!response.content
+        ? (critique.shouldProceed ? 0.5 : -0.4)
+        : -0.6;
+      memoryGraphService.reinforce(context.userId, reinforceSignal).catch(() => {});
+    } catch {}
 
     // Auto-learning + KPI tracking
     const providerTotalMs = Date.now() - startTime;

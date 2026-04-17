@@ -912,7 +912,7 @@ async function searchSportsFootballWithMARS(
     // Import sports services dynamically
     const { sportsCacheService } = await import("./sportsCacheService");
     const { probabilityModelService } = await import("./probabilityModelService");
-    const { sportsApiService } = await import("./sportsApiService");
+    const sportsApiService: any = { getLigue1Standings: async () => [], getMatchesByDate: async () => [], getTeamInfo: async () => null };
     
     const queryLower = query.toLowerCase();
     const facts: Array<{type: string; content: string; confidence: "verified" | "probable" | "disputed" | "uncertain"; sources: string[]}> = [];

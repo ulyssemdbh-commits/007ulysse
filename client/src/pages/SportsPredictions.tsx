@@ -53,7 +53,13 @@ import { type UpcomingMatch, type Prediction, type PredictionStats, type Generat
 
 export default function SportsPredictions() {
   const [activeTab, setActiveTab] = useState("matches");
-  useTabListener(setActiveTab, ["matches", "classement", "buteurs", "blessures", "historique"]);
+  useTabListener(setActiveTab, ["matches", "predictions", "history", "scorers", "injuries"], {
+    "match": "matches", "matchs": "matches",
+    "prediction": "predictions", "classement": "predictions", "paris": "predictions",
+    "historique": "history", "histo": "history",
+    "buteurs": "scorers", "buteur": "scorers",
+    "blessures": "injuries", "blessure": "injuries",
+  });
   const [selectedLeague, setSelectedLeague] = useState("all");
   const [generatedPredictions, setGeneratedPredictions] = useState<Record<number, GeneratedPrediction>>({});
   const [generatingFixtureId, setGeneratingFixtureId] = useState<number | null>(null);

@@ -198,9 +198,11 @@ async function testDiscord(): Promise<{ connected: boolean; botName?: string; gu
 // Test Spotify
 async function testSpotify(): Promise<{ connected: boolean; user?: string }> {
   try {
-    const { spotifyActionService } = await import("../../services/spotifyActionService");
-    const status = await spotifyActionService.getStatus(1);
-    return { connected: status.isConnected, user: status.currentUser };
+    const { isSpotifyConnected, getCurrentUser } = await import("../../services/spotifyService");
+    const connected = await isSpotifyConnected();
+    if (!connected) return { connected: false };
+    const user = typeof getCurrentUser === "function" ? await getCurrentUser().catch(() => null) : null;
+    return { connected: true, user: user?.display_name || user?.id };
   } catch {
     return { connected: false };
   }

@@ -4,6 +4,9 @@ import { db } from "../db";
 import { users, sessions, approvedUsers, webauthnCredentials, auditLogs } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { User, Session, ApprovedUser } from "@shared/schema";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("Auth");
 
 const SALT_ROUNDS = 12;
 const SESSION_DURATION_DAYS = 365;
@@ -80,7 +83,7 @@ async function sendSecurityAlertDiscord(username: string, ip: string | undefined
             type: "error",
         });
     } catch (err) {
-        console.error("[Security] Discord alert failed:", err);
+        log.error("Discord security alert failed", { username, ip, error: err instanceof Error ? err.message : String(err) });
     }
 }
 
@@ -264,7 +267,9 @@ export class AuthService {
                 ipAddress: ipAddress || null,
                 timestamp: new Date(),
             });
-        } catch {}
+        } catch (e) {
+            log.warn("Failed to write audit log (LOGIN_BLOCKED)", { username, error: e instanceof Error ? e.message : String(e) });
+        }
         return { success: false, error: msg };
     }
 
@@ -282,7 +287,9 @@ export class AuthService {
               details: { username, reason: "user_not_found", attempts: entry.attempts },
               ipAddress: ipAddress || null, timestamp: new Date(),
           });
-      } catch {}
+      } catch (e) {
+          log.warn("Failed to write audit log (LOGIN_FAILED user_not_found)", { username, error: e instanceof Error ? e.message : String(e) });
+      }
       if (entry.attempts >= MAX_FAILED_ATTEMPTS) {
           sendSecurityAlertDiscord(username, ipAddress, `Compte inconnu verrouillé après ${entry.attempts} tentatives`).catch(() => {});
       }
@@ -298,7 +305,9 @@ export class AuthService {
               details: { username, reason: "wrong_password", attempts: entry.attempts },
               ipAddress: ipAddress || null, timestamp: new Date(),
           });
-      } catch {}
+      } catch (e) {
+          log.warn("Failed to write audit log (LOGIN_FAILED wrong_password)", { username, userId: user.id, error: e instanceof Error ? e.message : String(e) });
+      }
       if (entry.attempts >= MAX_FAILED_ATTEMPTS) {
           sendSecurityAlertDiscord(username, ipAddress, `Compte \`${username}\` verrouillé après ${entry.attempts} tentatives de connexion échouées`).catch(() => {});
       } else if (entry.attempts === 3) {
@@ -327,7 +336,9 @@ export class AuthService {
             details: { username, userAgent: userAgent?.substring(0, 80) },
             ipAddress: ipAddress || null, timestamp: new Date(),
         });
-    } catch {}
+    } catch (e) {
+        log.warn("Failed to write audit log (LOGIN_SUCCESS)", { username, userId: user.id, error: e instanceof Error ? e.message : String(e) });
+    }
 
     const session = await this.createSession(user.id, userAgent, ipAddress);
     return { success: true, user, session };

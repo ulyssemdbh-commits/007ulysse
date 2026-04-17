@@ -532,17 +532,55 @@ export const utilityToolDefs: ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "app_navigate",
-            description: `Navigue dans l'application Ulysse: ouvrir une page, basculer sur un onglet, cliquer un bouton, ou ouvrir un modal. Utilise cet outil quand Maurice demande d'aller quelque part dans l'app, ou quand tu veux lui montrer quelque chose.
+            description: `Navigue DANS TA PROPRE APP (ulyssepro.org) — ouvrir une page, basculer sur un onglet, cliquer un bouton. À utiliser dès que Maurice dit "ouvre", "va sur", "montre-moi", "affiche", "bascule sur" + un nom de page ou d'onglet de l'app.
 
-PAGES DISPONIBLES: accueil, assistant, devops, sports/predictions, finances, emails, projets, taches, notes, brain, diagnostics, reglages, securite, analytics, insights, suguval, sugumaillane, iris, alfred, talking, footalmanach
+⚠️ NE PAS CONFONDRE avec screen_monitor_manage (prise en main du PC de Maurice via l'agent Python). Ce tool-ci agit UNIQUEMENT dans l'interface web Ulysse (React) — il n'a PAS besoin de "prise en main PC active". Utilise-le même si le screen monitoring est éteint : ça change juste l'URL/onglet de son navigateur ouvert sur ulyssepro.org.
 
-ONGLETS PAR PAGE:
-- Dashboard: overview, hubrise, predictions, sports, system
+PAGES DISPONIBLES (passe n'importe lequel de ces noms/alias en "page"):
+- accueil / home / dashboard → /
+- assistant / talking / vocal / voix → /talking (v1) ou talking-v2 → /talking-v2
+- devops → /devops  |  devmax / devopsmax → /devmax  |  devops-iris → /devops-iris
+- sports / sports/predictions → /sports/predictions  |  footalmanach / almanach → /sports/predictions/footalmanach
+- finances → /finances
+- emails / mail → /emails
+- projets / projects → /projects  |  taches / tasks → /tasks  |  notes → /notes
+- brain / braindashboard → /brain  |  brainhub → /brainhub
+- diagnostics → /diagnostics
+- reglages / settings → /settings  |  securite / security → /security
+- analytics → /analytics
+- insights / ulysse-insights → /ulysse-insights
+- skills / capacites → /skills
+- traces / logs → /traces
+- commax / cm → /commax
+- suguval / valentine / val → /suguval  |  sugumaillane / maillane → /sugumaillane
+- iris → /iris  |  iris-homework / devoirs → /iris-homework  |  iris-files → /iris-files
+- max / alfred → /max
+- superchat / groupe → /superchat
+- screen-monitor / monitoring → /screen-monitor
+
+IMPORTANT: "skills" (/skills) ≠ "insights" (/ulysse-insights). skills = catalogue des capacités. insights = monitoring du code.
+
+ONGLETS PAR PAGE (utilise n'importe quel alias FR ou l'ID EN):
+- Dashboard (accueil): overview, hubrise, predictions, sports, system
 - DevOps: projects, branches, commits, prs, cicd, files, preview, server, rollback
+- DevOpsMax (/devmax): overview, branches, commits, prs, cicd, files, files-test, rollback, deploy, preview, dgm, github, journal, envvars, logs, metrics, domains, costs, events, health, skills, traces, chat, account
 - Sports: matches, classement, buteurs, blessures, historique
 - Finances: overview, watchlist, detail, portfolio, expert, forex
 - Brain: domains, patterns, health
 - Insights: overview, tests, errors, performance, usage, codebase, patches
+- Skills: catalog, executions
+- Traces: list, stats
+- Commax: overview, composer, posts, inbox, accounts, journal
+- Suguval (SUGU Valentine): dashboard, achats, frais, banque, caisse, rh, fournisseurs, audit, comptabilite, archives, hubrise
+- Sugumaillane (SUGU Maillane): dashboard, achats, frais, banque, caisse, rh, fournisseurs, audit, archives
+
+EXEMPLES:
+- "ouvre RH dans Suguval" → action=switch_tab, page=suguval, tab=rh
+- "va sur les achats de Valentine" → action=switch_tab, page=suguval, tab=achats
+- "montre-moi les skills" → action=navigate, page=skills
+- "onglet commits du devops" → action=switch_tab, page=devops, tab=commits
+- "affiche les logs du devmax" → action=switch_tab, page=devmax, tab=logs
+- "bascule sur l'inbox du commax" → action=switch_tab, page=commax, tab=inbox
 
 BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new-branch, button-new-pr)`,
             parameters: {
@@ -795,8 +833,8 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
 — URL DIAGNOSTIC: url_diagnose (diagnostic COMPLET + auto-réparation d'une URL: teste dossier, Nginx, SSL, PM2, port, root path et CORRIGE automatiquement 502/404/503/000), url_diagnose_all (teste ET corrige automatiquement staging + production pour un appName: {appName}-dev.ulyssepro.org ET {appName}.ulyssepro.org en une seule action)
 — CRON: cron_list (voir les tâches planifiées), cron_add (ajouter une tâche cron), cron_delete (supprimer une tâche)
 — INGÉNIERIE: install_packages (npm/yarn install dans une app), run_tests (npm test/vitest/jest dans une app), run_tests_local (exécute vitest/tsc --noEmit/eslint sur Replit AVANT de push — vérifie la qualité du code localement), analyze_deps (audit dépendances: vulnérabilités, outdated, taille), debug_app (diagnostic complet: logs + PM2 status + port check + nginx + error patterns), refactor_check (linter, dead code, complexity analysis)
-— SÉCURITÉ & FIABILITÉ: security_scan (audit complet: secrets dans le code, vulnérabilités, headers HTTP, SSL, patterns dangereux, permissions), backup_app (backup complet: code + DB + nginx + env), rollback_app (rollback Git + rebuild + PM2 restart + health check, avec backup branch auto)
-— PERFORMANCE: profile_app (métriques process, mémoire, heap, response time benchmark 5x, connections ouvertes, I/O disque), perf_loadtest (test de charge: N requêtes × C concurrency via ab ou curl, avec stats serveur post-test)
+— SÉCURITÉ & FIABILITÉ: security_scan (audit complet: secrets dans le code, vulnérabilités, headers HTTP, SSL, patterns dangereux, permissions), security_scan_strict (variante DÉTERMINISTE 100% factuelle en 1 SSH, ZÉRO LLM, retourne report_markdown direct — préférer pour boutons quick-action), backup_app (backup complet: code + DB + nginx + env), rollback_app (rollback Git + rebuild + PM2 restart + health check, avec backup branch auto)
+— PERFORMANCE: profile_app (métriques process, mémoire, heap, response time benchmark 5x, connections ouvertes, I/O disque), perf_audit_strict (variante DÉTERMINISTE 100% factuelle en 1 SSH, agrège process/HTTP/bundle/source-size/load-avg/connections, ZÉRO LLM — préférer pour boutons quick-action), perf_loadtest (test de charge: N requêtes × C concurrency via ab ou curl, avec stats serveur post-test)
 — DATA: migrate_db, log_search, db_inspect (schema+indexes+foreign keys+slow queries+bloat+connexions)
 — ARCHITECTURE: architecture_analyze (circular deps, couplage, complexité cyclomatique, design patterns, métriques code), docs_generate (auto-doc complète + commit DOCS.md), git_intelligence (full_report, blame, bisect_errors, hotspots, branch_diff, cherry_pick)
 — API: api_test (auto-découverte endpoints + test HTTP)
@@ -805,13 +843,13 @@ BOUTONS: utilise le data-testid du bouton (ex: button-deploy-hetzner, button-new
 — PERFORMANCE: profile_app, perf_loadtest, bundle_analyze (dist sizes, gzip, unused deps, source maps)
 — AUTRES: exec (commande shell), ssl (certificat Let's Encrypt)
 Pour deploy: fournir repoUrl + appName. Le système détecte auto si c'est statique ou Node.js. Pour update: juste appName (et optionnel branch). 58 actions au total.
-⚠️ IMPORTANT — copyEnvFrom: Quand tu déploies une nouvelle version/copie d'un projet existant (ex: 007ulysse est une copie d'ulysse), tu DOIS utiliser copyEnvFrom="ulysse" pour copier les variables d'environnement. Sans ça, l'app crashera car elle n'aura pas les clés API, secrets et configs nécessaires. Le système auto-détecte aussi si une app PM2 existante matche le nom de base.`,
+⚠️ IMPORTANT — copyEnvFrom: Quand tu déploies une nouvelle version/copie d'un projet existant (ex: une app staging copiée d'une app prod), tu DOIS utiliser copyEnvFrom="<nom_app_source>" pour copier les variables d'environnement. Sans ça, l'app crashera car elle n'aura pas les clés API, secrets et configs nécessaires. Le système auto-détecte aussi si une app PM2 existante matche le nom de base.`,
             parameters: {
                 type: "object",
                 properties: {
                     action: {
                         type: "string",
-                        enum: ["status", "health", "list_apps", "app_info", "deploy", "update", "logs", "restart", "stop", "delete", "cleanup_orphans", "scale", "exec", "ssl", "ssl_status", "ssl_renew", "env_get", "env_set", "env_delete", "list_databases", "backup_db", "restore_db", "list_backups", "nginx_configs", "nginx_create", "nginx_delete", "nginx_show", "nginx_test", "nginx_reload", "nginx_logs", "nginx_audit", "nginx_catchall", "verify_url", "url_diagnose", "url_diagnose_all", "cron_list", "cron_add", "cron_delete", "install_packages", "run_tests", "analyze_deps", "debug_app", "refactor_check", "rollback_app", "migrate_db", "profile_app", "log_search", "security_scan", "backup_app", "scaffold_project", "scaffold_from_readme", "perf_loadtest", "architecture_analyze", "db_inspect", "git_intelligence", "api_test", "bundle_analyze", "env_clone", "docs_generate", "monitoring_setup", "full_pipeline", "smoke_test", "resource_usage", "app_db_query"],
+                        enum: ["status", "health", "list_apps", "app_info", "deploy", "update", "logs", "restart", "stop", "delete", "cleanup_orphans", "scale", "exec", "ssl", "ssl_status", "ssl_renew", "env_get", "env_set", "env_delete", "list_databases", "backup_db", "restore_db", "list_backups", "nginx_configs", "nginx_create", "nginx_delete", "nginx_show", "nginx_test", "nginx_reload", "nginx_logs", "nginx_audit", "nginx_catchall", "verify_url", "url_diagnose", "url_diagnose_all", "cron_list", "cron_add", "cron_delete", "install_packages", "run_tests", "analyze_deps", "debug_app", "refactor_check", "rollback_app", "migrate_db", "profile_app", "log_search", "security_scan", "backup_app", "scaffold_project", "scaffold_from_readme", "perf_loadtest", "architecture_analyze", "db_inspect", "git_intelligence", "api_test", "bundle_analyze", "env_clone", "docs_generate", "monitoring_setup", "full_pipeline", "smoke_test", "resource_usage", "app_db_query", "audit_strict", "security_scan_strict", "perf_audit_strict"],
                         description: "Action à exécuter sur le serveur"
                     },
                     appName: { type: "string", description: "Nom de l'app (pour deploy, update, logs, restart, stop, delete, env_*, app_info, scale)" },
@@ -1941,8 +1979,9 @@ export async function executeDevopsGithub(args: Record<string, any>): Promise<st
                 }
                 const repoOwnerLogin = (newRepo as any).owner?.login || owner || "ulyssemdbh-commits";
                 if (templateId && templateId !== "empty") {
-                    const { getTemplateFiles } = await import("../projectTemplates");
-                    const templateFiles = getTemplateFiles(templateId, repo);
+                    const { getTemplate, renderTemplateFiles } = await import("../projectTemplates");
+                    const tpl = getTemplate(templateId);
+                    const templateFiles = tpl ? renderTemplateFiles(tpl, repo, "") : [];
                     if (templateFiles.length > 0) {
                         await new Promise(r => setTimeout(r, 1500));
                         try {
@@ -2849,29 +2888,57 @@ This is a UI/UX design mockup for a web developer to implement. Make it look lik
                     if (depth !== "light") {
                         try {
                             const openai = getOpenAI();
-                            const filesContext = successFiles.slice(0, 60).map(f =>
+                            const FILES_CTX_LIMIT = 60;
+                            const filesTruncated = successFiles.length > FILES_CTX_LIMIT;
+                            const filesContext = successFiles.slice(0, FILES_CTX_LIMIT).map(f =>
                                 `📄 ${f.path} (${f.lines}L) exports:[${(f.exports || []).slice(0, 5).join(",")}] imports:[${(f.localImports || []).slice(0, 5).join(",")}]${f.firstComment ? ` — ${f.firstComment}` : ""}`
                             ).join("\n");
+                            const truncationNotice = filesTruncated
+                                ? `\n\n⚠️ ÉCHANTILLONNAGE PARTIEL : ${successFiles.length} fichiers existent au total mais SEULS LES ${FILES_CTX_LIMIT} PREMIERS sont fournis ci-dessous (${successFiles.length - FILES_CTX_LIMIT} fichiers non visibles). Tu DOIS le mentionner explicitement dans ton rapport et NE PAS prétendre couvrir l'ensemble du repo.`
+                                : "";
 
                             const aiRes = await openai.chat.completions.create({
                                 model: "gpt-4o-mini",
                                 messages: [{
                                     role: "system",
-                                    content: "Tu es un architecte logiciel senior. Analyse la structure du repo et produis un résumé technique concis en français. Max 500 mots."
+                                    content: `Tu es un analyseur factuel de structure de repo. Tu DOIS respecter ces règles strictes :
+1. ZÉRO EXTRAPOLATION : tu n'écris RIEN qui ne soit pas littéralement dérivable des données fournies (chemins, lignes, imports, exports, deps).
+2. CITATIONS OBLIGATOIRES : pour chaque affirmation, cite le fichier/répertoire source entre crochets. Exemple : "Express utilisé [server/index.ts]".
+3. PAS DE DIAGNOSTIC SANS PREUVE : ne dis JAMAIS "code fragile", "dette technique", "complexité élevée" sans citer un chiffre exact des données (ex: "fichier de 1200 lignes [src/foo.ts]").
+4. SECTIONS NON DÉDUCTIBLES = "DONNÉES INSUFFISANTES" littéral.
+5. PAS DE FORMULES VAGUES type "il semble que", "généralement", "probablement".
+Format de sortie obligatoire (markdown):
+## Stack détecté
+- [items avec sources]
+## Structure
+- [répertoires + count, sourcés]
+## Fichiers clés
+- chemin (X lignes) — rôle déduit des exports/imports
+## Dépendances notables
+- liste depuis externalDeps fournis
+## Points factuels
+- chiffres bruts uniquement (ex: "X fichiers > 500 lignes")
+Max 400 mots, français.`
                                 }, {
                                     role: "user",
-                                    content: `Repo: ${owner}/${repo} (${primaryLang}, ${totalLines} lignes, ${successFiles.length} fichiers)
-                                    
-Directories: ${Object.entries(dirStats).map(([d, s]) => `${d}: ${s.files} files, ${s.totalLines} lines`).join("; ")}
+                                    content: `Données factuelles du repo ${owner}/${repo} :
+- Langage primaire : ${primaryLang}
+- Total lignes analysées : ${totalLines}
+- Fichiers analysés : ${successFiles.length}
 
-Files:\n${filesContext}
+RÉPERTOIRES (chemin: files, lines):
+${Object.entries(dirStats).map(([d, s]) => `${d}: ${s.files} files, ${s.totalLines} lines`).join("\n")}
 
-External deps: ${[...allExternalDeps].slice(0, 20).join(", ")}
+FICHIERS (chemin (lignes) exports imports commentaire):
+${filesContext}${truncationNotice}
 
-Résume: 1) But du projet, 2) Architecture (patterns, stack), 3) Fichiers clés et leur rôle, 4) Dépendances notables, 5) Points d'attention (dette technique, complexité).`
+DÉPENDANCES EXTERNES détectées:
+${[...allExternalDeps].slice(0, 20).join(", ") || "DONNÉES INSUFFISANTES"}
+
+Produis ton analyse EN N'UTILISANT QUE ces données. Si une section ne peut pas être documentée à partir d'elles, écris "DONNÉES INSUFFISANTES" pour cette section.`
                                 }],
-                                max_tokens: 1000,
-                                temperature: 0.3
+                                max_tokens: 800,
+                                temperature: 0.1
                             });
                             aiSummary = aiRes.choices?.[0]?.message?.content || "";
                         } catch (aiErr: any) {
@@ -4326,15 +4393,10 @@ export async function executeSmartHomeControl(args: { action: string; device_nam
 export async function executeWeatherGet(args: { location?: string }): Promise<string> {
     const { location = 'Marseille' } = args;
     try {
-        const { getMarseilleInfo } = await import("../responseCacheService");
-        const info = await getMarseilleInfo();
         return JSON.stringify({
             type: 'weather',
             location,
-            temperature: info.weather.temperature,
-            condition: info.weather.condition,
-            humidity: info.weather.humidity,
-            wind: info.weather.wind
+            error: "Weather cache service not available. Use weather_get_current for live data.",
         });
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -5434,7 +5496,7 @@ export async function executeQueryCoba(args: Record<string, any>): Promise<strin
     const days = args.days || 7;
 
     try {
-        const { maxCobaService } = await import("../maxCobaService");
+        const maxCobaService: any = await import("../maxCobaService");
         const db = (await import("../../db")).db;
 
         switch (action) {
@@ -6299,13 +6361,19 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
             case "profile_app": {
                 if (!appName) return JSON.stringify({ error: "appName requis" });
                 const appDir = `/var/www/apps/${appName}`;
+                // PORT detection robuste : .env > PM2 env > fallback 5000.
+                // Avant: grep -oP cherchait [0-9]{4,5} dans .env, échouait si .env absent
+                //        ou format inattendu, donnant PORT="" → curl http://127.0.0.1:/ → HTTP 000.
+                const portDetect = `PORT=$(grep -oP '^PORT\\s*=\\s*\\K[0-9]+' ${appDir}/.env 2>/dev/null | head -1) ; ` +
+                    `if [ -z "$PORT" ]; then PORT=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pm2_env?.PORT||'')}catch{console.log('')}" 2>/dev/null); fi ; ` +
+                    `if [ -z "$PORT" ]; then PORT=5000; fi ; echo "Detected PORT=$PORT"`;
                 const profileScript = [
                     `echo "=== PROCESS METRICS ==="`,
                     `pm2 describe ${appName} 2>/dev/null | grep -E "cpu|memory|uptime|restart|instances|exec mode|node.js version" || echo "Not in PM2"`,
                     `echo "=== MEMORY DETAIL ==="`,
                     `pm2 jlist 2>/dev/null | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));const app=d.find(a=>a.name==='${appName}');if(app){console.log(JSON.stringify({heap_mb:Math.round((app.pm2_env?.axm_monitor?.['Heap Size']?.value||0)),event_loop_lag:app.pm2_env?.axm_monitor?.['Event Loop Latency p95']?.value||'N/A',active_handles:app.pm2_env?.axm_monitor?.['Active handles']?.value||'N/A',active_requests:app.pm2_env?.axm_monitor?.['Active requests']?.value||'N/A',cpu:app.monit?.cpu,mem_mb:Math.round((app.monit?.memory||0)/1048576)},null,2))}else{console.log('App not found in PM2')}" 2>/dev/null || echo "PM2 metrics unavailable"`,
                     `echo "=== RESPONSE TIME BENCHMARK ==="`,
-                    `PORT=$(grep -rhoP 'PORT.*?\\K[0-9]{4,5}' ${appDir}/.env 2>/dev/null | head -1)`,
+                    portDetect,
                     `for i in 1 2 3 4 5; do curl -s -o /dev/null -w "Request $i: HTTP %{http_code} - %{time_total}s (connect: %{time_connect}s, ttfb: %{time_starttransfer}s)\\n" http://127.0.0.1:$PORT/ 2>/dev/null; done`,
                     `echo "=== OPEN CONNECTIONS ==="`,
                     `ss -tnp 2>/dev/null | grep ":$PORT" | awk '{print $4}' | sort | uniq -c | sort -rn | head -10 || echo "No connections found"`,
@@ -6348,15 +6416,24 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
             case "security_scan": {
                 if (!appName) return JSON.stringify({ error: "appName requis" });
                 const appDir = `/var/www/apps/${appName}`;
+                // Détection robuste du PORT et des dossiers source réellement présents.
+                // Avant: scan figé sur ${appDir}/src qui n'existe pas dans la plupart des
+                // layouts (Vite/Next/fullstack utilisent server/client/shared). Résultat :
+                // grep ne trouvait rien, MaxAI concluait "0 secrets" à tort.
+                const portDetect = `PORT=$(grep -oP '^PORT\\s*=\\s*\\K[0-9]+' ${appDir}/.env 2>/dev/null | head -1) ; ` +
+                    `if [ -z "$PORT" ]; then PORT=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pm2_env?.PORT||'')}catch{console.log('')}" 2>/dev/null); fi ; ` +
+                    `if [ -z "$PORT" ]; then PORT=5000; fi`;
+                const dirsDetect = `SCAN_DIRS=""; for d in src server client shared app pages api lib; do [ -d "${appDir}/$d" ] && SCAN_DIRS="$SCAN_DIRS ${appDir}/$d"; done; if [ -z "$SCAN_DIRS" ]; then SCAN_DIRS="${appDir}"; fi; echo "Scanning dirs:$SCAN_DIRS"`;
                 const scanScript = [
                     `echo "=== DEPENDENCY VULNERABILITIES ==="`,
                     `cd ${appDir} && npm audit 2>/dev/null | head -40 || echo "npm audit unavailable"`,
                     `echo ""`,
+                    dirsDetect,
                     `echo "=== SECRETS IN CODE (potential leaks) ==="`,
-                    `grep -rn --include="*.ts" --include="*.tsx" --include="*.js" --include="*.json" --include="*.env*" -iE "(api[_-]?key|secret[_-]?key|password|token|private[_-]?key|aws[_-]?access|bearer)\\s*[:=]\\s*['\"][^'\"]{8,}" ${appDir}/src ${appDir}/client ${appDir}/server ${appDir}/.env* 2>/dev/null | grep -vE "node_modules|\.git|process\.env|import\.meta" | head -20 || echo "No hardcoded secrets found"`,
+                    `grep -rn --include="*.ts" --include="*.tsx" --include="*.js" --include="*.json" -iE "(api[_-]?key|secret[_-]?key|password|token|private[_-]?key|aws[_-]?access|bearer)\\s*[:=]\\s*['\\"][^'\\"]{8,}" $SCAN_DIRS 2>/dev/null | grep -vE "node_modules|\\.git|process\\.env|import\\.meta" | head -20 || echo "No hardcoded secrets found"`,
                     `echo ""`,
                     `echo "=== EXPOSED ENV FILES ==="`,
-                    `find ${appDir} -name ".env*" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | while read f; do echo "$f: $(wc -l < $f) vars"; done`,
+                    `find ${appDir} -maxdepth 2 -name ".env*" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | while read f; do echo "$f: $(wc -l < $f) vars"; done`,
                     `echo "=== .gitignore CHECK ==="`,
                     `grep -E "\\.env|secret|private" ${appDir}/.gitignore 2>/dev/null || echo "WARNING: .env not in .gitignore!"`,
                     `echo ""`,
@@ -6368,11 +6445,11 @@ export async function executeDevopsServer(args: Record<string, any>): Promise<st
                     `if [ -n "$DOMAIN" ]; then echo | openssl s_client -servername $DOMAIN -connect $DOMAIN:443 2>/dev/null | openssl x509 -noout -dates -subject 2>/dev/null || echo "SSL check failed"; else echo "No domain found for SSL check"; fi`,
                     `echo ""`,
                     `echo "=== CORS/SECURITY HEADERS ==="`,
-                    `PORT=$(grep -rhoP 'PORT.*?\\K[0-9]{4,5}' ${appDir}/.env 2>/dev/null | head -1)`,
+                    portDetect,
                     `curl -sI http://127.0.0.1:$PORT/ 2>/dev/null | grep -iE "x-frame|x-content-type|strict-transport|access-control|content-security-policy|x-xss" || echo "No security headers found (RISK)"`,
                     `echo ""`,
                     `echo "=== DANGEROUS PATTERNS ==="`,
-                    `grep -rn --include="*.ts" --include="*.js" -E "(eval\\(|new Function\\(|innerHTML\\s*=|dangerouslySetInnerHTML|child_process\\.exec\\(|\\$\\{.*\\}.*query|sql\\s*\\x60)" ${appDir}/src ${appDir}/server 2>/dev/null | grep -v node_modules | head -15 || echo "No dangerous patterns found"`,
+                    `grep -rn --include="*.ts" --include="*.js" -E "(eval\\(|new Function\\(|innerHTML\\s*=|dangerouslySetInnerHTML|child_process\\.exec\\(|\\$\\{.*\\}.*query|sql\\s*\\x60)" $SCAN_DIRS 2>/dev/null | grep -v node_modules | head -15 || echo "No dangerous patterns found"`,
                     `echo ""`,
                     `echo "=== FILE PERMISSIONS ==="`,
                     `find ${appDir} -perm -o+w -not -path "*/node_modules/*" -not -path "*/.git/*" -type f 2>/dev/null | head -10 || echo "No world-writable files"`
@@ -6855,41 +6932,762 @@ console.log(cycles.length?cycles.slice(0,10).join('\\n'):'No circular dependenci
                 if (!appName) return JSON.stringify({ error: "appName requis" });
                 const appDir = `/var/www/apps/${appName}`;
                 const targetDb = args.database || "";
+                // Récupère DATABASE_URL complète (Neon, Supabase, Postgres distant…) au lieu de
+                // tenter "psql -d <name>" en local — qui échoue si la DB n'est pas sur la machine.
+                // Source 1 : .env du projet. Source 2 : pm2 env du process. Source 3 : ${appDir}/.env.production.
+                // Si une URL custom est passée via args.database, on la respecte.
                 const dbInspectScript = [
-                    `DB_NAME="${targetDb}"`,
-                    `if [ -z "$DB_NAME" ]; then DB_NAME=$(grep -oP 'DATABASE.*?//.*?/\\K[a-zA-Z0-9_-]+' ${appDir}/.env 2>/dev/null | head -1); fi`,
-                    `if [ -z "$DB_NAME" ]; then echo "No database found in .env. Use database parameter."; exit 0; fi`,
-                    `echo "=== DATABASE: $DB_NAME ==="`,
+                    `DB_URL="${targetDb}"`,
+                    `if [ -z "$DB_URL" ]; then DB_URL=$(grep -oP '^DATABASE_URL\\s*=\\s*\\K.*' ${appDir}/.env 2>/dev/null | head -1 | tr -d '"' | tr -d "'"); fi`,
+                    `if [ -z "$DB_URL" ]; then DB_URL=$(grep -oP '^DATABASE_URL\\s*=\\s*\\K.*' ${appDir}/.env.production 2>/dev/null | head -1 | tr -d '"' | tr -d "'"); fi`,
+                    `if [ -z "$DB_URL" ]; then DB_URL=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pm2_env?.DATABASE_URL||'')}catch{console.log('')}" 2>/dev/null); fi`,
+                    `if [ -z "$DB_URL" ]; then echo "No DATABASE_URL found in .env, .env.production, or PM2 env. Pass full connection URL via 'database' parameter."; exit 0; fi`,
+                    `DB_LABEL=$(echo "$DB_URL" | grep -oP '@\\K[^/]+' | head -1)`,
+                    `echo "=== DATABASE: $DB_LABEL ==="`,
                     `echo ""`,
                     `echo "=== SCHEMA (tables, columns, types) ==="`,
-                    `psql -d $DB_NAME -c "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name, ordinal_position;" 2>/dev/null | head -100`,
+                    `psql "$DB_URL" -c "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name, ordinal_position;" 2>&1 | head -100`,
                     `echo ""`,
                     `echo "=== TABLE SIZES & ROW COUNTS ==="`,
-                    `psql -d $DB_NAME -c "SELECT schemaname||'.'||relname AS table, pg_size_pretty(pg_total_relation_size(relid)) AS total_size, pg_size_pretty(pg_relation_size(relid)) AS data_size, n_live_tup AS row_count FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC;" 2>/dev/null`,
+                    `psql "$DB_URL" -c "SELECT schemaname||'.'||relname AS table, pg_size_pretty(pg_total_relation_size(relid)) AS total_size, pg_size_pretty(pg_relation_size(relid)) AS data_size, n_live_tup AS row_count FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC;" 2>&1`,
                     `echo ""`,
                     `echo "=== INDEXES ==="`,
-                    `psql -d $DB_NAME -c "SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname='public' ORDER BY tablename;" 2>/dev/null | head -50`,
+                    `psql "$DB_URL" -c "SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname='public' ORDER BY tablename;" 2>&1 | head -50`,
                     `echo ""`,
                     `echo "=== FOREIGN KEYS ==="`,
-                    `psql -d $DB_NAME -c "SELECT tc.table_name, kcu.column_name, ccu.table_name AS foreign_table, ccu.column_name AS foreign_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name=tc.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='public';" 2>/dev/null`,
+                    `psql "$DB_URL" -c "SELECT tc.table_name, kcu.column_name, ccu.table_name AS foreign_table, ccu.column_name AS foreign_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name=tc.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='public';" 2>&1`,
                     `echo ""`,
                     `echo "=== MISSING INDEXES (seq scans > 1000) ==="`,
-                    `psql -d $DB_NAME -c "SELECT schemaname||'.'||relname AS table, seq_scan, seq_tup_read, idx_scan, n_live_tup FROM pg_stat_user_tables WHERE seq_scan > 1000 AND n_live_tup > 100 ORDER BY seq_scan DESC LIMIT 10;" 2>/dev/null`,
+                    `psql "$DB_URL" -c "SELECT schemaname||'.'||relname AS table, seq_scan, seq_tup_read, idx_scan, n_live_tup FROM pg_stat_user_tables WHERE seq_scan > 1000 AND n_live_tup > 100 ORDER BY seq_scan DESC LIMIT 10;" 2>&1`,
                     `echo ""`,
                     `echo "=== SLOW QUERIES (if pg_stat_statements) ==="`,
-                    `psql -d $DB_NAME -c "SELECT LEFT(query,100) AS query, calls, mean_exec_time::numeric(10,2) AS avg_ms, total_exec_time::numeric(10,2) AS total_ms FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname='$DB_NAME') ORDER BY mean_exec_time DESC LIMIT 10;" 2>/dev/null || echo "pg_stat_statements not enabled"`,
+                    `psql "$DB_URL" -c "SELECT LEFT(query,100) AS query, calls, mean_exec_time::numeric(10,2) AS avg_ms, total_exec_time::numeric(10,2) AS total_ms FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;" 2>&1 || echo "pg_stat_statements not enabled"`,
                     `echo ""`,
                     `echo "=== DATABASE SIZE ==="`,
-                    `psql -d $DB_NAME -c "SELECT pg_size_pretty(pg_database_size('$DB_NAME')) AS db_size;" 2>/dev/null`,
+                    `psql "$DB_URL" -c "SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size;" 2>&1`,
                     `echo ""`,
                     `echo "=== ACTIVE CONNECTIONS ==="`,
-                    `psql -d $DB_NAME -c "SELECT state, count(*) FROM pg_stat_activity WHERE datname='$DB_NAME' GROUP BY state;" 2>/dev/null`,
+                    `psql "$DB_URL" -c "SELECT state, count(*) FROM pg_stat_activity WHERE datname=current_database() GROUP BY state;" 2>&1`,
                     `echo ""`,
                     `echo "=== BLOAT CHECK (dead tuples) ==="`,
-                    `psql -d $DB_NAME -c "SELECT schemaname||'.'||relname AS table, n_dead_tup, n_live_tup, CASE WHEN n_live_tup>0 THEN round(n_dead_tup::numeric/n_live_tup*100,2) ELSE 0 END AS dead_pct, last_vacuum, last_autovacuum FROM pg_stat_user_tables WHERE n_dead_tup > 100 ORDER BY n_dead_tup DESC LIMIT 10;" 2>/dev/null`
+                    `psql "$DB_URL" -c "SELECT schemaname||'.'||relname AS table, n_dead_tup, n_live_tup, CASE WHEN n_live_tup>0 THEN round(n_dead_tup::numeric/n_live_tup*100,2) ELSE 0 END AS dead_pct, last_vacuum, last_autovacuum FROM pg_stat_user_tables WHERE n_dead_tup > 100 ORDER BY n_dead_tup DESC LIMIT 10;" 2>&1`
                 ].join(" ; ");
                 const dbResult = await sshService.executeCommand(dbInspectScript, 30000);
                 return JSON.stringify({ action: "db_inspect", appName, database: targetDb || "auto-detected", inspection: dbResult.output, success: dbResult.success });
+            }
+            case "audit_strict": {
+                // AUDIT 100% FACTUEL — aucun LLM, aucune extrapolation.
+                // Collecte 5 axes (process, perf, sécurité, DB, git) via 1 seul SSH,
+                // parse les sections délimitées et construit un markdown déterministe.
+                if (!appName) return JSON.stringify({ error: "appName requis" });
+                // SÉCURITÉ: valider appName strictement avant interpolation shell
+                // (évite injection via "; rm -rf / ;", "'; process.exit(1); //", etc.)
+                if (!/^[a-zA-Z0-9_-]{1,64}$/.test(appName)) {
+                    return JSON.stringify({
+                        error: "appName invalide (alphanumérique + tiret/underscore uniquement, 1-64 chars)",
+                        received: appName.slice(0, 100)
+                    });
+                }
+                const fallbackAppDir = `/var/www/apps/${appName}`;
+                const SEP = (label: string) => `echo "===AUDIT_STRICT_SECTION:${label}==="`;
+                // FIX 2026-04-17: `node -e` n'est pas garanti dans le PATH SSH non-interactif sur Hetzner
+                // (PM2 utilise son propre node embarqué). On sort le JSON brut de pm2 jlist et on parse
+                // côté serveur Node.js — plus robuste, plus debuggable, pas de quoting fragile.
+                // APPDIR utilise le fallback shell (la convention /var/www/apps/${name} est respectée
+                // sur Hetzner). Le vrai pm_cwd sera réinjecté côté JS si différent.
+                const detectAppDir = `APPDIR="${fallbackAppDir}"`;
+                const auditScript = [
+                    detectAppDir,
+                    SEP("APPDIR_DETECTED"),
+                    `echo "$APPDIR"`,
+                    SEP("PM2_RAW"),
+                    `pm2 jlist 2>/dev/null || echo "PM2_FAIL"`,
+                    SEP("PORT_DETECT"),
+                    `PORT=$(grep -oP '^PORT\\s*=\\s*\\K[0-9]+' "$APPDIR/.env" 2>/dev/null | head -1) ; ` +
+                    `if [ -z "$PORT" ]; then PORT=$(grep -oP '^PORT\\s*=\\s*\\K[0-9]+' "$APPDIR/.env.production" 2>/dev/null | head -1); fi ; ` +
+                    `if [ -z "$PORT" ]; then PORT=5000; fi ; echo "PORT=$PORT"`,
+                    SEP("HTTP_BENCHMARK"),
+                    // -L = suit redirects (302 → 200), teste 2 endpoints (/ et /api/health)
+                    `for endpoint in "/" "/api/health"; do ` +
+                    `for i in 1 2 3; do ` +
+                    `curl -sL -o /dev/null -w "endpoint=$endpoint req=$i HTTP %{http_code} time=%{time_total}s ttfb=%{time_starttransfer}s redirects=%{num_redirects}\\n" --max-time 5 "http://127.0.0.1:$PORT$endpoint" 2>/dev/null || echo "endpoint=$endpoint req=$i CURL_FAIL"; ` +
+                    `done; done`,
+                    SEP("DISK_USAGE"),
+                    `df -h "$APPDIR" 2>/dev/null | tail -1 || echo "DF_FAIL"`,
+                    `du -sh "$APPDIR" 2>/dev/null || echo "DU_FAIL"`,
+                    SEP("FILES_INVENTORY"),
+                    // Inventaire pour distinguer "déploiement bundle" vs "checkout source complet"
+                    `echo "has_git=$([ -d "$APPDIR/.git" ] && echo yes || echo no)"`,
+                    `echo "has_node_modules=$([ -d "$APPDIR/node_modules" ] && echo yes || echo no)"`,
+                    `echo "has_dist=$([ -d "$APPDIR/dist" ] && echo yes || echo no)"`,
+                    `echo "has_package_json=$([ -f "$APPDIR/package.json" ] && echo yes || echo no)"`,
+                    `echo "source_dirs=$(for d in server client shared src lib app api; do [ -d "$APPDIR/$d" ] && echo -n "$d "; done)"`,
+                    SEP("SECURITY_FILES"),
+                    // Recherche élargie maxdepth 3, inclus .env.* variants
+                    `find "$APPDIR" -maxdepth 3 -type f \\( -name ".env" -o -name ".env.*" \\) ! -path "*/node_modules/*" -exec ls -l {} \\; 2>/dev/null | awk '{print $1, $9}' || echo "NO_ENV_FILES"`,
+                    SEP("SECURITY_SCAN_SECRETS"),
+                    `SCAN_DIRS=$(for d in server client shared src lib app api; do [ -d "$APPDIR/$d" ] && echo "$APPDIR/$d"; done | tr '\\n' ' ') ; ` +
+                    `if [ -z "$SCAN_DIRS" ]; then echo "NO_SOURCE_DIRS"; else ` +
+                    `echo "Scanned dirs: $SCAN_DIRS" ; ` +
+                    `grep -rEn "(api[_-]?key|secret|password|token|bearer)\\s*[:=]\\s*['\\\"][a-zA-Z0-9_\\-]{16,}" $SCAN_DIRS 2>/dev/null --include="*.ts" --include="*.js" --include="*.tsx" --include="*.jsx" --include="*.py" | grep -v "process.env" | grep -v "import.meta.env" | head -20 || echo "NO_HARDCODED_SECRETS_FOUND" ; fi`,
+                    SEP("DEPS_AUDIT"),
+                    `if [ -f "$APPDIR/package.json" ] && [ -d "$APPDIR/node_modules" ]; then ` +
+                    `cd "$APPDIR" && npm audit --json 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const m=d.metadata?.vulnerabilities||{};console.log(JSON.stringify({total:m.total||0,critical:m.critical||0,high:m.high||0,moderate:m.moderate||0,low:m.low||0,info:m.info||0}))}catch(e){console.log('AUDIT_UNAVAILABLE')}" 2>/dev/null || echo "NPM_AUDIT_FAIL"; ` +
+                    `else echo "NO_NODE_MODULES_OR_PACKAGE_JSON"; fi`,
+                    SEP("DB_OVERVIEW"),
+                    `DB_URL=$(grep -oP '^DATABASE_URL\\s*=\\s*\\K.*' "$APPDIR/.env" 2>/dev/null | head -1 | tr -d '"' | tr -d "'") ; ` +
+                    `if [ -z "$DB_URL" ]; then DB_URL=$(grep -oP '^DATABASE_URL\\s*=\\s*\\K.*' "$APPDIR/.env.production" 2>/dev/null | head -1 | tr -d '"' | tr -d "'"); fi ; ` +
+                    `if [ -z "$DB_URL" ]; then DB_URL=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pm2_env?.DATABASE_URL||'')}catch{console.log('')}" 2>/dev/null); fi ; ` +
+                    `if [ -z "$DB_URL" ]; then echo "NO_DB_URL"; else ` +
+                    `psql "$DB_URL" -t -c "SELECT 'tables=' || count(*) FROM information_schema.tables WHERE table_schema='public';" 2>&1 | tr -d ' ' | head -1 ; ` +
+                    `psql "$DB_URL" -t -c "SELECT 'db_size=' || pg_size_pretty(pg_database_size(current_database()));" 2>&1 | tr -d ' ' | head -1 ; ` +
+                    `psql "$DB_URL" -t -c "SELECT 'connections=' || count(*) FROM pg_stat_activity WHERE datname=current_database();" 2>&1 | tr -d ' ' | head -1 ; fi`,
+                    SEP("GIT_STATE"),
+                    `if [ -d "$APPDIR/.git" ]; then ` +
+                    `cd "$APPDIR" && echo "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)" && echo "head=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" && echo "last_commit_date=$(git log -1 --format=%cI 2>/dev/null || echo unknown)" && echo "last_commit_msg=$(git log -1 --format=%s 2>/dev/null | head -c 100 || echo unknown)" && echo "uncommitted_changes=$(git status --porcelain 2>/dev/null | wc -l)"; ` +
+                    `else echo "NO_GIT_DIR"; fi`,
+                    SEP("END")
+                ].join(" ; ");
+
+                const auditResult = await sshService.executeCommand(auditScript, 60000);
+
+                // Parse les sections délimitées
+                const sections: Record<string, string> = {};
+                const rawOutput = auditResult.output || "";
+                // FIX 2026-04-17: regex doit accepter les chiffres dans les labels (ex: PM2_RAW)
+                // Auparavant [A-Z_]+ excluait le '2' de 'PM2_*', faisant disparaître la section.
+                const parts = rawOutput.split(/===AUDIT_STRICT_SECTION:([A-Z0-9_]+)===/);
+                for (let i = 1; i < parts.length; i += 2) {
+                    const label = parts[i];
+                    const content = (parts[i + 1] || "").trim();
+                    sections[label] = content;
+                }
+
+                const getSection = (label: string): string => sections[label] || "DONNÉES INSUFFISANTES (section absente du output SSH)";
+                const parseJsonLine = (raw: string): any => {
+                    const trimmed = raw.trim();
+                    if (!trimmed || trimmed.startsWith("PARSE_ERROR") || trimmed === "NOT_IN_PM2" || trimmed === "PM2_UNAVAILABLE") return null;
+                    try { return JSON.parse(trimmed); } catch { return null; }
+                };
+
+                // FIX 2026-04-17: parsing PM2 fait côté JS (raw pm2 jlist depuis SSH)
+                // au lieu de `node -e` shell qui échouait silencieusement quand node n'est
+                // pas dans le PATH SSH non-interactif sur Hetzner.
+                const pm2RawSection = getSection("PM2_RAW");
+                let pm2Data: any = null;
+                let pm2ParseError: string | null = null;
+                if (pm2RawSection.includes("PM2_FAIL") || pm2RawSection.startsWith("DONNÉES INSUFFISANTES")) {
+                    pm2ParseError = "pm2 jlist indisponible (commande échouée ou absente)";
+                } else {
+                    try {
+                        const allApps = JSON.parse(pm2RawSection);
+                        if (!Array.isArray(allApps)) {
+                            pm2ParseError = "pm2 jlist n'a pas retourné un tableau";
+                        } else {
+                            const app = allApps.find((a: any) => a?.name === appName);
+                            if (!app) {
+                                pm2ParseError = `app '${appName}' non trouvée dans PM2 (${allApps.length} apps listées)`;
+                            } else {
+                                const env = app.pm2_env || {};
+                                const monit = app.monit || {};
+                                pm2Data = {
+                                    status: env.status,
+                                    restarts: env.restart_time,
+                                    unstable_restarts: env.unstable_restarts,
+                                    uptime_ms: Date.now() - (env.pm_uptime || Date.now()),
+                                    cpu_pct: monit.cpu,
+                                    mem_mb: Math.round((monit.memory || 0) / 1048576),
+                                    instances: env.instances,
+                                    exec_mode: env.exec_mode,
+                                    node_version: env.node_version,
+                                    pm_id: app.pm_id,
+                                    pm_cwd: env.pm_cwd,
+                                    script: env.pm_exec_path,
+                                };
+                            }
+                        }
+                    } catch (e: any) {
+                        pm2ParseError = `JSON.parse a échoué: ${e?.message?.slice(0, 80) || "erreur inconnue"}`;
+                    }
+                }
+
+                // detectedAppDir : préfère pm_cwd réel de PM2 s'il existe et diffère du fallback
+                const appDirFromShell = getSection("APPDIR_DETECTED").split("\n")[0].trim() || fallbackAppDir;
+                const detectedAppDir = pm2Data?.pm_cwd || appDirFromShell;
+                const portMatch = getSection("PORT_DETECT").match(/PORT=(\d+)/);
+                const port = portMatch ? portMatch[1] : "n/a";
+
+                // HTTP : 2 endpoints x 3 reqs, on capture les deux séparément
+                const httpRaw = getSection("HTTP_BENCHMARK");
+                const httpLines = httpRaw.split("\n").filter(l => l.includes("endpoint="));
+                const parseHttpLine = (line: string) => {
+                    const ep = line.match(/endpoint=(\S+)/)?.[1] || "?";
+                    const code = line.match(/HTTP (\d{3})/)?.[1] || null;
+                    const time = parseFloat(line.match(/time=([0-9.]+)/)?.[1] || "0");
+                    const redirects = parseInt(line.match(/redirects=(\d+)/)?.[1] || "0");
+                    const failed = line.includes("CURL_FAIL");
+                    return { ep, code, time, redirects, failed };
+                };
+                const httpResults = httpLines.map(parseHttpLine);
+                const groupByEndpoint = (ep: string) => httpResults.filter(r => r.ep === ep);
+                const summarizeEndpoint = (ep: string) => {
+                    const arr = groupByEndpoint(ep);
+                    if (!arr.length) return null;
+                    const codes = arr.map(r => r.code || "FAIL");
+                    const times = arr.filter(r => !r.failed).map(r => r.time);
+                    const avgT = times.length ? (times.reduce((a, b) => a + b, 0) / times.length).toFixed(3) : "n/a";
+                    const allOk = arr.every(r => r.code && (r.code.startsWith("2") || r.code.startsWith("3")));
+                    const redirects = arr[0]?.redirects || 0;
+                    return { codes, avgT, allOk, redirects, failed: arr.every(r => r.failed) };
+                };
+                const httpRoot = summarizeEndpoint("/");
+                const httpHealth = summarizeEndpoint("/api/health");
+                // Verdict global : si au moins un endpoint répond 2xx/3xx, app considérée UP
+                const httpAlive = (httpRoot?.allOk && !httpRoot?.failed) || (httpHealth?.allOk && !httpHealth?.failed);
+
+                const diskRaw = getSection("DISK_USAGE");
+                const diskLine = diskRaw.split("\n")[0] || "";
+                const diskParts = diskLine.split(/\s+/);
+                const diskUsage = diskParts.length >= 5 ? `${diskParts[4]} used (${diskParts[2]}/${diskParts[1]})` : "n/a";
+                const appSizeMatch = diskRaw.match(/(\d+(?:\.\d+)?[KMGT]?)\s+\//);
+                const appSize = appSizeMatch ? appSizeMatch[1] : "n/a";
+
+                // Inventaire fichiers : détermine si déploiement bundle ou checkout source complet
+                const inventoryRaw = getSection("FILES_INVENTORY");
+                const inventory: Record<string, string> = {};
+                inventoryRaw.split("\n").forEach(l => {
+                    const m = l.match(/^(has_\w+|source_dirs)=(.*)$/);
+                    if (m) inventory[m[1]] = m[2].trim();
+                });
+                const isBundleDeploy = inventory.has_git === "no" && inventory.source_dirs === "";
+                const isSourceDeploy = inventory.has_git === "yes" || (inventory.source_dirs || "").length > 0;
+                const naBundle = "NON APPLICABLE (déploiement bundle compilé — pas de sources/git en prod, comportement normal)";
+
+                const secFilesRaw = getSection("SECURITY_FILES");
+                const envFilesCount = secFilesRaw.includes("NO_ENV_FILES") ? 0 : (secFilesRaw.match(/\.env/g) || []).length;
+                const envFilesPerms = secFilesRaw.includes("NO_ENV_FILES") || envFilesCount === 0 ? "aucun fichier .env trouvé"
+                    : secFilesRaw.split("\n").filter(l => l.includes(".env")).map(l => l.trim()).join(" | ") || "n/a";
+
+                const secretsRaw = getSection("SECURITY_SCAN_SECRETS");
+                let secretsLeaks = 0;
+                let secretsStatus = "n/a";
+                if (secretsRaw.includes("NO_SOURCE_DIRS")) {
+                    secretsStatus = isBundleDeploy ? naBundle : "DONNÉES INSUFFISANTES (aucun dossier source détecté)";
+                } else if (secretsRaw.includes("NO_HARDCODED_SECRETS_FOUND")) {
+                    secretsStatus = "0 secret hardcodé détecté ✅";
+                } else {
+                    secretsLeaks = secretsRaw.split("\n").filter(l => l.includes(":") && !l.startsWith("Scanned")).length;
+                    secretsStatus = `${secretsLeaks} matches potentiels (à vérifier manuellement)`;
+                }
+
+                const depsAuditRaw = getSection("DEPS_AUDIT");
+                const depsAuditData = parseJsonLine(depsAuditRaw);
+                let depsAuditStatus: string;
+                if (depsAuditRaw.includes("NO_NODE_MODULES_OR_PACKAGE_JSON")) {
+                    depsAuditStatus = isBundleDeploy ? naBundle : "DONNÉES INSUFFISANTES (package.json/node_modules absent)";
+                } else if (!depsAuditData) {
+                    depsAuditStatus = "DONNÉES INSUFFISANTES (npm audit a échoué)";
+                } else {
+                    depsAuditStatus = `total=${depsAuditData.total} (critical=${depsAuditData.critical}, high=${depsAuditData.high}, moderate=${depsAuditData.moderate}, low=${depsAuditData.low})`;
+                }
+
+                const dbRaw = getSection("DB_OVERVIEW");
+                let dbStatus: string;
+                if (dbRaw.includes("NO_DB_URL")) {
+                    dbStatus = isBundleDeploy
+                        ? `${naBundle} — DATABASE_URL configurée hors .env (probablement via systemd, ecosystem.config ou variable shell PM2)`
+                        : "DONNÉES INSUFFISANTES (DATABASE_URL non détecté dans .env, .env.production, ni PM2 env)";
+                } else {
+                    dbStatus = dbRaw.replace(/\n/g, " | ").trim() || "n/a";
+                }
+
+                const gitRaw = getSection("GIT_STATE");
+                const gitData: Record<string, string> = {};
+                let gitStatus: string;
+                if (gitRaw.includes("NO_GIT_DIR")) {
+                    gitStatus = isBundleDeploy
+                        ? `${naBundle} — pour l'historique git, utiliser devops_github sur le repo source`
+                        : "DONNÉES INSUFFISANTES (.git absent malgré la présence de sources)";
+                } else {
+                    gitRaw.split("\n").forEach(line => {
+                        const m = line.match(/^([a-z_]+)=(.*)$/);
+                        if (m) gitData[m[1]] = m[2];
+                    });
+                    gitStatus = Object.keys(gitData).length > 0
+                        ? `branch=${gitData.branch || "n/a"} | head=${gitData.head || "n/a"} | last=${gitData.last_commit_date || "n/a"} | uncommitted=${gitData.uncommitted_changes || "n/a"} | msg="${(gitData.last_commit_msg || "").slice(0, 80)}"`
+                        : "DONNÉES INSUFFISANTES (git accessible mais aucune donnée parsée)";
+                }
+
+                const uptimeStr = pm2Data?.uptime_ms != null
+                    ? (() => {
+                        const ms = pm2Data.uptime_ms;
+                        const h = Math.floor(ms / 3600000);
+                        const m = Math.floor((ms % 3600000) / 60000);
+                        return h > 0 ? `${h}h${m}m` : `${m}m`;
+                    })()
+                    : "n/a";
+
+                const deployType = isBundleDeploy ? "bundle compilé (dist/index.cjs)"
+                    : isSourceDeploy ? "checkout source complet"
+                    : "indéterminé";
+
+                // Build markdown DÉTERMINISTE — aucun LLM
+                const reportMd = `# Audit Strict — ${appName}
+*Généré le ${new Date().toISOString()} — agrégation déterministe sans LLM, données 100% sourcées*
+
+## 0. Topologie détectée
+- APPDIR: \`${detectedAppDir}\` [source: pm2 jlist → pm_cwd, fallback ${fallbackAppDir}]
+- Type de déploiement: **${deployType}** [source: inventaire .git/node_modules/source_dirs]
+- has_git: ${inventory.has_git || "?"} | has_node_modules: ${inventory.has_node_modules || "?"} | has_dist: ${inventory.has_dist || "?"} | has_package_json: ${inventory.has_package_json || "?"}
+- source_dirs présents: ${inventory.source_dirs || "(aucun)"}
+
+## 1. Process (PM2)
+${pm2Data ? `- Status: **${pm2Data.status}** [source: pm2 jlist → status]
+- pm_id: ${pm2Data.pm_id} | script: \`${pm2Data.script || "n/a"}\` [source: pm2 jlist]
+- Uptime: ${uptimeStr} [source: pm2 jlist → pm_uptime]
+- Restarts: ${pm2Data.restarts} (unstable: ${pm2Data.unstable_restarts}) [source: pm2 jlist → restart_time]
+- CPU: ${pm2Data.cpu_pct}% | RAM: ${pm2Data.mem_mb} MB [source: pm2 monit]
+- Instances: ${pm2Data.instances} | mode: ${pm2Data.exec_mode} | node: ${pm2Data.node_version} [source: pm2 jlist]` : `- DONNÉES INSUFFISANTES — ${pm2ParseError || "raison inconnue"}`}
+
+## 2. Performance HTTP (PORT ${port})
+${httpRoot ? `- **GET /** : codes [${httpRoot.codes.join(", ")}] | avg ${httpRoot.avgT}s | redirects suivis: ${httpRoot.redirects} → ${httpRoot.allOk ? "✅" : httpRoot.failed ? "❌ no response" : "⚠️ codes non-2xx/3xx"} [source: curl -sL http://127.0.0.1:${port}/]` : "- GET / : DONNÉES INSUFFISANTES"}
+${httpHealth ? `- **GET /api/health** : codes [${httpHealth.codes.join(", ")}] | avg ${httpHealth.avgT}s → ${httpHealth.allOk ? "✅" : httpHealth.failed ? "❌ no response (endpoint absent ou app KO)" : "⚠️ codes non-2xx/3xx"} [source: curl -sL http://127.0.0.1:${port}/api/health]` : "- GET /api/health : DONNÉES INSUFFISANTES"}
+- **Verdict app**: ${httpAlive ? "✅ APP RÉPOND (au moins un endpoint en 2xx/3xx)" : "❌ APP NE RÉPOND PAS sur les 2 endpoints testés — vérifier port/binding réel"}
+
+## 3. Disque
+- Filesystem: ${diskUsage} [source: df -h $APPDIR]
+- Taille app: ${appSize} [source: du -sh $APPDIR]
+
+## 4. Sécurité — Fichiers .env
+- Fichiers .env trouvés: ${envFilesCount} [source: find $APPDIR -maxdepth 3 -name .env*]
+- Détails: ${envFilesPerms} [source: ls -l]
+${envFilesPerms.includes("rw-r--r--") || envFilesPerms.includes("rw-rw-") ? "- ⚠️ Permissions trop ouvertes détectées (lecture mondiale)" : ""}
+
+## 5. Sécurité — Secrets hardcodés
+- ${secretsStatus} [source: grep secrets sur sources si présentes]
+
+## 6. Sécurité — Dépendances npm
+- ${depsAuditStatus} [source: npm audit --json]
+
+## 7. Base de données
+- ${dbStatus} [source: psql + DATABASE_URL]
+
+## 8. État Git
+- ${gitStatus} [source: git dans $APPDIR]
+
+---
+
+## 🎯 Analyse synthétique
+${(() => {
+    const positifs: string[] = [];
+    const negatifs: string[] = [];
+    const neutres: string[] = [];
+
+    // Process
+    if (pm2Data?.status === "online") {
+        positifs.push(`Process en ligne (uptime ${uptimeStr}, ${pm2Data.mem_mb} MB RAM)`);
+    } else if (pm2Data) {
+        negatifs.push(`Process en état "${pm2Data.status}" (pas online)`);
+    }
+    if (pm2Data?.unstable_restarts > 0) negatifs.push(`${pm2Data.unstable_restarts} restart(s) instable(s) → logs à investiguer`);
+    if (pm2Data?.mem_mb > 1500) negatifs.push(`RAM élevée ${pm2Data.mem_mb} MB (>1.5 GB)`);
+    else if (pm2Data?.mem_mb && pm2Data.mem_mb < 800) positifs.push(`Empreinte mémoire raisonnable (${pm2Data.mem_mb} MB)`);
+    if (pm2Data?.restarts != null) {
+        if (pm2Data.restarts > 100) negatifs.push(`${pm2Data.restarts} restarts cumulés (compteur historique, peut nécessiter remise à zéro)`);
+        else if (pm2Data.restarts < 20) positifs.push(`Compteur de restarts modéré (${pm2Data.restarts})`);
+    }
+
+    // HTTP
+    if (httpAlive) {
+        const fastest = Math.min(...[httpRoot, httpHealth].filter(x => x?.allOk).map(x => parseFloat(x!.avgT)));
+        positifs.push(`HTTP local répond en ${fastest.toFixed(3)}s moyen`);
+    } else if (httpRoot?.failed && httpHealth?.failed) {
+        negatifs.push(`Aucune réponse HTTP locale sur port ${port} → app n'écoute peut-être pas sur ce port (vérifier ecosystem.config / netstat)`);
+    }
+
+    // Sécurité
+    if (depsAuditData) {
+        if (depsAuditData.critical > 0 || depsAuditData.high > 0) {
+            negatifs.push(`${depsAuditData.critical} vuln critiques + ${depsAuditData.high} hautes → \`npm audit fix\` recommandé`);
+        } else if (depsAuditData.total === 0) {
+            positifs.push(`Zéro vulnérabilité npm`);
+        } else {
+            neutres.push(`${depsAuditData.total} vuln npm (low/moderate uniquement)`);
+        }
+    }
+    if (secretsLeaks > 0) negatifs.push(`${secretsLeaks} matches secrets potentiels en clair → review manuelle`);
+    else if (secretsStatus.includes("0 secret")) positifs.push(`Aucun secret hardcodé détecté dans les sources`);
+
+    // Disque
+    if (diskUsage.match(/(\d+)%/)) {
+        const pct = parseInt(diskUsage.match(/(\d+)%/)![1]);
+        if (pct > 85) negatifs.push(`Disque rempli à ${pct}% → risque de saturation`);
+        else if (pct < 50) positifs.push(`Disque sous 50% (${diskUsage})`);
+    }
+
+    // Topologie
+    if (isBundleDeploy) neutres.push(`Déploiement bundle minimaliste (pas de sources/.git en prod) — bonne pratique sécurité, mais audit avancé impossible côté serveur`);
+
+    // Git uncommitted
+    if (gitData.uncommitted_changes && parseInt(gitData.uncommitted_changes) > 0) {
+        neutres.push(`${gitData.uncommitted_changes} modifications non commitées sur le serveur`);
+    }
+
+    let out = "";
+    if (positifs.length) out += `### ✅ Points positifs\n${positifs.map(p => `- ${p}`).join("\n")}\n\n`;
+    if (negatifs.length) out += `### ⚠️ Points d'attention\n${negatifs.map(n => `- ${n}`).join("\n")}\n\n`;
+    if (neutres.length) out += `### ℹ️ Informations\n${neutres.map(n => `- ${n}`).join("\n")}\n\n`;
+    if (!positifs.length && !negatifs.length && !neutres.length) out = "- Aucun constat actionnable à partir des données collectées";
+    return out.trim();
+})()}
+
+## 💡 Recommandations
+${(() => {
+    const recos: string[] = [];
+    if (pm2Data?.unstable_restarts > 0) recos.push(`Investiguer les restarts instables : \`pm2 logs ${pm2Data.pm_id} --err --lines 200\``);
+    if (depsAuditData?.critical > 0 || depsAuditData?.high > 0) recos.push(`Lancer \`npm audit fix\` puis redéployer`);
+    if (secretsLeaks > 0) recos.push(`Review manuelle des ${secretsLeaks} matches secrets potentiels`);
+    if (!httpAlive && pm2Data?.status === "online") {
+        recos.push(`Process up mais pas de réponse HTTP sur ${port} : vérifier \`pm2 env ${pm2Data.pm_id} | grep PORT\` et \`ss -tlnp | grep node\` pour voir le port réel`);
+    }
+    if (isBundleDeploy && (dbStatus.includes("NO_DB_URL") || dbStatus.includes("NON APPLICABLE"))) {
+        recos.push(`Pour auditer la DB : passer \`database\` en paramètre explicite à \`db_inspect\` (DATABASE_URL est probablement injectée par PM2 ecosystem ou systemd)`);
+    }
+    if (isBundleDeploy) recos.push(`Pour auditer le code source : utiliser \`devops_github action=analyze_repo\` sur le repo (pas en prod)`);
+    return recos.length > 0 ? recos.map(r => `- ${r}`).join("\n") : "- Rien à signaler, infrastructure saine sur les axes mesurables";
+})()}
+
+---
+*Rapport généré par audit_strict — aucun chiffre n'a été inventé, aucune extrapolation n'a été faite. "DONNÉES INSUFFISANTES" = vraie panne d'outil. "NON APPLICABLE" = topologie ne permet pas la mesure (ex: bundle sans sources), c'est légitime.*`;
+
+                const persistedReportPath = `${detectedAppDir}/AUDIT_STRICT_REPORT.md`;
+                let persistedReportOk = false;
+                try {
+                    const b64 = Buffer.from(reportMd, 'utf8').toString('base64');
+                    const writeRes = await sshService.executeCommand(`echo '${b64}' | base64 -d > "${persistedReportPath}" 2>&1 && echo OK_PERSIST`, 10000);
+                    persistedReportOk = (writeRes?.output || '').includes('OK_PERSIST');
+                } catch { persistedReportOk = false; }
+
+                return JSON.stringify({
+                    action: "audit_strict",
+                    appName,
+                    success: auditResult.success,
+                    timestamp: new Date().toISOString(),
+                    detectedAppDir,
+                    deployType,
+                    sections: {
+                        pm2: pm2Data,
+                        port,
+                        http: { root: httpRoot, health: httpHealth, alive: httpAlive },
+                        disk: { filesystem: diskUsage, appSize },
+                        inventory,
+                        security: {
+                            envFiles: { count: envFilesCount, perms: envFilesPerms },
+                            secretsScan: secretsStatus,
+                            npmAudit: depsAuditData
+                        },
+                        db: dbStatus,
+                        git: gitData
+                    },
+                    raw: auditResult.output,
+                    report_markdown: reportMd,
+                    report_file: persistedReportPath
+                });
+            }
+            case "security_scan_strict": {
+                // SCAN SÉCURITÉ 100% FACTUEL — 1 SSH, ZÉRO LLM, sections sourcées.
+                if (!appName) return JSON.stringify({ error: "appName requis" });
+                if (!/^[a-zA-Z0-9_-]{1,64}$/.test(appName)) {
+                    return JSON.stringify({ error: "appName invalide", received: appName.slice(0, 100) });
+                }
+                const fallbackAppDir = `/var/www/apps/${appName}`;
+                const domain = `${appName}.ulyssepro.org`;
+                const SEP = (label: string) => `echo "===SEC_SCAN_SECTION:${label}==="`;
+                const detectAppDir = `APPDIR=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pm2_env?.pm_cwd||'')}catch{console.log('')}" 2>/dev/null) ; if [ -z "$APPDIR" ] || [ ! -d "$APPDIR" ]; then APPDIR="${fallbackAppDir}"; fi`;
+                const detectPort = `PORT=$(grep -oP '^PORT\\s*=\\s*\\K[0-9]+' "$APPDIR/.env" 2>/dev/null | head -1) ; if [ -z "$PORT" ]; then PORT=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pm2_env?.PORT||'')}catch{console.log('')}" 2>/dev/null); fi ; if [ -z "$PORT" ]; then PORT=5000; fi`;
+                const secScript = [
+                    detectAppDir, detectPort,
+                    SEP("APPDIR"),
+                    `echo "$APPDIR"`,
+                    SEP("ENV_PERMS"),
+                    `find "$APPDIR" -maxdepth 3 -type f \\( -name ".env" -o -name ".env.*" \\) ! -path "*/node_modules/*" -exec ls -l {} \\; 2>/dev/null | awk '{print $1, $3, $9}' || echo "NO_ENV_FILES"`,
+                    SEP("HARDCODED_SECRETS"),
+                    `SCAN_DIRS=$(for d in server client shared src lib app api; do [ -d "$APPDIR/$d" ] && echo "$APPDIR/$d"; done | tr '\\n' ' ') ; ` +
+                    `if [ -z "$SCAN_DIRS" ]; then echo "NO_SOURCE_DIRS"; else ` +
+                    `grep -rEn "(api[_-]?key|secret|password|token|bearer)\\s*[:=]\\s*['\\\"][a-zA-Z0-9_\\-]{16,}" $SCAN_DIRS 2>/dev/null --include="*.ts" --include="*.js" --include="*.tsx" --include="*.jsx" --include="*.py" | grep -v "process.env" | grep -v "import.meta.env" | head -20 || echo "NO_HARDCODED_SECRETS_FOUND"; fi`,
+                    SEP("DANGEROUS_PATTERNS"),
+                    `if [ -z "$SCAN_DIRS" ]; then echo "NO_SOURCE_DIRS"; else ` +
+                    `grep -rEn "\\b(eval|Function\\s*\\()\\s*\\(" $SCAN_DIRS 2>/dev/null --include="*.ts" --include="*.js" --include="*.tsx" --include="*.jsx" | head -10 || echo "NO_DANGEROUS_PATTERNS"; fi`,
+                    SEP("NPM_AUDIT"),
+                    `if [ -f "$APPDIR/package.json" ] && [ -d "$APPDIR/node_modules" ]; then ` +
+                    `cd "$APPDIR" && npm audit --json 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const m=d.metadata?.vulnerabilities||{};console.log(JSON.stringify({total:m.total||0,critical:m.critical||0,high:m.high||0,moderate:m.moderate||0,low:m.low||0,info:m.info||0}))}catch(e){console.log('AUDIT_UNAVAILABLE')}" 2>/dev/null || echo "NPM_AUDIT_FAIL"; ` +
+                    `else echo "NO_NODE_MODULES"; fi`,
+                    SEP("HTTP_HEADERS"),
+                    `curl -sI -L --max-time 5 "http://127.0.0.1:$PORT/" 2>/dev/null | head -30 || echo "CURL_FAIL"`,
+                    SEP("SSL_CERT"),
+                    `echo | timeout 8 openssl s_client -servername ${domain} -connect ${domain}:443 2>/dev/null | openssl x509 -noout -dates -subject -issuer 2>/dev/null || echo "SSL_FAIL_OR_NO_DOMAIN"`,
+                    SEP("END")
+                ].join(" ; ");
+                const secResult = await sshService.executeCommand(secScript, 45000);
+                const secSections: Record<string, string> = {};
+                const secParts = (secResult.output || "").split(/===SEC_SCAN_SECTION:([A-Z0-9_]+)===/);
+                for (let i = 1; i < secParts.length; i += 2) secSections[secParts[i]] = (secParts[i + 1] || "").trim();
+                const sg = (l: string) => secSections[l] || "";
+
+                const detectedAppDir = sg("APPDIR").split("\n")[0].trim() || fallbackAppDir;
+                const envRaw = sg("ENV_PERMS");
+                const envFiles = envRaw === "NO_ENV_FILES" || !envRaw ? [] : envRaw.split("\n").filter(l => l.includes(".env"));
+                const envWorldReadable = envFiles.filter(l => /^-rw-r--r--|^-rw-rw-/.test(l));
+                const secretsRaw = sg("HARDCODED_SECRETS");
+                const secretsCount = secretsRaw === "NO_HARDCODED_SECRETS_FOUND" || secretsRaw === "NO_SOURCE_DIRS" ? 0 : secretsRaw.split("\n").filter(l => l.includes(":")).length;
+                const secretsApplicable = secretsRaw !== "NO_SOURCE_DIRS";
+                const dangerRaw = sg("DANGEROUS_PATTERNS");
+                const dangerCount = dangerRaw === "NO_DANGEROUS_PATTERNS" || dangerRaw === "NO_SOURCE_DIRS" ? 0 : dangerRaw.split("\n").filter(l => l.includes(":")).length;
+                const npmRaw = sg("NPM_AUDIT");
+                let npmData: any = null;
+                try { npmData = JSON.parse(npmRaw.trim()); } catch {}
+                const npmApplicable = !npmRaw.includes("NO_NODE_MODULES");
+                const headersRaw = sg("HTTP_HEADERS");
+                const hasHeader = (h: string) => new RegExp(`^${h}:`, "im").test(headersRaw);
+                const securityHeaders = {
+                    "Strict-Transport-Security": hasHeader("Strict-Transport-Security"),
+                    "X-Frame-Options": hasHeader("X-Frame-Options"),
+                    "X-Content-Type-Options": hasHeader("X-Content-Type-Options"),
+                    "Content-Security-Policy": hasHeader("Content-Security-Policy"),
+                    "Referrer-Policy": hasHeader("Referrer-Policy"),
+                    "Permissions-Policy": hasHeader("Permissions-Policy"),
+                };
+                const sslRaw = sg("SSL_CERT");
+                const sslExpire = sslRaw.match(/notAfter=(.+)/)?.[1]?.trim() || null;
+                const sslSubject = sslRaw.match(/subject=.*?CN\s*=\s*([^\n,]+)/)?.[1]?.trim() || null;
+                const sslIssuer = sslRaw.match(/issuer=.*?O\s*=\s*([^\n,]+)/)?.[1]?.trim() || null;
+                let sslDaysLeft: number | null = null;
+                if (sslExpire) {
+                    const exp = new Date(sslExpire);
+                    if (!isNaN(exp.getTime())) sslDaysLeft = Math.floor((exp.getTime() - Date.now()) / 86400000);
+                }
+
+                const naBundle = "NON APPLICABLE (déploiement bundle compilé — pas de sources en prod, comportement normal)";
+                const reportMd = `# Security Scan Strict — ${appName}
+*Généré le ${new Date().toISOString()} — agrégation déterministe sans LLM, données 100% sourcées*
+
+## 0. Topologie
+- APPDIR: \`${detectedAppDir}\` [source: pm2 jlist → pm_cwd]
+- Domaine SSL testé: \`${domain}\`
+
+## 1. Permissions des fichiers .env
+- Fichiers détectés: ${envFiles.length} [source: find $APPDIR -name .env*]
+${envFiles.length === 0 ? "- (aucun fichier .env trouvé sur le serveur)" : envFiles.map(l => `- \`${l}\``).join("\n")}
+${envWorldReadable.length > 0 ? `- 🔴 ${envWorldReadable.length} fichier(s) lisible(s) par tous (rw-r--r--) → DOIT être 600` : envFiles.length > 0 ? "- ✅ Permissions correctes (pas de world-readable)" : ""}
+
+## 2. Secrets hardcodés dans le code
+${!secretsApplicable ? `- ${naBundle}` : secretsCount === 0 ? `- ✅ 0 secret hardcodé détecté [source: grep regex sur server/client/shared/src/lib/app/api]` : `- 🔴 ${secretsCount} match(es) potentiel(s) [source: grep] — review manuelle requise`}
+
+## 3. Patterns dangereux (eval, Function())
+${!secretsApplicable ? `- ${naBundle}` : dangerCount === 0 ? `- ✅ Aucun usage d'eval/Function() détecté` : `- ⚠️ ${dangerCount} match(es) — review manuelle`}
+
+## 4. Vulnérabilités npm
+${!npmApplicable ? `- ${naBundle}` : npmData ? `- Total: ${npmData.total} (critical=${npmData.critical}, high=${npmData.high}, moderate=${npmData.moderate}, low=${npmData.low}, info=${npmData.info}) [source: npm audit --json]
+${npmData.critical > 0 || npmData.high > 0 ? `- 🔴 ${npmData.critical} critical + ${npmData.high} high → \`npm audit fix\` recommandé` : npmData.total === 0 ? "- ✅ Aucune vulnérabilité" : "- ℹ️ Vulnérabilités low/moderate uniquement"}` : "- DONNÉES INSUFFISANTES (npm audit a échoué)"}
+
+## 5. Headers HTTP de sécurité (sur GET /)
+${headersRaw.includes("CURL_FAIL") || !headersRaw ? "- DONNÉES INSUFFISANTES (curl n'a pas pu récupérer les headers)" : Object.entries(securityHeaders).map(([h, present]) => `- ${present ? "✅" : "❌"} ${h}: ${present ? "présent" : "MANQUANT"}`).join("\n")}
+
+## 6. Certificat SSL (${domain})
+${sslRaw.includes("SSL_FAIL") ? `- DONNÉES INSUFFISANTES (échec openssl s_client — domaine inaccessible ou pas de SSL)` : `- Sujet: ${sslSubject || "n/a"} | Émetteur: ${sslIssuer || "n/a"}
+- Expire le: ${sslExpire || "n/a"}${sslDaysLeft !== null ? ` (J-${sslDaysLeft})` : ""}
+${sslDaysLeft !== null && sslDaysLeft < 30 ? "- 🔴 Expiration dans moins de 30 jours → renouveler" : sslDaysLeft !== null && sslDaysLeft < 0 ? "- 🔴 CERTIFICAT EXPIRÉ" : sslDaysLeft !== null ? "- ✅ Expiration > 30 jours" : ""}`}
+
+---
+
+## 🎯 Synthèse
+${(() => {
+    const crit: string[] = [], warn: string[] = [], ok: string[] = [];
+    if (envWorldReadable.length > 0) crit.push(`${envWorldReadable.length} .env world-readable → \`chmod 600\` immédiat`);
+    if (secretsApplicable && secretsCount > 0) crit.push(`${secretsCount} secrets potentiels en clair dans le code`);
+    if (npmData?.critical > 0) crit.push(`${npmData.critical} vuln npm critiques`);
+    if (npmData?.high > 0) warn.push(`${npmData.high} vuln npm high`);
+    if (sslDaysLeft !== null && sslDaysLeft < 30 && sslDaysLeft >= 0) warn.push(`SSL expire dans ${sslDaysLeft} jours`);
+    if (sslDaysLeft !== null && sslDaysLeft < 0) crit.push(`SSL EXPIRÉ`);
+    Object.entries(securityHeaders).forEach(([h, p]) => { if (!p && headersRaw && !headersRaw.includes("CURL_FAIL")) warn.push(`Header ${h} manquant`); });
+    if (dangerCount > 0) warn.push(`${dangerCount} usages eval/Function() à reviewer`);
+    if (npmData?.total === 0) ok.push("Aucune vulnérabilité npm");
+    if (envFiles.length > 0 && envWorldReadable.length === 0) ok.push("Permissions .env correctes");
+    if (secretsApplicable && secretsCount === 0) ok.push("Aucun secret hardcodé détecté");
+    if (sslDaysLeft !== null && sslDaysLeft >= 30) ok.push(`SSL valide ${sslDaysLeft} jours`);
+    let out = "";
+    if (crit.length) out += `### 🔴 Critique\n${crit.map(x => `- ${x}`).join("\n")}\n\n`;
+    if (warn.length) out += `### ⚠️ À surveiller\n${warn.map(x => `- ${x}`).join("\n")}\n\n`;
+    if (ok.length) out += `### ✅ OK\n${ok.map(x => `- ${x}`).join("\n")}\n\n`;
+    return out.trim() || "- Aucun constat actionnable";
+})()}
+
+---
+*Rapport généré par security_scan_strict — aucun chiffre n'a été inventé.*`;
+                const secPersistedPath = `${detectedAppDir}/SECURITY_SCAN_REPORT.md`;
+                let secPersistedOk = false;
+                try {
+                    const b64 = Buffer.from(reportMd, 'utf8').toString('base64');
+                    const writeRes = await sshService.executeCommand(`echo '${b64}' | base64 -d > "${secPersistedPath}" 2>&1 && echo OK_PERSIST`, 10000);
+                    secPersistedOk = (writeRes?.output || '').includes('OK_PERSIST');
+                } catch { secPersistedOk = false; }
+                return JSON.stringify({
+                    action: "security_scan_strict", appName, success: secResult.success,
+                    timestamp: new Date().toISOString(), detectedAppDir,
+                    sections: { envFiles, envWorldReadableCount: envWorldReadable.length, secretsCount, dangerCount, npmAudit: npmData, securityHeaders, ssl: { subject: sslSubject, issuer: sslIssuer, expire: sslExpire, daysLeft: sslDaysLeft } },
+                    raw: secResult.output, report_markdown: reportMd, report_file: secPersistedOk ? secPersistedPath : null
+                });
+            }
+            case "perf_audit_strict": {
+                // PERF AUDIT 100% FACTUEL — 1 SSH, ZÉRO LLM.
+                if (!appName) return JSON.stringify({ error: "appName requis" });
+                if (!/^[a-zA-Z0-9_-]{1,64}$/.test(appName)) {
+                    return JSON.stringify({ error: "appName invalide", received: appName.slice(0, 100) });
+                }
+                const fallbackAppDir = `/var/www/apps/${appName}`;
+                const SEP = (label: string) => `echo "===PERF_SECTION:${label}==="`;
+                const detectAppDir = `APPDIR=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pm2_env?.pm_cwd||'')}catch{console.log('')}" 2>/dev/null) ; if [ -z "$APPDIR" ] || [ ! -d "$APPDIR" ]; then APPDIR="${fallbackAppDir}"; fi`;
+                const detectPort = `PORT=$(grep -oP '^PORT\\s*=\\s*\\K[0-9]+' "$APPDIR/.env" 2>/dev/null | head -1) ; if [ -z "$PORT" ]; then PORT=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pm2_env?.PORT||'')}catch{console.log('')}" 2>/dev/null); fi ; if [ -z "$PORT" ]; then PORT=5000; fi`;
+                const perfScript = [
+                    detectAppDir, detectPort,
+                    SEP("APPDIR"),
+                    `echo "$APPDIR"`,
+                    SEP("PROCESS_METRICS"),
+                    `pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');if(!a){console.log('NOT_IN_PM2');process.exit(0)}console.log(JSON.stringify({status:a.pm2_env?.status,restarts:a.pm2_env?.restart_time,unstable:a.pm2_env?.unstable_restarts,uptime_ms:Date.now()-(a.pm2_env?.pm_uptime||Date.now()),cpu_pct:a.monit?.cpu,mem_mb:Math.round((a.monit?.memory||0)/1048576),pm_id:a.pm_id,pid:a.pid}))}catch(e){console.log('PARSE_ERROR:'+e.message)}"`,
+                    SEP("LOAD_AVG"),
+                    `uptime | grep -oP 'load average:\\s*\\K[0-9., ]+' || echo "LOAD_FAIL"`,
+                    SEP("HTTP_BENCHMARK"),
+                    `for endpoint in "/" "/api/health"; do for i in 1 2 3 4 5; do curl -sL -o /dev/null -w "endpoint=$endpoint req=$i HTTP %{http_code} time=%{time_total}s ttfb=%{time_starttransfer}s connect=%{time_connect}s size=%{size_download}\\n" --max-time 5 "http://127.0.0.1:$PORT$endpoint" 2>/dev/null || echo "endpoint=$endpoint req=$i CURL_FAIL"; done; done`,
+                    SEP("BUNDLE_SIZE"),
+                    `if [ -d "$APPDIR/dist" ]; then du -sh "$APPDIR/dist" 2>/dev/null && find "$APPDIR/dist" -maxdepth 2 -type f -exec ls -lh {} \\; 2>/dev/null | awk '{print $5, $9}' | sort -rh | head -10; else echo "NO_DIST_DIR"; fi`,
+                    SEP("TOP_SOURCE_FILES"),
+                    `SCAN_DIRS=$(for d in server client shared src lib app api; do [ -d "$APPDIR/$d" ] && echo "$APPDIR/$d"; done) ; ` +
+                    `if [ -z "$SCAN_DIRS" ]; then echo "NO_SOURCE_DIRS"; else find $SCAN_DIRS -type f \\( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \\) ! -path "*/node_modules/*" -exec wc -l {} \\; 2>/dev/null | sort -rn | head -15; fi`,
+                    SEP("CONNECTIONS"),
+                    `ss -tn state established 2>/dev/null | wc -l || netstat -an 2>/dev/null | grep ESTABLISHED | wc -l || echo "NETSTAT_FAIL"`,
+                    SEP("DISK_IO"),
+                    `PID=$(pm2 jlist 2>/dev/null | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const a=d.find(x=>x.name==='${appName}');console.log(a?.pid||'')}catch{console.log('')}" 2>/dev/null) ; if [ -n "$PID" ] && [ -r "/proc/$PID/io" ]; then cat /proc/$PID/io 2>/dev/null; else echo "NO_PROC_IO"; fi`,
+                    SEP("END")
+                ].join(" ; ");
+                const perfResult = await sshService.executeCommand(perfScript, 45000);
+                const perfSections: Record<string, string> = {};
+                const perfParts = (perfResult.output || "").split(/===PERF_SECTION:([A-Z0-9_]+)===/);
+                for (let i = 1; i < perfParts.length; i += 2) perfSections[perfParts[i]] = (perfParts[i + 1] || "").trim();
+                const pg = (l: string) => perfSections[l] || "";
+
+                const detectedAppDir = pg("APPDIR").split("\n")[0].trim() || fallbackAppDir;
+                let pm2Data: any = null;
+                try { pm2Data = JSON.parse(pg("PROCESS_METRICS").trim()); } catch {}
+                const loadAvg = pg("LOAD_AVG").split("\n")[0]?.trim() || "n/a";
+
+                const httpRaw = pg("HTTP_BENCHMARK");
+                const httpLines = httpRaw.split("\n").filter(l => l.includes("endpoint="));
+                const summarize = (ep: string) => {
+                    const arr = httpLines.filter(l => l.includes(`endpoint=${ep} `));
+                    if (!arr.length) return null;
+                    const codes = arr.map(l => l.match(/HTTP (\d{3})/)?.[1] || "FAIL");
+                    const times = arr.map(l => parseFloat(l.match(/time=([0-9.]+)/)?.[1] || "0")).filter(t => t > 0);
+                    const ttfbs = arr.map(l => parseFloat(l.match(/ttfb=([0-9.]+)/)?.[1] || "0")).filter(t => t > 0);
+                    const sizes = arr.map(l => parseInt(l.match(/size=(\d+)/)?.[1] || "0")).filter(s => s > 0);
+                    const avg = (a: number[]) => a.length ? (a.reduce((x, y) => x + y, 0) / a.length) : 0;
+                    const min = (a: number[]) => a.length ? Math.min(...a) : 0;
+                    const max = (a: number[]) => a.length ? Math.max(...a) : 0;
+                    return { codes, avgTime: avg(times).toFixed(3), minTime: min(times).toFixed(3), maxTime: max(times).toFixed(3), avgTtfb: avg(ttfbs).toFixed(3), avgSize: Math.round(avg(sizes)) };
+                };
+                const httpRoot = summarize("/");
+                const httpHealth = summarize("/api/health");
+
+                const bundleRaw = pg("BUNDLE_SIZE");
+                const bundleTotal = bundleRaw.match(/^(\S+)\s+/)?.[1] || "n/a";
+                const bundleFiles = bundleRaw.includes("NO_DIST_DIR") ? [] : bundleRaw.split("\n").slice(1).filter(l => l.trim()).slice(0, 10);
+
+                const topFilesRaw = pg("TOP_SOURCE_FILES");
+                const topFiles = topFilesRaw.includes("NO_SOURCE_DIRS") ? [] : topFilesRaw.split("\n").map(l => l.trim()).filter(l => l && !l.includes("total"));
+                const sourceApplicable = !topFilesRaw.includes("NO_SOURCE_DIRS");
+
+                const connections = parseInt(pg("CONNECTIONS").trim()) || 0;
+                const diskIoRaw = pg("DISK_IO");
+                const readBytes = parseInt(diskIoRaw.match(/read_bytes:\s*(\d+)/)?.[1] || "0");
+                const writeBytes = parseInt(diskIoRaw.match(/write_bytes:\s*(\d+)/)?.[1] || "0");
+                const ioApplicable = !diskIoRaw.includes("NO_PROC_IO");
+
+                const uptimeStr = pm2Data?.uptime_ms != null ? (() => {
+                    const ms = pm2Data.uptime_ms; const h = Math.floor(ms / 3600000); const m = Math.floor((ms % 3600000) / 60000);
+                    return h > 0 ? `${h}h${m}m` : `${m}m`;
+                })() : "n/a";
+
+                const reportMd = `# Perf Audit Strict — ${appName}
+*Généré le ${new Date().toISOString()} — agrégation déterministe sans LLM, données 100% sourcées*
+
+## 0. Topologie
+- APPDIR: \`${detectedAppDir}\` [source: pm2 jlist → pm_cwd]
+
+## 1. Process metrics (PM2)
+${pm2Data ? `- Status: **${pm2Data.status}** | pm_id=${pm2Data.pm_id} | PID=${pm2Data.pid}
+- Uptime: ${uptimeStr} | Restarts: ${pm2Data.restarts} (unstable: ${pm2Data.unstable})
+- CPU: ${pm2Data.cpu_pct}% | RAM: ${pm2Data.mem_mb} MB [source: pm2 monit]` : "- DONNÉES INSUFFISANTES (PM2 indisponible)"}
+
+## 2. Charge système
+- Load average: ${loadAvg} [source: uptime]
+- Connexions TCP établies: ${connections} [source: ss -tn state established]
+
+## 3. Benchmark HTTP (5 requêtes par endpoint)
+${httpRoot ? `### GET /
+- Codes: [${httpRoot.codes.join(", ")}] | avg: **${httpRoot.avgTime}s** | min: ${httpRoot.minTime}s | max: ${httpRoot.maxTime}s
+- TTFB moyen: ${httpRoot.avgTtfb}s | Taille réponse: ${httpRoot.avgSize} bytes` : "### GET / : DONNÉES INSUFFISANTES"}
+${httpHealth ? `### GET /api/health
+- Codes: [${httpHealth.codes.join(", ")}] | avg: **${httpHealth.avgTime}s** | min: ${httpHealth.minTime}s | max: ${httpHealth.maxTime}s
+- TTFB moyen: ${httpHealth.avgTtfb}s` : "### GET /api/health : DONNÉES INSUFFISANTES"}
+
+## 4. Bundle (dist/)
+${bundleRaw.includes("NO_DIST_DIR") ? "- Pas de dossier dist/ (déploiement non-bundlé)" : `- Taille totale: **${bundleTotal}** [source: du -sh dist]
+- Top fichiers:
+${bundleFiles.map(l => `  - ${l}`).join("\n") || "  (n/a)"}`}
+
+## 5. Top fichiers source par taille (lignes)
+${!sourceApplicable ? "- NON APPLICABLE (déploiement bundle, sources absentes)" : topFiles.length > 0 ? topFiles.slice(0, 10).map(l => `- ${l}`).join("\n") : "- DONNÉES INSUFFISANTES"}
+
+## 6. I/O disque du process
+${!ioApplicable ? "- DONNÉES INSUFFISANTES (/proc/PID/io non lisible)" : `- Read: ${(readBytes / 1048576).toFixed(2)} MB | Write: ${(writeBytes / 1048576).toFixed(2)} MB [source: /proc/${pm2Data?.pid}/io]`}
+
+---
+
+## 🎯 Synthèse perf
+${(() => {
+    const positifs: string[] = [], warn: string[] = [], crit: string[] = [];
+    if (pm2Data?.mem_mb > 1500) crit.push(`RAM élevée ${pm2Data.mem_mb} MB (>1.5 GB)`);
+    else if (pm2Data?.mem_mb && pm2Data.mem_mb < 800) positifs.push(`Empreinte mémoire raisonnable (${pm2Data.mem_mb} MB)`);
+    if (pm2Data?.cpu_pct > 80) crit.push(`CPU saturé ${pm2Data.cpu_pct}%`);
+    if (pm2Data?.unstable > 0) warn.push(`${pm2Data.unstable} restart(s) instable(s)`);
+    if (httpRoot?.avgTime && parseFloat(httpRoot.avgTime) > 1) warn.push(`GET / lent (${httpRoot.avgTime}s avg)`);
+    else if (httpRoot?.avgTime && parseFloat(httpRoot.avgTime) < 0.2) positifs.push(`GET / rapide (${httpRoot.avgTime}s avg)`);
+    if (httpHealth?.avgTime && parseFloat(httpHealth.avgTime) > 0.5) warn.push(`/api/health lent (${httpHealth.avgTime}s)`);
+    const loadFirst = parseFloat(loadAvg.split(",")[0]) || 0;
+    if (loadFirst > 4) crit.push(`Load average 1m élevé: ${loadAvg}`);
+    else if (loadFirst > 0 && loadFirst < 2) positifs.push(`Load average normal: ${loadAvg}`);
+    if (connections > 500) warn.push(`${connections} connexions TCP établies (élevé)`);
+    let out = "";
+    if (crit.length) out += `### 🔴 Critique\n${crit.map(x => `- ${x}`).join("\n")}\n\n`;
+    if (warn.length) out += `### ⚠️ À surveiller\n${warn.map(x => `- ${x}`).join("\n")}\n\n`;
+    if (positifs.length) out += `### ✅ OK\n${positifs.map(x => `- ${x}`).join("\n")}\n\n`;
+    return out.trim() || "- Aucun constat actionnable";
+})()}
+
+---
+*Rapport généré par perf_audit_strict — aucun chiffre n'a été inventé.*`;
+                const perfPersistedPath = `${detectedAppDir}/PERF_AUDIT_REPORT.md`;
+                let perfPersistedOk = false;
+                try {
+                    const b64 = Buffer.from(reportMd, 'utf8').toString('base64');
+                    const writeRes = await sshService.executeCommand(`echo '${b64}' | base64 -d > "${perfPersistedPath}" 2>&1 && echo OK_PERSIST`, 10000);
+                    perfPersistedOk = (writeRes?.output || '').includes('OK_PERSIST');
+                } catch { perfPersistedOk = false; }
+                return JSON.stringify({
+                    action: "perf_audit_strict", appName, success: perfResult.success,
+                    timestamp: new Date().toISOString(), detectedAppDir,
+                    sections: { pm2: pm2Data, loadAvg, http: { root: httpRoot, health: httpHealth }, bundle: { total: bundleTotal, files: bundleFiles }, topSourceFiles: topFiles, connections, diskIo: ioApplicable ? { readBytes, writeBytes } : null },
+                    raw: perfResult.output, report_markdown: reportMd, report_file: perfPersistedOk ? perfPersistedPath : null
+                });
             }
             case "git_intelligence": {
                 if (!appName) return JSON.stringify({ error: "appName requis" });

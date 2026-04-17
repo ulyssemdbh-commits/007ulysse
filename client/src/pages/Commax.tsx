@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { useTabListener } from "@/hooks/useAppNavigation";
 import {
   Users, FileText, BarChart2, Inbox, Layers, Plus, Sparkles,
   Send, Clock, Edit3, Trash2, CheckCircle, XCircle, Eye,
@@ -38,6 +39,14 @@ import { MiniIrisChat, IrisGateway, IrisComposerDelegate, IrisCmJournal } from "
 
 export default function CommaxPage() {
   const [activeTab, setActiveTab] = useState("overview");
+  useTabListener(setActiveTab, ["overview", "composer", "posts", "inbox", "accounts", "journal"], {
+    "analytics": "overview", "apercu": "overview",
+    "compose": "composer", "composition": "composer",
+    "post": "posts", "publications": "posts",
+    "boite": "inbox", "boîte": "inbox", "messages": "inbox",
+    "comptes": "accounts", "compte": "accounts",
+    "cm": "journal",
+  });
   const [miniChatOpen, setMiniChatOpen] = useState(false);
   const [miniChatMsg, setMiniChatMsg] = useState<string | undefined>(undefined);
 

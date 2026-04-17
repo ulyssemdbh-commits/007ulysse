@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { Link } from "wouter";
+import { useTabListener } from "@/hooks/useAppNavigation";
 import {
   BarChart3, TrendingUp, TrendingDown, AlertTriangle, Activity,
   DollarSign, ShoppingCart, Utensils, Brain, ArrowLeft,
@@ -581,6 +582,12 @@ function urlBase64ToUint8Array(base64String: string) {
 export default function UnifiedDashboard() {
   const { user } = useAuth();
   const [period, setPeriod] = useState("30");
+  const [activeTab, setActiveTab] = useState("overview");
+  useTabListener(setActiveTab, ["overview", "hubrise", "predictions", "sports", "system"], {
+    "vue": "overview", "apercu": "overview", "accueil": "overview",
+    "prediction": "predictions", "paris": "predictions",
+    "systeme": "system", "système": "system",
+  });
 
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ["/api/v2/analytics/overview"],
@@ -630,7 +637,7 @@ export default function UnifiedDashboard() {
             </div>
           </div>
         ) : (
-          <Tabs defaultValue="overview" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="flex flex-wrap gap-1" data-testid="tabs-analytics">
               <TabsTrigger value="overview" data-testid="tab-overview">Vue d'ensemble</TabsTrigger>
               {(isOwner || role === "suguval_only" || role === "sugumaillane_only") && (

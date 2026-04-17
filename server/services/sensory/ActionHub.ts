@@ -61,6 +61,20 @@ export interface ActionInput {
   params: Record<string, any>;
   metadata: ActionMetadata;
   requiresConfirmation?: boolean;  // Demander confirmation avant exécution
+  depth?: number;            // Profondeur de récursion tool→tool (anti-boucle infinie)
+}
+
+// Profondeur max de récursion tool→tool (un tool peut appeler ≤ MAX_ACTION_DEPTH-1 sous-tools en chaîne)
+export const MAX_ACTION_DEPTH = 5;
+
+// AsyncLocalStorage pour propager automatiquement la profondeur courante à travers
+// les appels tool→hub.execute imbriqués, sans modifier la signature des executors.
+import { AsyncLocalStorage } from "async_hooks";
+const _depthContext = new AsyncLocalStorage<{ depth: number }>();
+
+/** Profondeur d'exécution courante (0 si on est hors d'un execute()) — utile aux tools qui veulent connaître leur niveau. */
+export function getCurrentActionDepth(): number {
+  return _depthContext.getStore()?.depth ?? 0;
 }
 
 export interface ActionResult {
@@ -140,6 +154,18 @@ class ActionHubService {
   private executors: Map<string, ActionExecutor> = new Map();
   private actionHistory: ActionLog[] = [];
   private maxHistorySize = 1000;
+
+  /**
+   * Nombre d'exécuteurs réellement enregistrés (source de vérité pour le prompt persona).
+   * Exclut les exécuteurs "<category>:default" qui sont des fallbacks et non des outils utilisateur.
+   */
+  getRegisteredToolCount(): number {
+    let n = 0;
+    this.executors.forEach((_value, key) => {
+      if (!key.endsWith(":default")) n++;
+    });
+    return n;
+  }
   
   private listeners: Array<(log: ActionLog) => void> = [];
   private preExecuteHooks: Array<(action: ActionInput) => Promise<boolean>> = [];
@@ -155,7 +181,19 @@ class ActionHubService {
   async execute(input: ActionInput): Promise<ActionResult> {
     const startTime = Date.now();
     const actionId = this.generateActionId();
-    
+
+    // 0. Garde anti-récursion infinie tool→tool
+    // depth = max(explicit input.depth, parent depth + 1 si on est imbriqué via AsyncLocalStorage)
+    const parentDepth = _depthContext.getStore()?.depth;
+    const depth = input.depth ?? (parentDepth !== undefined ? parentDepth + 1 : 0);
+    if (depth >= MAX_ACTION_DEPTH) {
+      console.warn(`[ActionHub] ⛔ MAX_ACTION_DEPTH (${MAX_ACTION_DEPTH}) atteinte pour ${input.name} (correlationId=${input.metadata.correlationId ?? "n/a"})`);
+      // Cohérent avec les autres branches d'annulation (validation, executor manquant) : on incrémente totalActions.
+      this.stats.totalActions++;
+      this.stats.byStatus.cancelled++;
+      return this.buildResult(actionId, input, "cancelled", false, undefined, `Profondeur de récursion max atteinte (${MAX_ACTION_DEPTH}) — boucle tool→tool évitée`, Date.now() - startTime);
+    }
+
     this.stats.totalActions++;
     this.stats.byCategory[input.metadata.category]++;
     
@@ -163,7 +201,7 @@ class ActionHubService {
       this.stats.autonomousActions++;
     }
 
-    console.log(`[ActionHub] 🤲 Action: ${input.name}, category=${input.metadata.category}, source=${input.metadata.source}`);
+    console.log(`[ActionHub] 🤲 Action: ${input.name}, category=${input.metadata.category}, source=${input.metadata.source}, depth=${depth}`);
 
     try {
       // 1. Validation pré-exécution
@@ -188,7 +226,9 @@ class ActionHubService {
         return this.buildResult(actionId, input, "failed", false, undefined, `Exécuteur non trouvé: ${input.name}`, 0);
       }
 
-      const execResult = await executor(input.params, input.metadata);
+      // Wrap dans le contexte de profondeur : tout hub.execute() appelé depuis ce executor
+      // (ou ses dépendances async) verra parentDepth=depth et incrémentera automatiquement.
+      const execResult = await _depthContext.run({ depth }, () => executor(input.params, input.metadata));
       const executionMs = Date.now() - startTime;
 
       // 4. Construire le résultat

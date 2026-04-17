@@ -181,8 +181,10 @@ router.get("/", async (req: Request, res: Response) => {
       }),
       checkComponentHealth("todoist", async () => {
         try {
-          const { todoistConnectorService } = await import("../services/todoistConnectorService");
-          return await todoistConnectorService.isConnected();
+          const todoistService: any = await import("../services/todoistService");
+          if (typeof todoistService.isConnected === "function") return await todoistService.isConnected();
+          if (typeof todoistService.checkConnection === "function") return await todoistService.checkConnection();
+          return false;
         } catch {
           return false;
         }

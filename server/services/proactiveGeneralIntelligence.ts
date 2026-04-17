@@ -375,7 +375,7 @@ class ProactiveGeneralIntelligence {
     }
 
     try {
-      const { sentimentService } = await import("./sentimentService");
+      const sentimentService: any = await import("./sentimentService");
       const mood = sentimentService.getCurrentMood(1);
       if (mood && mood.mood !== "neutral") {
         this.ingestSignal({

@@ -55,6 +55,18 @@ export async function githubApi(endpoint: string, options: { method?: string; bo
   let response: Response;
 
   const url = endpoint.startsWith('http') ? endpoint : `https://api.github.com${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  // Validate token is HTTP-header safe (Latin-1 / printable ASCII).
+  // Without this guard, a corrupted decrypted token (containing U+FFFD or any non-Latin1
+  // char) would crash inside fetch() with the cryptic "Cannot convert argument to a
+  // ByteString because the character at index N has a value of 65533" — which has
+  // historically been mis-attributed to repo names or URLs by callers.
+  if (typeof accessToken !== 'string' || accessToken.length < 10 || /[^\x20-\x7E]/.test(accessToken)) {
+    throw new Error(
+      'GitHub token is invalid or corrupted (contains non-ASCII bytes). ' +
+      'This usually means the encryption key rotated and the stored token must be re-entered. ' +
+      'Re-save the GitHub token in DevMax settings.'
+    );
+  }
   const headers: Record<string, string> = {
     'Accept': options.headers?.Accept || 'application/vnd.github+json',
     'Authorization': `Bearer ${accessToken}`,

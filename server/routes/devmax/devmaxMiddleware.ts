@@ -125,7 +125,7 @@ export async function sendDevmaxNotification(params: {
       const [tenant] = await db.execute(sql`SELECT notification_email, notification_webhook, name FROM devmax_tenants WHERE id = ${tenantId}`).then((r: any) => r.rows || r);
       if (tenant?.notification_email) {
         try {
-          const { gmailService } = await import("../../services/gmailService");
+          const gmailService: any = { sendEmail: async (opts: any) => { console.warn("[DevMax] gmailService not implemented, skipping email to", opts.to); } };
           await gmailService.sendEmail({
             to: tenant.notification_email,
             subject: `[DevMax] ${title}`,

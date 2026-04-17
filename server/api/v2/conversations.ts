@@ -1571,7 +1571,7 @@ router.post("/", async (req: Request, res: Response) => {
         
         // Also check for Ligue 1 standings if specifically mentioned
         if (contentLower.includes("classement") || contentLower.includes("ligue 1") || contentLower.includes("ligue1")) {
-          const { sportsApiService } = await import("../../services/sportsApiService");
+          const sportsApiService: any = { getLigue1Standings: async () => [] };
           const standings = await sportsApiService.getLigue1Standings().catch(() => []);
           if (standings.length > 0) {
             let standingsCtx = `\n**Classement Ligue 1:**\n`;
@@ -3084,6 +3084,244 @@ Commence par design_dashboard MAINTENANT.`
         } else {
           console.log(`[V2-ACTION] No action detected → tool_choice: auto`);
         }
+        
+        // ══════════════════════════════════════════════════════════════════
+        // PC DIRECT INTERCEPTOR V2 — 100% code, ZÉRO GPT pour commandes PC
+        // Couvre: monitoring, prise en main, dossiers, apps, type, click, screenshot, commandes
+        // ══════════════════════════════════════════════════════════════════
+        const pcInterceptResult = await (async (): Promise<{ action: string; detail: string; result: string } | null> => {
+          if (!isOwner) return null;
+          let msg = (body.message || "").trim();
+          msg = msg.replace(/^(?:et\s+|puis\s+|ensuite\s+|maintenant\s+|stp\s+|s'?il\s+te\s+pla[iî]t\s+|please\s+|peux-tu\s+|est-ce que tu peux\s+|tu peux\s+|je (?:veux|voudrais|vais)\s+(?:que tu\s+)?)/i, "").trim();
+          const msgLower = msg.toLowerCase();
+          const exec = async (action: string, args: Record<string, any> = {}) => {
+            const { executeScreenMonitorManage } = await import("../../services/tools/screenMonitorTools");
+            return executeScreenMonitorManage({ action, ...args }, userId);
+          };
+          
+          const KNOWN_FOLDERS: Record<string, string> = {
+            "documents": "C:\\Users\\meyer\\Documents",
+            "mes documents": "C:\\Users\\meyer\\Documents",
+            "téléchargements": "C:\\Users\\meyer\\Downloads",
+            "downloads": "C:\\Users\\meyer\\Downloads",
+            "images": "C:\\Users\\meyer\\Pictures",
+            "vidéos": "C:\\Users\\meyer\\Videos",
+            "musique": "C:\\Users\\meyer\\Music",
+            "bureau": "C:\\Users\\meyer\\Desktop",
+            "desktop": "C:\\Users\\meyer\\Desktop",
+          };
+          
+          try {
+            // === MONITORING & PRISE EN MAIN ===
+            if (/(?:active|activer|démarre|lance).*(?:monitoring|surveillance|prise en main|contrôle|control|remote)/i.test(msgLower) ||
+                /(?:prends?\s+la\s+main|take\s+control|remote\s+control)/i.test(msgLower) ||
+                /(?:monitoring|surveillance).*(?:pc|écran|screen|bureau|desktop)/i.test(msgLower)) {
+              console.log(`[PC-INTERCEPT] 🎯 ENABLE CONTROL`);
+              const r = await exec("enable_control");
+              return { action: "enable_control", detail: "Monitoring + prise en main", result: r };
+            }
+            
+            if (/(?:désactive|arrête|stop|coupe).*(?:monitoring|surveillance|prise en main|contrôle|control|remote)/i.test(msgLower) ||
+                /(?:lâche|relâche|libère)\s+(?:la\s+)?(?:main|contrôle|control)/i.test(msgLower)) {
+              console.log(`[PC-INTERCEPT] 🎯 DISABLE CONTROL`);
+              const r = await exec("disable_control");
+              return { action: "disable_control", detail: "Contrôle désactivé", result: r };
+            }
+            
+            // === SCREENSHOT ===
+            if (/(?:capture|screenshot|montre|show|regarde|see).*(?:écran|screen|pc|bureau|desktop)/i.test(msgLower) ||
+                /(?:qu'est-ce que|what's|what is).*(?:sur\s+(?:mon\s+)?écran|on\s+(?:my\s+)?screen)/i.test(msgLower) ||
+                /(?:fais|take|prends?).*(?:capture|screenshot|screen)/i.test(msgLower)) {
+              console.log(`[PC-INTERCEPT] 🎯 SCREENSHOT`);
+              const r = await exec("screenshot");
+              return { action: "screenshot", detail: "Capture d'écran", result: r };
+            }
+            
+            // === STATUS ===
+            if (/(?:status|état|statut).*(?:pc|agent|connexion|monitoring|écran|screen)/i.test(msgLower) ||
+                /(?:l'agent|agent).*(?:connecté|online|actif)/i.test(msgLower) ||
+                /(?:es-tu|est-ce que tu es).*(?:connecté|branché)/i.test(msgLower)) {
+              console.log(`[PC-INTERCEPT] 🎯 STATUS`);
+              const r = await exec("status");
+              return { action: "status", detail: "Status agent", result: r };
+            }
+            
+            // === TYPE TEXT — "écris X", "tape X", "type X" ===
+            const typeMatch = msg.match(/(?:écris|tape|type|saisis?|write)\s+(?:["«](.+?)["»]|(\S.+))$/i);
+            if (typeMatch) {
+              const textToType = (typeMatch[1] || typeMatch[2] || "").trim();
+              if (textToType && textToType.length < 500) {
+                console.log(`[PC-INTERCEPT] 🎯 TYPE_TEXT: "${textToType}"`);
+                const r = await exec("type_text", { text: textToType });
+                return { action: "type_text", detail: textToType, result: r };
+              }
+            }
+            
+            // === TYPE + ENTER — "écris X et envoie" ===
+            const typeEnterMatch = msg.match(/(?:écris|tape|type|saisis?|write)\s+(?:["«](.+?)["»]|(\S.+?))\s+(?:et\s+)?(?:envoie|envoi|send|valide|entre|enter|submit)/i);
+            if (typeEnterMatch) {
+              const textToType = (typeEnterMatch[1] || typeEnterMatch[2] || "").trim();
+              if (textToType && textToType.length < 500) {
+                console.log(`[PC-INTERCEPT] 🎯 TYPE_TEXT + ENTER: "${textToType}"`);
+                await exec("type_text", { text: textToType });
+                const r = await exec("key_press", { key: "enter" });
+                return { action: "type_and_send", detail: `"${textToType}" + Entrée`, result: r };
+              }
+            }
+            
+            // === KEY PRESS — "appuie sur Entrée", "touche ctrl+c" ===
+            const keyMatch = msg.match(/(?:appuie|press|touche|tape|frappe|envoie|fais?)\s+(?:sur\s+)?(?:la\s+)?(?:touche\s+)?(enter|entrée|escape|echap|esc|tab|space|espace|suppr|delete|backspace|ctrl\+\w+|alt\+\w+|shift\+\w+|win|f\d{1,2})/i);
+            if (keyMatch) {
+              let key = keyMatch[1].toLowerCase()
+                .replace("entrée", "enter")
+                .replace("echap", "escape")
+                .replace("espace", "space")
+                .replace("suppr", "delete");
+              console.log(`[PC-INTERCEPT] 🎯 KEY_PRESS: ${key}`);
+              const r = await exec("key_press", { key });
+              return { action: "key_press", detail: key, result: r };
+            }
+            
+            // === CLICK — "clique sur X,Y" or "clique à X,Y" ===
+            const clickMatch = msg.match(/(?:clique|click|clic)\s+(?:sur|à|at|en)?\s*(?:\(?(\d+)\s*[,;]\s*(\d+)\)?)/i);
+            if (clickMatch) {
+              const x = parseInt(clickMatch[1]), y = parseInt(clickMatch[2]);
+              console.log(`[PC-INTERCEPT] 🎯 CLICK: ${x},${y}`);
+              const r = await exec("click", { x, y });
+              return { action: "click", detail: `${x},${y}`, result: r };
+            }
+            
+            // === SCROLL ===
+            if (/(?:scroll|défile|descends?|montes?)\s*(?:vers\s+)?(?:le\s+)?(?:bas|haut|down|up)/i.test(msgLower)) {
+              const goDown = /(?:bas|down|descend)/i.test(msgLower);
+              console.log(`[PC-INTERCEPT] 🎯 SCROLL ${goDown ? "DOWN" : "UP"}`);
+              const r = await exec("scroll", { x: 960, y: 540, dy: goDown ? 5 : -5 });
+              return { action: "scroll", detail: goDown ? "bas" : "haut", result: r };
+            }
+            
+            // === RUN COMMAND — "exécute commande X", "lance la commande X" ===
+            const cmdMatch = msg.match(/(?:exécute|execute|run|lance)\s+(?:la\s+)?(?:commande|command|cmd)\s+(.+)/i);
+            if (cmdMatch) {
+              const command = cmdMatch[1].trim();
+              console.log(`[PC-INTERCEPT] 🎯 RUN_COMMAND: ${command}`);
+              const r = await exec("run_command", { text: command });
+              return { action: "run_command", detail: command, result: r };
+            }
+            
+            // === OPEN APP ===
+            const appMatch = msg.match(/(?:ouvre|open|lance|start|démarre|démarrer)\s+(?:l'(?:appli(?:cation)?\s+)?)?(?:le\s+)?(word|excel|powerpoint|outlook|notepad|paint|calc|calculatrice|chrome|firefox|edge|vscode|terminal|cmd|powershell|teams|spotify|discord|slack|notion|explorateur|explorer)(?:\s|$|\.)/i);
+            if (appMatch) {
+              const appName = appMatch[1].trim().toLowerCase();
+              console.log(`[PC-INTERCEPT] 🎯 OPEN_APP: ${appName}`);
+              const r = await exec("open_app", { text: appName });
+              return { action: "open_app", detail: appName, result: r };
+            }
+            
+            // === OPEN URL ===
+            const urlMatch = msg.match(/(?:ouvre|open|va\s+sur|go\s+to|navigue\s+(?:vers|sur))\s+(https?:\/\/\S+)/i);
+            if (urlMatch) {
+              const url = urlMatch[1].trim();
+              console.log(`[PC-INTERCEPT] 🎯 OPEN_URL: ${url}`);
+              const r = await exec("open_url", { text: url });
+              return { action: "open_url", detail: url, result: r };
+            }
+            const urlMatch2 = msg.match(/(?:ouvre|open|va\s+sur|go\s+to|navigue\s+(?:vers|sur))\s+([\w-]+\.(?:com|fr|org|net|io|dev|app|co)\S*)/i);
+            if (urlMatch2) {
+              const url = "https://" + urlMatch2[1].trim();
+              console.log(`[PC-INTERCEPT] 🎯 OPEN_URL (auto-https): ${url}`);
+              const r = await exec("open_url", { text: url });
+              return { action: "open_url", detail: url, result: r };
+            }
+            
+            // === OPEN FOLDER ===
+            const folderPatterns = [
+              /(?:ouvre|open|ouvrir)\s+(?:le\s+)?(?:dossier|folder|répertoire)\s+(.+?)(?:\s+sur\s+(?:mon\s+)?(?:bureau|desktop|pc))?$/i,
+              /(?:ouvre|open|ouvrir)\s+(.+?)\s+sur\s+(?:mon\s+)?(?:bureau|desktop)/i,
+              /(?:ouvre|open|ouvrir)\s+(?:le\s+)?(?:dossier|folder)\s+(.+)/i,
+              /(?:ouvre|open|ouvrir)\s+mes\s+(documents|téléchargements|downloads|images|vidéos|musique)/i,
+              /(?:va|accède)\s+(?:dans|au|à|sur)\s+(?:le\s+)?(?:dossier\s+)?(.+?)(?:\s+sur\s+(?:mon\s+)?(?:bureau|desktop))/i,
+            ];
+            for (const pattern of folderPatterns) {
+              const match = msg.match(pattern);
+              if (match && match[1]) {
+                let folderName = match[1].trim().replace(/["'«»]/g, "");
+                let folderPath = KNOWN_FOLDERS[folderName.toLowerCase()];
+                if (!folderPath) {
+                  folderPath = /^[a-zA-Z]:\\/.test(folderName) ? folderName : `C:\\Users\\meyer\\Desktop\\${folderName}`;
+                }
+                console.log(`[PC-INTERCEPT] 🎯 OPEN_FOLDER: "${folderName}" → ${folderPath}`);
+                const r = await exec("open_folder", { text: folderPath });
+                return { action: "open_folder", detail: folderPath, result: r };
+              }
+            }
+            
+            // === SELF TEST ===
+            if (/(?:teste|test|vérifie|check|diagnostic).*(?:tes\s+outils|tes\s+capacités|ton\s+agent|la\s+connexion|tools|capabilities|self.?test)/i.test(msgLower)) {
+              console.log(`[PC-INTERCEPT] 🎯 SELF_TEST`);
+              const r = await exec("self_test");
+              return { action: "self_test", detail: "Diagnostic complet", result: r };
+            }
+            
+          } catch (err: any) {
+            console.error(`[PC-INTERCEPT] Error:`, err.message);
+            return { action: "error", detail: err.message, result: JSON.stringify({ success: false, error: err.message }) };
+          }
+          
+          return null;
+        })();
+        
+        if (pcInterceptResult) {
+          let parsed: any = {};
+          try { parsed = JSON.parse(pcInterceptResult.result); } catch { parsed = { raw: pcInterceptResult.result }; }
+          const success = parsed.success !== false;
+          
+          const ACTION_LABELS: Record<string, string> = {
+            enable_control: "Monitoring et prise en main activés",
+            disable_control: "Contrôle désactivé",
+            screenshot: "Capture d'écran prise",
+            status: "Status de l'agent",
+            type_text: `Texte tapé: "${pcInterceptResult.detail}"`,
+            type_and_send: `Message envoyé: ${pcInterceptResult.detail}`,
+            key_press: `Touche pressée: ${pcInterceptResult.detail}`,
+            click: `Clic à ${pcInterceptResult.detail}`,
+            scroll: `Scroll ${pcInterceptResult.detail}`,
+            run_command: `Commande exécutée: ${pcInterceptResult.detail}`,
+            open_app: `Application lancée: ${pcInterceptResult.detail}`,
+            open_url: `URL ouverte: ${pcInterceptResult.detail}`,
+            open_folder: `Dossier ouvert: ${pcInterceptResult.detail}`,
+            self_test: "Diagnostic complet exécuté",
+          };
+          
+          let responseText = "";
+          if (success) {
+            responseText = ACTION_LABELS[pcInterceptResult.action] || `Action exécutée: ${pcInterceptResult.action}`;
+            if (parsed.agentResponse) responseText += `\n${parsed.agentResponse}`;
+            if (parsed.screenAfterAction) responseText += `\n\n**Écran:** ${typeof parsed.screenAfterAction === 'string' ? parsed.screenAfterAction.substring(0, 500) : ''}`;
+            if (parsed.output) responseText += `\n\`\`\`\n${parsed.output.substring(0, 1000)}\n\`\`\``;
+            if (parsed.status) responseText += `\n${JSON.stringify(parsed, null, 2).substring(0, 500)}`;
+          } else {
+            const errorMsg = parsed.error || parsed.agentResponse || parsed.msg || "Erreur inconnue";
+            responseText = `Échec: ${errorMsg}`;
+          }
+          
+          console.log(`[PC-INTERCEPT] ✅ DIRECT (no GPT): ${pcInterceptResult.action} → success=${success}`);
+          
+          await db.insert(conversationMessages).values({
+            threadId, userId, role: "assistant", content: responseText, modality: "text",
+            metadata: { directAction: true, pcIntercept: pcInterceptResult.action },
+          });
+          
+          if (isStreaming) {
+            safeWrite(`data: ${JSON.stringify({ type: "content", content: responseText })}\n\n`);
+            safeWrite("data: [DONE]\n\n");
+            res.end();
+          } else {
+            res.json({ threadId, response: responseText, directAction: true });
+          }
+          releaseSessionRequest(userId, sessionContext);
+          return;
+        }
+        // ══════════════════════════════════════════════════════════════════
         
         const initialMaxTokens = devopsCtx ? 8192 : 4096;
         let initialResponse: any;

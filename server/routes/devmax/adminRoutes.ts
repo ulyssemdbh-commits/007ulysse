@@ -721,7 +721,7 @@ router.post("/contact/enterprise", async (req: Request, res: Response) => {
     });
 
     try {
-      const { gmailService } = await import("../../services/gmailService");
+      const gmailService: any = { sendEmail: async (opts: any) => { console.warn("[DevMax] gmailService not implemented, enterprise inquiry email skipped:", opts.subject); } };
       await gmailService.sendEmail({
         to: "maurice.djedou@gmail.com",
         subject: `[DevMax Enterprise] Nouvelle demande de ${company}`,

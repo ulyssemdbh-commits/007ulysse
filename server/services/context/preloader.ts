@@ -219,7 +219,7 @@ async function fetchCalendarContext(userId: number): Promise<string> {
       return cached.data;
     }
 
-    const { calendarService } = await import("./googleCalendarService");
+    const { calendarService } = await import("../googleCalendarService");
     const isConnected = await calendarService.isConnected(userId);
     
     if (!isConnected) return "";
@@ -273,7 +273,7 @@ async function fetchSpotifyContext(_userId: number): Promise<string> {
 
 async function fetchGeolocationContext(userId: number): Promise<string> {
   try {
-    const { geolocationService } = await import("./geolocationService");
+    const { geolocationService } = await import("../geolocationService");
     
     const location = await geolocationService.getLastKnownLocation(userId);
     if (!location) return "";

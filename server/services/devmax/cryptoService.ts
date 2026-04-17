@@ -35,8 +35,21 @@ export function decryptToken(stored: string): string {
   const iv = Buffer.from(ivHex, "hex");
   const key = deriveKey(salt);
   const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
-  let decrypted = decipher.update(encHex, "hex", "utf8");
-  decrypted += decipher.final("utf8");
+  // Decrypt to Buffer first, then validate before stringifying.
+  // Decrypting straight to "utf8" silently substitutes invalid bytes with U+FFFD,
+  // producing tokens that look valid but explode later in HTTP headers (ByteString error).
+  const decryptedBuf = Buffer.concat([decipher.update(encHex, "hex"), decipher.final()]);
+  const decrypted = decryptedBuf.toString("utf8");
+  // GitHub PATs (ghp_*, github_pat_*, gho_*, ghs_*) are strict ASCII printable.
+  // If we see U+FFFD or any non-ASCII byte, decryption succeeded numerically but
+  // produced garbage — almost always means the encryption key rotated since this
+  // ciphertext was written. Fail loud so callers can re-prompt for a fresh token.
+  if (decrypted.includes("\uFFFD") || /[^\x20-\x7E]/.test(decrypted)) {
+    throw new Error(
+      "[crypto] Decrypted token contains invalid bytes — encryption key likely rotated. " +
+      "Re-enter the GitHub token in DevMax to re-encrypt it with the current key."
+    );
+  }
   return decrypted;
 }
 

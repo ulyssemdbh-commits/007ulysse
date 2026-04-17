@@ -4,7 +4,7 @@ import * as path from "path";
 const PAT = process.env.MAURICE_GITHUB_PAT!;
 const ROOT = process.cwd();
 const file = process.argv[2] || "server/config/personaMapping.ts";
-const repo = process.argv[3] || "007ulysse";
+const repo = process.argv[3] || "ulysseproject";
 const repoUrl = `https://api.github.com/repos/ulyssemdbh-commits/${repo}`;
 const msg = process.argv[4] || `[DevOpsMax] Update ${file}`;
 
