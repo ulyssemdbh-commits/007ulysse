@@ -35,7 +35,7 @@ export const generalLimiter = createLimiter(
 );
 
 export const authLimiter = createLimiter(
-  5,
+  20,
   15,
   "Trop de tentatives de connexion. Réessayez dans 15 minutes."
 );
