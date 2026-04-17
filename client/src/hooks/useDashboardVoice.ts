@@ -79,35 +79,10 @@ export function useDashboardVoice({ userName, activeConversationId, micPermissio
     })) || [];
   }, [activeConversation?.messages]);
 
-  const realtimeRef = useRef<ReturnType<typeof useRealtimeVoice> | null>(null);
-
-  const realtime = useRealtimeVoice({
-    context: conversationContext,
-    conversationId: activeConversationId ?? undefined,
-    onTranscript: (text) => {
-      console.log("Realtime transcript:", text);
-    },
-    onResponse: (text) => {
-      console.log("Realtime response:", text);
-      if (activeConversationId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations", activeConversationId] });
-      }
-    },
-    onError: (error) => {
-      console.error("Realtime error:", error);
-      diagnostics.trackVoiceError("websocket", `Realtime voice error: ${error}`, undefined, async () => {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        realtimeRef.current?.disconnect();
-        await new Promise(resolve => setTimeout(resolve, 500));
-        realtimeRef.current?.connect();
-        return true;
-      });
-    }
-  });
-
-  useEffect(() => {
-    realtimeRef.current = realtime;
-  }, [realtime]);
+  // NOTE: previously a 2nd useRealtimeVoice instance was created here, which
+  // competed with `voiceCall` for the microphone and killed the audio capture.
+  // Removed — the Dashboard only consumes `voiceCall`. Single session = mic works.
+  const realtime = voiceCall;
 
   const lastMicPermissionRef = useRef(micPermission);
   useEffect(() => {
