@@ -17,7 +17,12 @@ const SENSITIVE_ENDPOINTS = [
   "/api/geolocation",
 ];
 
-const createLimiter = (maxRequests: number, windowMinutes: number, message: string) => {
+const createLimiter = (
+  maxRequests: number,
+  windowMinutes: number,
+  message: string,
+  options: { skipAuthenticated?: boolean } = {}
+) => {
   return rateLimit({
     windowMs: windowMinutes * 60 * 1000,
     max: maxRequests,
@@ -25,13 +30,24 @@ const createLimiter = (maxRequests: number, windowMinutes: number, message: stri
     standardHeaders: true,
     legacyHeaders: false,
     validate: { xForwardedForHeader: false },
+    skip: (req: Request) => {
+      // Always skip the persistent SSE brain stream — long-lived connection.
+      if (req.path === "/v2/sensory/stream" || req.path?.endsWith("/sensory/stream")) return true;
+      // Skip authenticated session users when requested (legitimate dashboard polling).
+      if (options.skipAuthenticated) {
+        const session = (req as any).session;
+        if (session?.userId) return true;
+      }
+      return false;
+    },
   });
 };
 
 export const generalLimiter = createLimiter(
-  100,
+  600,
   1,
-  "Trop de requêtes. Réessayez dans une minute."
+  "Trop de requêtes. Réessayez dans une minute.",
+  { skipAuthenticated: true }
 );
 
 export const authLimiter = createLimiter(
