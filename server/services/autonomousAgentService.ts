@@ -43,6 +43,16 @@ class AutonomousAgentService {
     console.log(`[AutonomousAgent] 🚀 New task: "${goal}" (id: ${taskId})`);
 
     try {
+      const { brainPulse, brainFocus } = await import("./sensory/BrainPulse");
+      brainPulse(["prefrontal", "motor", "association"], "autonomousAgent", `planifie: ${goal.slice(0, 60)}`, {
+        userId,
+        autonomous: true,
+        intensity: 3,
+      });
+      brainFocus("thinking");
+    } catch { /* best-effort */ }
+
+    try {
       const plan = await this.createPlan(goal, maxSteps);
       task.steps = plan;
       task.status = "executing";

@@ -189,7 +189,16 @@ export class UlysseCoreEngine {
   async process(request: CoreRequest): Promise<CoreResponse> {
     const startTime = Date.now();
     this.stats.totalRequests++;
-    
+
+    try {
+      const { brainPulse, brainFocus } = await import("../sensory/BrainPulse");
+      brainPulse(["prefrontal", "feature"], `core:${request.context.persona}`, `réfléchit (${request.userMessage?.slice(0, 60) ?? "request"})`, {
+        userId: request.context.userId,
+        intensity: 3,
+      });
+      brainFocus("thinking");
+    } catch { /* best-effort */ }
+
     try {
       const cacheKey = this.buildCacheKey(request);
       const cachedResponse = await this.decisionCache.get(cacheKey);

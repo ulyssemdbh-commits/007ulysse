@@ -35,6 +35,11 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
   const cached = memCache.get(key);
   if (cached) return cached;
 
+  try {
+    const { brainPulse } = await import("./sensory/BrainPulse");
+    brainPulse("feature", "embedding", `vectorise "${trimmed.slice(0, 50)}"`, { intensity: 1, throttleMs: 500 });
+  } catch { /* best-effort */ }
+
   // Dedup concurrent identical embedding requests
   const pending = inFlight.get(key);
   if (pending) return pending;

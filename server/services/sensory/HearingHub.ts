@@ -137,6 +137,12 @@ class HearingHubService {
     console.log(`[HearingHub] 👂 Input reçu: source=${input.metadata.source}, type=${input.metadata.type}, length=${input.content.length}`);
 
     try {
+      const { brainPulse, brainFocus } = await import("./BrainPulse");
+      brainPulse("sensory", `hearing:${input.metadata.source}`, `entend ${input.metadata.type}`, { userId: (input.metadata as any).userId, intensity: 2 });
+      brainFocus("listening");
+    } catch { /* best-effort */ }
+
+    try {
       // 1. Pré-traitement et nettoyage
       const cleanedContent = this.cleanInput(input.content);
       

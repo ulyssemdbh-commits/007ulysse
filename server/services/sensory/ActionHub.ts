@@ -201,6 +201,16 @@ class ActionHubService {
       this.stats.autonomousActions++;
     }
 
+    try {
+      const { brainPulse, brainFocus } = await import("./BrainPulse");
+      brainPulse(["motor", "prefrontal"], `action:${input.metadata.category}`, `exécute ${input.name}`, {
+        userId: (input.metadata as any).userId,
+        autonomous: input.metadata.source === "autonomous",
+        intensity: 2,
+      });
+      brainFocus("acting");
+    } catch { /* best-effort */ }
+
     console.log(`[ActionHub] 🤲 Action: ${input.name}, category=${input.metadata.category}, source=${input.metadata.source}, depth=${depth}`);
 
     try {

@@ -264,6 +264,10 @@ async function getLearningProgressData(userId: number): Promise<string[]> {
 }
 
 export async function generateSelfReflectionJournal(userId: number): Promise<SelfReflectionJournal> {
+  try {
+    const { brainPulse } = await import("./sensory/BrainPulse");
+    brainPulse(["prefrontal", "hippocampus", "association"], "selfReflection", "journal hebdomadaire", { userId, autonomous: true, intensity: 3 });
+  } catch { /* best-effort */ }
   const snapshot = await collectSystemSnapshot(userId);
   const errorPatterns = await getRecentErrorPatterns();
   const learningTopics = await getRecentLearningTopics(userId);

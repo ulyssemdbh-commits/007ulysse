@@ -149,6 +149,10 @@ class JobScheduler {
       interval: 30 * 60 * 1000,
       enabled: true,
       execute: async () => {
+        try {
+          const { brainPulse } = await import("./sensory/BrainPulse");
+          brainPulse(["concept", "hippocampus"], "knowledgeSync", "synchronise sa connaissance système", { autonomous: true, intensity: 2 });
+        } catch { /* best-effort */ }
         const ownerId = await getOwnerUserId();
         if (ownerId) {
           await syncSystemKnowledge(ownerId);
@@ -165,6 +169,10 @@ class JobScheduler {
       interval: 30 * 60 * 1000,
       enabled: agentMailConfigured,
       execute: async () => {
+        try {
+          const { brainPulse } = await import("./sensory/BrainPulse");
+          brainPulse("sensory", "agentmail", "récupère les emails", { autonomous: true, intensity: 2 });
+        } catch { /* best-effort */ }
         await this.fetchAndProcessEmails();
       }
     });
@@ -367,6 +375,10 @@ class JobScheduler {
       interval: 4 * 60 * 60 * 1000, // Every 4 hours
       enabled: !this.isLightMode(),
       execute: async () => {
+        try {
+          const { brainPulse } = await import("./sensory/BrainPulse");
+          brainPulse(["concept", "feature", "hippocampus"], "autonomousLearning", "cycle d'apprentissage autonome", { autonomous: true, intensity: 3 });
+        } catch { /* best-effort */ }
         await this.runAutonomousLearning();
       }
     });
@@ -378,6 +390,10 @@ class JobScheduler {
       interval: 12 * 60 * 60 * 1000, // Every 12 hours
       enabled: !this.isLightMode(),
       execute: async () => {
+        try {
+          const { brainPulse } = await import("./sensory/BrainPulse");
+          brainPulse(["association", "concept"], "l5CrossDomain", "tisse des intuitions cross-domaine", { autonomous: true, intensity: 3 });
+        } catch { /* best-effort */ }
         try {
           await this.runL5CrossDomainInsights();
         } catch (error) {

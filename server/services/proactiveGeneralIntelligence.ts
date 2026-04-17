@@ -244,6 +244,10 @@ class ProactiveGeneralIntelligence {
   }
 
   private async runCollectionCycle(): Promise<void> {
+    try {
+      const { brainPulse } = await import("./sensory/BrainPulse");
+      brainPulse(["association", "feature"], "pugi", "collecte signaux proactifs cross-domaine", { autonomous: true, intensity: 2 });
+    } catch { /* best-effort */ }
     const startTime = Date.now();
     let collected = 0;
 
@@ -474,6 +478,10 @@ class ProactiveGeneralIntelligence {
   }
 
   private async runDigestCycle(): Promise<void> {
+    try {
+      const { brainPulse } = await import("./sensory/BrainPulse");
+      brainPulse(["association", "prefrontal"], "pugiDigest", "génère digest proactif", { autonomous: true, intensity: 3 });
+    } catch { /* best-effort */ }
     const consciousness = brainHub.getConsciousness();
     if (!consciousness.activeUserId) return;
 

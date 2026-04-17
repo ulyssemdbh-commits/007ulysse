@@ -201,6 +201,11 @@ class MetaLearningService {
   async tick(): Promise<void> {
     this.lastTickAt = Date.now();
 
+    try {
+      const { brainPulse } = await import("./sensory/BrainPulse");
+      brainPulse(["concept", "association"], "metaLearning", "ajuste ses paramètres", { autonomous: true, intensity: 2 });
+    } catch { /* best-effort */ }
+
     // ---- Critique: per-domain miniConfidence adjustment ----
     const critiqueStats = enhancedSelfCritiqueService.getStats();
     for (const [domain, dStats] of Object.entries(critiqueStats.byDomain)) {

@@ -50,6 +50,11 @@ export async function textToSpeech(
   const { voice = "onyx", speed = 1.0, model = "tts-1" } = options;
 
   try {
+    const { brainPulse } = await import("../sensory/BrainPulse");
+    brainPulse("language", "tts", `parle (${text.length} chars)`, { intensity: 2, throttleMs: 500 });
+  } catch { /* best-effort */ }
+
+  try {
     // Always use openaiForAudio (direct OpenAI, not modelfarm)
     const mp3Response = await openaiForAudio.audio.speech.create({
       model,

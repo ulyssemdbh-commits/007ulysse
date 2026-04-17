@@ -172,6 +172,12 @@ class VisionHubService {
     console.log(`[VisionHub] 👁️ Input reçu: source=${input.metadata.source}, type=${input.metadata.contentType}`);
 
     try {
+      const { brainPulse, brainFocus } = await import("./BrainPulse");
+      brainPulse("sensory", `vision:${input.metadata.source}`, `voit ${input.metadata.contentType}`, { userId: (input.metadata as any).userId, intensity: 2 });
+      brainFocus("observing");
+    } catch { /* best-effort */ }
+
+    try {
       // 1. Vérifier le cache
       const cacheKey = this.buildCacheKey(input);
       const cached = this.analysisCache.get(cacheKey);

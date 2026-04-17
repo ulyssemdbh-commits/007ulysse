@@ -215,6 +215,15 @@ class VoiceOutputHubService {
     console.log(`[VoiceOutputHub] 👄 Output: dest=${output.metadata.destination}, priority=${output.metadata.priority}, length=${output.text.length}`);
 
     try {
+      const { brainPulse, brainFocus } = await import("./BrainPulse");
+      brainPulse(["language", "prefrontal"], `voice:${output.metadata.destination}`, output.text.slice(0, 80), {
+        userId: output.metadata.userId,
+        intensity: output.metadata.destination === "notification" ? 2 : 3,
+      });
+      brainFocus("speaking");
+    } catch { /* best-effort */ }
+
+    try {
       // 1. Vérifier les priorités
       if (!this.canSpeak(output.metadata)) {
         console.log(`[VoiceOutputHub] Bloqué par canal prioritaire actif`);
