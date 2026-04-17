@@ -266,8 +266,40 @@ router.get("/memory", requireOwner, async (req: Request, res: Response) => {
       memory = memory.filter(m => m.type === type);
     }
 
+    let persistentTotal = 0;
+    let projectTotal = 0;
+    let connectionsTotal = 0;
+    try {
+      const { db } = await import("../../db");
+      const { ulysseMemory, projectMemory, memoryConnections } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+      const [u] = await db.select({ c: sql<number>`count(*)::int` }).from(ulysseMemory);
+      const [p] = await db.select({ c: sql<number>`count(*)::int` }).from(projectMemory);
+      const [m] = await db.select({ c: sql<number>`count(*)::int` }).from(memoryConnections);
+      persistentTotal = u?.c ?? 0;
+      projectTotal = p?.c ?? 0;
+      connectionsTotal = m?.c ?? 0;
+    } catch (e) {
+      console.error("[Sensory API] persistent count error:", e);
+    }
+
+    try {
+      const { sensorySystemService } = await import("../../services/sensory");
+      sensorySystemService.recordPulse?.({
+        zones: ["hippocampus"],
+        intensity: 0.5,
+        source: "sensory.memory.read",
+        meta: { persistent: persistentTotal },
+      });
+    } catch {}
+
+    const working = consciousness.workingMemory.length;
     res.json({
-      total: consciousness.workingMemory.length,
+      total: persistentTotal + projectTotal + working,
+      working,
+      persistent: persistentTotal,
+      projects: projectTotal,
+      connections: connectionsTotal,
       filtered: memory.length,
       items: memory.slice(0, limit).map(m => ({
         type: m.type,
