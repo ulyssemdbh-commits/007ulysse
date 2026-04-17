@@ -34,7 +34,7 @@ BUNDLE_SIZE=$(stat -c%s dist/index.cjs 2>/dev/null || echo "0")
 echo "[$(date -Iseconds)]   Bundle: $(( BUNDLE_SIZE / 1024 / 1024 ))MB"
 
 echo "[$(date -Iseconds)] [5/6] PM2 restart..."
-pm2 restart ulysse 2>&1 | tail -3
+pm2 restart 007ulysse 2>&1 | tail -3
 sleep 8
 
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/api/v2/health)
