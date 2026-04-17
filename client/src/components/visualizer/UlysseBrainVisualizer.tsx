@@ -364,8 +364,7 @@ function SignalFlow({ zone, zonePos }: { zone: BrainZone; zonePos: [number, numb
   );
 }
 
-function BrainScene({ onSelectZone }: { onSelectZone: (id: BrainZoneId) => void }) {
-  const activity = useBrainActivity(true);
+function BrainScene({ onSelectZone, activity }: { onSelectZone: (id: BrainZoneId) => void; activity: ReturnType<typeof useBrainActivity> }) {
   const groupRef = useRef<THREE.Group>(null);
 
   // Smoothly interpolate brain scale toward evolution scale (so it visibly grows when new memories arrive).
@@ -515,7 +514,7 @@ export function UlysseBrainVisualizer({ className = "", height = 280 }: UlysseBr
         }}
       >
         <Suspense fallback={null}>
-          <BrainScene onSelectZone={setSelectedId} />
+          <BrainScene onSelectZone={setSelectedId} activity={activity} />
         </Suspense>
         <OrbitControls
           enablePan={false}
