@@ -2275,12 +2275,70 @@ async function executeEmailForward(args: Record<string, any>): Promise<string> {
 }
 
 // Exported for ActionHubBridge integration
+// Tool names that write/modify state (vs read-only queries) — used to persist a memory trace.
+const WRITE_TOOL_PATTERNS = [
+  /^(create|update|delete|complete|save|send|generate|execute|run)_/,
+  /_(create|update|delete|complete|save|send|generate|execute|run|manage)$/,
+  /_manage$/, /_control$/,
+];
+
+function isWriteTool(name: string): boolean {
+  return WRITE_TOOL_PATTERNS.some(rx => rx.test(name));
+}
+
 export async function executeToolCallV2Internal(toolName: string, args: Record<string, any>, userId: number): Promise<string> {
   const handler = TOOL_REGISTRY[toolName];
-  if (handler) {
-    return handler(args, userId);
-  }
-  return JSON.stringify({ error: `Fonction inconnue: ${toolName}` });
+  if (!handler) return JSON.stringify({ error: `Fonction inconnue: ${toolName}` });
+
+  const result = await handler(args, userId);
+
+  // Best-effort: persist a memory trace + brain pulse for any tool execution.
+  // This is what lets Ulysse later recall "j'ai créé un Devoir Chabbat hier" via query_brain.
+  (async () => {
+    try {
+      let parsed: any = null;
+      try { parsed = JSON.parse(result); } catch {}
+      const success = parsed?.success !== false; // null/undefined treated as success
+      const isWrite = isWriteTool(toolName);
+      const action = (args as any)?.action || (isWrite ? "execute" : "query");
+
+      // Pulse brain regardless (read or write) — already done by ActionHubBridge for many paths,
+      // but ensures coverage for tools not in that map.
+      try {
+        const { brainPulse } = await import("./sensory/BrainPulse");
+        const zones = isWrite
+          ? ["motor", "prefrontal", "hippocampus", "concept"]
+          : ["prefrontal", "feature", "association"];
+        brainPulse(zones, `tool:${toolName}`, `${toolName}/${action}`, { userId, intensity: isWrite ? 3 : 1, throttleMs: 1500 });
+      } catch { /* ignore */ }
+
+      // Persist a compact memory trace for write actions (so Ulysse remembers what she did).
+      if (isWrite && success) {
+        try {
+          const { memoryService } = await import("./memory");
+          const summary = (() => {
+            const bits: string[] = [];
+            if (parsed?.message) bits.push(String(parsed.message));
+            if (parsed?.action) bits.push(`action=${parsed.action}`);
+            const argSnap = JSON.stringify(args).slice(0, 400);
+            bits.push(`args=${argSnap}`);
+            return bits.join(" | ").slice(0, 1500);
+          })();
+          const ref = parsed?.id || parsed?.homework?.id || parsed?.note?.id ||
+                      parsed?.project?.id || parsed?.task?.id || Date.now();
+          await (memoryService as any).updateOrCreateMemory(
+            userId,
+            "tool_action",
+            `${toolName}_${action}_${ref}`,
+            summary,
+            { toolName, action, args, ts: new Date().toISOString() }
+          );
+        } catch { /* ignore — never block tool result on memory write */ }
+      }
+    } catch { /* swallow */ }
+  })();
+
+  return result;
 }
 
 // === TOOL IMPLEMENTATIONS ===
