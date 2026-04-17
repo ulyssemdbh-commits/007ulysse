@@ -205,6 +205,26 @@ class SensorySystemService {
   }
 
   /**
+   * Enregistre un pulse provenant du BrainPulse bus (jobs autonomes,
+   * AI router, autres IA, mémoire, learning, etc.) — alimente le 3D Brain.
+   */
+  recordPulse(evt: { zone: string; source: string; summary: string; userId?: number; timestamp: number; autonomous?: boolean; intensity?: number }): void {
+    this.logEvent({
+      type: "action",
+      source: `brain:${evt.zone}`,
+      timestamp: evt.timestamp,
+      userId: evt.userId,
+      data: {
+        zone: evt.zone,
+        source: evt.source,
+        summary: evt.summary,
+        autonomous: evt.autonomous ?? false,
+        intensity: evt.intensity ?? 1,
+      },
+    });
+  }
+
+  /**
    * Vérifie si le système est actif
    */
   isActive(): boolean {

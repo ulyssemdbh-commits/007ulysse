@@ -2278,6 +2278,12 @@ class JobScheduler {
       console.log(`[JobScheduler] Running job: ${job.name}${priorityLabel} (${this.runningJobs.size}/${this.MAX_CONCURRENT_JOBS} slots)`);
       const jobStartTime = Date.now();
 
+      // 🧠 BrainPulse — autonomous job firing (motor cortex + prefrontal planning)
+      try {
+        const { brainPulse } = require("./sensory/BrainPulse");
+        brainPulse(["motor", "prefrontal"], `job:${id}`, `▶ ${job.name}${priorityLabel}`, { autonomous: true, intensity: boosted ? 3 : 2 });
+      } catch {}
+
       const JOB_TIMEOUT = 120_000;
       const timeoutHandle = setTimeout(() => {
         if (this.runningJobs.has(id)) {
@@ -2291,6 +2297,10 @@ class JobScheduler {
           const duration = Date.now() - jobStartTime;
           console.log(`[JobScheduler] Completed job: ${job.name} in ${duration}ms`);
           try {
+            const { brainPulse } = await import("./sensory/BrainPulse");
+            brainPulse(["motor", "association"], `job:${id}`, `✓ ${job.name} (${duration}ms)`, { autonomous: true, intensity: 2 });
+          } catch {}
+          try {
             const { metricsService } = await import("./metricsService");
             metricsService.recordJobExecution(id, job.name, true, duration);
           } catch {}
@@ -2298,6 +2308,10 @@ class JobScheduler {
         .catch(async (error) => {
           const duration = Date.now() - jobStartTime;
           console.error(`[JobScheduler] Job failed: ${job.name}`, error);
+          try {
+            const { brainPulse } = await import("./sensory/BrainPulse");
+            brainPulse("prefrontal", `job:${id}`, `✗ ${job.name} failed`, { autonomous: true, intensity: 4 });
+          } catch {}
           try {
             const { metricsService } = await import("./metricsService");
             const errorMsg = error instanceof Error ? error.message : String(error);

@@ -243,6 +243,11 @@ export const aiRouter = {
     toolChoice: "auto" | "required" | "none" = "auto",
     maxToolRounds: number = 10
   ): Promise<string> {
+    // 🧠 BrainPulse — prefrontal cortex fires on every reasoning call
+    try {
+      const { brainPulse } = require("./sensory/BrainPulse");
+      brainPulse(["prefrontal", "feature"], "aiRouter:openai", `gpt → ${model}${tools?.length ? ` +${tools.length} tools` : ""}`, { intensity: 2 });
+    } catch {}
     // Agentic loop: supports multi-tool chaining (up to maxToolRounds rounds)
     let conversationMessages: any[] = messages as any[];
     let fullResponse = "";
@@ -389,6 +394,10 @@ export const aiRouter = {
     onChunk: (content: string) => void,
     signal?: AbortSignal
   ): Promise<string> {
+    try {
+      const { brainPulse } = require("./sensory/BrainPulse");
+      brainPulse(["prefrontal", "feature"], "aiRouter:gemini", `gemini → ${model}`, { intensity: 2 });
+    } catch {}
     const geminiClient = getGeminiClient();
     if (!geminiClient) {
       throw new Error("Gemini client not available");
@@ -422,6 +431,10 @@ export const aiRouter = {
     onChunk: (content: string) => void,
     signal?: AbortSignal
   ): Promise<string> {
+    try {
+      const { brainPulse } = require("./sensory/BrainPulse");
+      brainPulse(["prefrontal", "feature"], "aiRouter:grok", `grok → ${model}`, { intensity: 2 });
+    } catch {}
     const grokClient = getGrokClient();
     if (!grokClient) {
       throw new Error("Grok client not available");
