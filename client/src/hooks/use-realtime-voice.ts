@@ -1051,6 +1051,28 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
     updateVoiceState("idle");
   }, [updateVoiceState, stopSilenceDetection]);
 
+  // Send start_call to server: switches session.isInCallMode = true.
+  // Without this, audio chunks are rejected ("awaiting valid WebM header") because
+  // the server expects EBML headers in non-call mode (chat) but raw PCM in call mode.
+  const startCallMode = useCallback((conversationId?: number) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn("[RealtimeVoice] startCallMode: WS not open, retrying in 500ms");
+      setTimeout(() => startCallMode(conversationId), 500);
+      return;
+    }
+    console.log("[RealtimeVoice] Sending start_call to server", { conversationId });
+    wsRef.current.send(JSON.stringify({
+      type: "start_call",
+      conversationId,
+    }));
+  }, []);
+
+  const endCallMode = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    console.log("[RealtimeVoice] Sending end_call to server");
+    wsRef.current.send(JSON.stringify({ type: "end_call" }));
+  }, []);
+
   const sendTextMessage = useCallback((text: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       connect();
@@ -1125,6 +1147,8 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
     
     startListening,
     stopListening,
+    startCallMode,
+    endCallMode,
     cancel,
     sendTextMessage,
     unlockAudio,

@@ -44,16 +44,27 @@ export function useDashboardVoice({ userName, activeConversationId, micPermissio
       : "idle";
 
   const voiceState = voiceCall.voiceState;
+  const callModeStartedRef = useRef(false);
   useEffect(() => {
     if (voiceCall.isProcessingBlocked?.()) {
       console.log("[Dashboard V3 Pro] Restart blocked - still processing audio");
       return;
     }
     if (wantsToCall && voiceCall.connectionState === "authenticated" && !voiceCall.isListening && voiceState !== "processing") {
+      // CRITICAL: switch the server into call mode BEFORE opening the mic, otherwise
+      // audio chunks are rejected (server still in chat mode = waits for WebM header).
+      if (!callModeStartedRef.current) {
+        console.log("[Dashboard V3 Pro] Switching server to call mode...");
+        voiceCall.startCallMode(activeConversationId ?? undefined);
+        callModeStartedRef.current = true;
+      }
       console.log("[Dashboard V3 Pro] Auto-starting listening after auth...");
       voiceCall.startListening();
     }
-  }, [wantsToCall, voiceCall.connectionState, voiceCall.isListening, voiceState, voiceCall]);
+    if (!wantsToCall) {
+      callModeStartedRef.current = false;
+    }
+  }, [wantsToCall, voiceCall.connectionState, voiceCall.isListening, voiceState, voiceCall, activeConversationId]);
 
   const startCall = useCallback(async () => {
     console.log("[Dashboard V3 Pro] Starting call...");
@@ -64,6 +75,8 @@ export function useDashboardVoice({ userName, activeConversationId, micPermissio
   const endCall = useCallback(() => {
     console.log("[Dashboard V3 Pro] Ending call...");
     setWantsToCall(false);
+    callModeStartedRef.current = false;
+    voiceCall.endCallMode();
     voiceCall.stopListening();
     voiceCall.disconnect();
   }, [voiceCall]);
