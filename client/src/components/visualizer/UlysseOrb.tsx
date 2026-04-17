@@ -279,7 +279,7 @@ function OuterGlow({
   );
 }
 
-function AnimatedOrb({ 
+export function AnimatedOrb({ 
   isActive, 
   isSpeaking, 
   isListening, 

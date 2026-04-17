@@ -3,6 +3,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Html, OrbitControls, Sphere, Line, Stars } from "@react-three/drei";
 import * as THREE from "three";
 import { useBrainActivity, type BrainZone, type BrainZoneId } from "@/hooks/useBrainActivity";
+import { AnimatedOrb } from "@/components/visualizer/UlysseOrb";
 
 // Anatomically-inspired zone positions inside an ellipsoidal brain (X=L/R, Y=up, Z=front/back).
 // Brain front = +Z, top = +Y. Two hemispheres around X axis.
@@ -379,31 +380,21 @@ function BrainScene({ onSelectZone }: { onSelectZone: (id: BrainZoneId) => void 
       <pointLight position={[5, 5, 5]} intensity={0.5} />
       <Stars radius={40} depth={30} count={1200} factor={2} fade speed={0.3} />
       <group ref={groupRef}>
-        {/* Central core = real cognitive load. Glowing luminous core with halos. */}
+        {/* Central core = OrbUlysse — Ulysse's living signature orb at the heart of the brain. */}
         {(() => {
           const processing = activity.consciousness.processing;
           const load = activity.consciousness.cognitiveLoad;
           const coreColor = processing ? "#fde047" : "#7dd3fc";
-          const coreIntensity = 1.5 + load / 50;
           return (
             <>
-              {/* Real light source — illuminates everything around */}
-              <pointLight position={[0, 0, 0]} color={coreColor} intensity={coreIntensity} distance={6} decay={2} />
-              {/* Outer soft halo */}
-              <Sphere args={[0.42, 24, 24]}>
-                <meshBasicMaterial color={coreColor} transparent opacity={0.06 + load / 600} depthWrite={false} />
-              </Sphere>
-              {/* Mid halo */}
-              <Sphere args={[0.26, 24, 24]}>
-                <meshBasicMaterial color={coreColor} transparent opacity={0.16 + load / 400} depthWrite={false} />
-              </Sphere>
-              {/* Bright inner core — pure white center, glows */}
-              <Sphere args={[0.14, 24, 24]}>
-                <meshBasicMaterial color={coreColor} transparent opacity={0.85} />
-              </Sphere>
-              <Sphere args={[0.07, 16, 16]}>
-                <meshBasicMaterial color="#ffffff" transparent opacity={0.95} />
-              </Sphere>
+              <pointLight position={[0, 0, 0]} color={coreColor} intensity={1.5 + load / 50} distance={6} decay={2} />
+              <group scale={0.32}>
+                <AnimatedOrb
+                  isActive={processing}
+                  isAnalyzing={load > 50}
+                  orbIntensity={Math.min(100, 30 + load)}
+                />
+              </group>
             </>
           );
         })()}
