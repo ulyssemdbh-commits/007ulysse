@@ -289,13 +289,28 @@ class RemoteControlHandler:
         if not url:
             self.send_result("open_url", False, "No URL specified")
             return
+        # Force new window: try Chromium-family browsers with --new-window, then Firefox, then fallback.
+        browsers = [
+            ("chrome", ["chrome", "--new-window", url]),
+            ("msedge", ["msedge", "--new-window", url]),
+            ("brave",  ["brave", "--new-window", url]),
+            ("firefox",["firefox", "-new-window", url]),
+        ]
+        for name, cmd in browsers:
+            try:
+                subprocess.Popen(cmd, shell=False)
+                self.send_result("open_url", True, f"Opened in new window ({name}): {url}")
+                return
+            except Exception:
+                continue
+        # Fallback: default handler (may reuse existing window)
         try:
             os.startfile(url)
-            self.send_result("open_url", True, f"Opened: {url}")
+            self.send_result("open_url", True, f"Opened (default handler): {url}")
         except Exception as e:
             try:
-                subprocess.Popen(["start", url], shell=True)
-                self.send_result("open_url", True, f"Opened: {url}")
+                subprocess.Popen(["start", "", url], shell=True)
+                self.send_result("open_url", True, f"Opened via start: {url}")
             except Exception as e2:
                 self.send_result("open_url", False, str(e2))
 
@@ -308,6 +323,13 @@ class RemoteControlHandler:
         if not os.path.exists(path):
             self.send_result("open_folder", False, f"Path not found: {path}")
             return
+        # Force new Explorer window with /n flag
+        try:
+            subprocess.Popen(["explorer", "/n,", path], shell=False)
+            self.send_result("open_folder", True, f"Opened in new window: {path}")
+            return
+        except Exception:
+            pass
         try:
             os.startfile(path)
             self.send_result("open_folder", True, f"Opened: {path}")
