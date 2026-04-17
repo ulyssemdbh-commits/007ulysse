@@ -7,6 +7,7 @@ import { createServer } from "http";
 import { ensureApprovedUsers, ensureContextualProjects } from "./services/userBootstrap";
 import { jobScheduler } from "./services/scheduledJobs";
 import { setupRealtimeVoice, handleVoiceUpgrade } from "./services/voice/realtime";
+import { setupOpenAIRealtime, handleOpenAIRealtimeUpgrade } from "./services/voice/openaiRealtime";
 import { setupGeminiLiveVoice, handleGeminiLiveUpgrade } from "./services/voice/realtimeGeminiLive";
 import { setupRealtimeSync, handleSyncUpgrade } from "./services/realtimeSync";
 import { setupScreenMonitorWs, handleScreenUpgrade } from "./services/screenMonitorWs";
@@ -372,6 +373,7 @@ async function initializeServices() {
         // Initialize WebSocket servers (lightweight, no I/O)
         try {
           setupRealtimeVoice();
+          setupOpenAIRealtime();
           setupGeminiLiveVoice();
           setupRealtimeSync();
           setupScreenMonitorWs();
@@ -426,6 +428,11 @@ async function initializeServices() {
 
           if (pathname === "/ws/voice") {
             handleVoiceUpgrade(request, socket, head);
+            return;
+          }
+
+          if (pathname === "/ws/voice-realtime") {
+            handleOpenAIRealtimeUpgrade(request, socket, head);
             return;
           }
 
