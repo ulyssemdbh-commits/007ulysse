@@ -31,7 +31,6 @@ const Settings = lazy(() => import("@/pages/Settings"));
 const Emails = lazy(() => import("@/pages/Emails"));
 const AlfredApp = lazy(() => import("@/pages/AlfredApp"));
 const TalkingApp = lazy(() => import("@/pages/TalkingApp"));
-const TalkingAppV2 = lazy(() => import("@/pages/TalkingAppV2"));
 const SuguValManagement = lazy(() => import("@/pages/SuguValManagement"));
 const SuguvalChecklist = lazy(() => import("@/pages/SuguvalChecklist"));
 const SuguvalAdmin = lazy(() => import("@/pages/SuguvalAdmin"));
@@ -176,8 +175,8 @@ function ExternalUserGuard({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
   
-  // /talking, /talking-v2 and /courses/* are exempt from all redirects
-  const isExemptRoute = location === "/talking" || location.startsWith("/talking") || location === "/talking-v2" || location.startsWith("/courses/") || location === "/devops-max" || location.startsWith("/devmax") || location.startsWith("/pro/");
+  // /talking and /courses/* are exempt from all redirects
+  const isExemptRoute = location === "/talking" || location.startsWith("/talking") || location.startsWith("/courses/") || location === "/devops-max" || location.startsWith("/devmax") || location.startsWith("/pro/");
   
   useEffect(() => {
     if (!isLoading && isAuthenticated && user?.role === "external" && location !== "/max" && !isExemptRoute) {
@@ -224,11 +223,6 @@ function AppRouter() {
       <Route path="/talking">
         {() => (
           <TalkingRedirect />
-        )}
-      </Route>
-      <Route path="/talking-v2">
-        {() => (
-          <LazyPage><TalkingAppV2 /></LazyPage>
         )}
       </Route>
       <Route path="/suguval">

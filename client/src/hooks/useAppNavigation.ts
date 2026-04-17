@@ -69,7 +69,6 @@ const PAGE_ROUTES: Record<string, string> = {
   "devops-max": "/devmax",
   "devops-iris": "/devops-iris",
   "talking": "/talking",
-  "talking-v2": "/talking-v2",
   "vocal": "/talking",
   "voix": "/talking",
   "parler": "/talking",

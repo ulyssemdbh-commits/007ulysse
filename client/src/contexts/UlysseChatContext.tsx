@@ -42,7 +42,6 @@ const PAGE_CONTEXTS: Record<string, PageContext> = {
   "/sugumaillane": { pageId: "sugumaillane", pageName: "SUGU Maillane", pageDescription: "Gestion restaurant SUGU Maillane — achats, comptabilité, RH" },
   "/assistant": { pageId: "assistant", pageName: "Assistant", pageDescription: "Assistant IA complet" },
   "/talking": { pageId: "talking", pageName: "Appel Vocal", pageDescription: "Conversation vocale avec Ulysse" },
-  "/talking-v2": { pageId: "talking-v2", pageName: "Appel Vocal V2", pageDescription: "Conversation vocale V2 avec Ulysse" },
   "/iris": { pageId: "iris", pageName: "Iris Dashboard", pageDescription: "Tableau de bord Iris" },
   "/iris-homework": { pageId: "iris-homework", pageName: "Devoirs Iris", pageDescription: "Gestion des devoirs d'Iris — aide aux devoirs, planning" },
   "/iris-files": { pageId: "iris-files", pageName: "Fichiers Iris", pageDescription: "Fichiers et documents d'Iris" },
@@ -55,7 +54,7 @@ const PAGE_CONTEXTS: Record<string, PageContext> = {
   "/courses/sugumaillane/history": { pageId: "sugumaillane-history", pageName: "Historique SUGU Maillane", pageDescription: "Historique des formations SUGU Maillane" },
 };
 
-const PAGES_WITH_OWN_CHAT = ["/", "/talking", "/talking-v2", "/devops", "/suguval", "/sugumaillane", "/assistant", "/iris", "/iris-talking", "/max", "/devops-max", "/devmax", "/login"];
+const PAGES_WITH_OWN_CHAT = ["/", "/talking", "/devops", "/suguval", "/sugumaillane", "/assistant", "/iris", "/iris-talking", "/max", "/devops-max", "/devmax", "/login"];
 
 export function emitChatSync(conversationId: number, source: string) {
   window.dispatchEvent(new CustomEvent("ulysse:chat-sync", {

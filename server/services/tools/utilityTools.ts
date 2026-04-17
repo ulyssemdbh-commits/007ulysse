@@ -538,7 +538,7 @@ export const utilityToolDefs: ChatCompletionTool[] = [
 
 PAGES DISPONIBLES (passe n'importe lequel de ces noms/alias en "page"):
 - accueil / home / dashboard → /
-- assistant / talking / vocal / voix → /talking (v1) ou talking-v2 → /talking-v2
+- assistant / talking / vocal / voix → /talking
 - devops → /devops  |  devmax / devopsmax → /devmax  |  devops-iris → /devops-iris
 - sports / sports/predictions → /sports/predictions  |  footalmanach / almanach → /sports/predictions/footalmanach
 - finances → /finances
@@ -5356,7 +5356,6 @@ export async function executeQueryAppData(args: Record<string, any>): Promise<st
                         { url: "/diagnostics", name: "Diagnostics", description: "Santé système et métriques" },
                         { url: "/settings", name: "Réglages", description: "Configuration voix, caméra, domotique" },
                         { url: "/security", name: "Sécurité", description: "Dashboard sécurité et surveillance" },
-                        { url: "/talking-v2", name: "TalkingApp", description: "Interface vocale avancée" },
                         { url: "/max", name: "Max", description: "Interface externe avec PIN" },
                     ]
                 });

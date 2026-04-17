@@ -150,13 +150,6 @@ export const APP_PAGES: AppPage[] = [
     managedBy: ["ulysse"],
   },
   {
-    path: "/talking-v2",
-    pageId: "talking-v2",
-    label: "Appel Vocal V2",
-    description: "Conversation vocale V2 améliorée",
-    managedBy: ["ulysse"],
-  },
-  {
     path: "/settings",
     pageId: "settings",
     label: "Réglages",
