@@ -274,7 +274,7 @@ Push policy : workspace canonique → push sur les 3 dans l'ordre `ulysseproject
 - **Protocole** : JSON-RPC 2.0 over HTTP
 - **Outils exposés (4)** : `devops_server`, `devops_github`, `devmax_db`, `sensory_hub`
 - **Code source** : `server/services/mcp/devopsMcpServer.ts`, `server/routes/mcpDevops.ts`, `server/services/tools/maxAdvancedTools.ts`
-- **Commits MCP** : `69ce211a` (init bridge + 5 outils MaxAI) + `e7f0f0f7` (descriptions affinées) + commit deploy `<SHA>`
+- **Commits MCP** : `69ce211a` (init bridge + 5 outils MaxAI) + `e7f0f0f7` (descriptions affinées) + commit deploy GitHub `1b863202` (Smart sync 2026-04-18 19:22, 8 fichiers).
 
 ### Tests E2E (curl, depuis n'importe où)
 
