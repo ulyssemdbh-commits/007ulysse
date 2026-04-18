@@ -8,6 +8,14 @@ import { utilityToolDefs, executeSuguBankManagement, executeSuguFilesManagement,
 import { communicationToolDefs } from "./tools/communicationTools";
 import { commaxToolDefs, executeCommaxManage } from "./tools/commaxTools";
 import { screenMonitorToolDefs, executeScreenMonitorManage } from "./tools/screenMonitorTools";
+import {
+  maxAdvancedToolDefs,
+  executeFirecrawlResearch,
+  executeSubagentParallel,
+  executeTodoPlanner,
+  executeCodeSandbox,
+  executeMcpDevopsBridge,
+} from "./tools/maxAdvancedTools";
 
 export const ulysseToolsV2: ChatCompletionTool[] = [
   // === DATA TOOLS (lecture de données) ===
@@ -1987,6 +1995,7 @@ NE DIS JAMAIS "je ne peux pas générer un PDF". Tu PEUX et tu DOIS utiliser ce 
   ...communicationToolDefs,
   ...commaxToolDefs,
   ...screenMonitorToolDefs,
+  ...maxAdvancedToolDefs,
 ].filter((tool, index, arr) => {
   const firstIndex = arr.findIndex(t => t.function.name === tool.function.name);
   return firstIndex === index;
@@ -2319,6 +2328,12 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   autonomous_execute: (a, u) => executeAutonomousAgent(a, u),
   voice_synthesize: (a) => executeVoiceSynthesize(a),
   voice_status: () => executeVoiceStatus(),
+  // === MaxAI Advanced Tools (DeerFlow capabilities) ===
+  firecrawl_research: (a, u) => executeFirecrawlResearch(a, u),
+  subagent_parallel: (a, u) => executeSubagentParallel(a, u, executeToolCallV2),
+  todo_planner: (a, u) => executeTodoPlanner(a, u),
+  code_sandbox: (a, u) => executeCodeSandbox(a, u),
+  mcp_devops_bridge: (a, u) => executeMcpDevopsBridge(a, u),
 };
 
 async function executeEmailReply(args: Record<string, any>): Promise<string> {
@@ -7122,6 +7137,9 @@ const MAXAI_TOOLS = [
   "calendar_list_events", "email_list_inbox", "email_send",
   "superchat_search", "agent_mail",
   "integration_hub",
+  // MaxAI Advanced (DeerFlow capabilities)
+  "firecrawl_research", "subagent_parallel", "todo_planner",
+  "code_sandbox", "mcp_devops_bridge",
 ];
 
 export type PersonaToolType = "ulysse" | "iris" | "alfred" | "maxai";

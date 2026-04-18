@@ -158,7 +158,7 @@ Extraction (text/OCR/Vision), édition (merge/split/extract/rotate/text/watermar
 - Redis : rate limiting distribué, session store, cache.
 
 ### Infrastructure
-- **Hetzner VPS** Ubuntu 24.04 (65.21.209.102), main app port 5000, `/var/www/ulysse`, PM2 id 164.
+- **Hetzner VPS** Ubuntu 24.04 (65.21.209.102), main app `ulyssepro.org` port 5000, source pull dans `/var/www/ulysse` depuis remote `gh_007ulysse` (repo `ulyssemdbh-commits/007ulysse`), build → `rsync dist/` vers `/var/www/apps/007ulysse/dist/`, runtime PM2 #86 (`007ulysse`). Webhook `/opt/ulysse/deploy.sh` branché sur GitHub `ulyssemdbh-commits/007ulysse` (port 9000). Staging `007ulysse-dev.ulyssepro.org` = PM2 #28 servi depuis repo `007ulysse-test`.
 - **Pool DB** : `pg`, max 20 prod / 40 dev, min 2/5, idle 30s, conn timeout 10s. ⚠️ Logs "Pool connection established" fréquents → surveiller latence réseau ou requêtes bloquantes.
 - **CI/CD** : GitHub webhooks → `deploy.sh`.
 - **47 server actions** via SSH.
@@ -232,3 +232,75 @@ Extraction (text/OCR/Vision), édition (merge/split/extract/rotate/text/watermar
 
 ### Infrastructure
 - Hetzner VPS, Cloudflare DNS, Replit Object Storage, Google Maps, Open-Meteo, MusicBrainz, OSRM
+
+## MaxAI Advanced Tools (DeerFlow Capabilities Port — 2026-04-18)
+5 capacités haut-niveau ajoutées dans `server/services/tools/maxAdvancedTools.ts`:
+
+1. **`firecrawl_research`** — Scraping web profond. Actions: `fetch_clean` (Jina Reader → markdown), `fetch_raw` (cheerio → texte+liens), `crawl_site` (BFS multi-pages), `search_and_fetch` (DDG → top N en markdown). Anti-SSRF: bloque IPs privées/loopback/metadata.
+
+2. **`subagent_parallel`** — Exécution parallèle de jusqu'à 8 tool calls (concurrency limitée à 6). Anti fork-bomb: récursion subagent_parallel interdite.
+
+3. **`todo_planner`** — Plan multi-étapes persistant en mémoire par user. Actions: plan, start, complete, fail, skip, get_status, clear, update_notes. GC auto: TTL 24h, max 200 plans.
+
+4. **`code_sandbox`** — Exécution JS isolée via `node:vm`. **Owner-only** (userId=1) car node:vm n'est pas un sandbox de sécurité parfait. Timeout 100ms-30s. Réseau désactivé par défaut.
+
+5. **`mcp_devops_bridge`** — Statut + URL du serveur MCP HTTP exposant `devops_server`, `devops_github`, `devmax_db`, `sensory_hub` à des clients externes (DeerFlow, Claude Desktop). Endpoint: `POST /api/mcp/devops` (JSON-RPC 2.0). Auth: header `Authorization: Bearer <MCP_BRIDGE_TOKEN>` ou session owner.
+
+Chaque outil pulse le brain Ulysse (`brainPulse(zone, source, summary)`) à chaque étape clé et persiste les résultats notables via `memoryGraphService` (best-effort).
+
+Fichiers ajoutés:
+- `server/services/tools/maxAdvancedTools.ts` (executors + tool defs)
+- `server/services/mcp/devopsMcpServer.ts` (JSON-RPC dispatcher)
+- `server/routes/mcpDevops.ts` (Express router avec auth)
+
+Fichiers modifiés:
+- `server/services/ulysseToolsServiceV2.ts` (imports + 5 entries TOOL_REGISTRY + 5 noms MAXAI_TOOLS)
+- `server/routes.ts` (mount `/api/mcp/devops` + `/mcp/` ajouté à PUBLIC_ROUTE_PREFIXES)
+
+## Repos GitHub — rôles réels
+
+| Remote | URL | Rôle réel |
+|---|---|---|
+| `gh_ulysseproject` | `ulyssemdbh-commits/ulysseproject` | Repo "officiel" historique. Plus relié à un PM2 actif. Conservé pour archivage et alignement code. |
+| `gh_007ulysse` | `ulyssemdbh-commits/007ulysse` | **Source de vérité prod**. Webhook GitHub → `/opt/ulysse/deploy.sh` → PM2 #86 (`007ulysse`) → `ulyssepro.org`. |
+| `gh_007ulysse-test` | `ulyssemdbh-commits/007ulysse-test` | Staging (`007ulysse-dev.ulyssepro.org`, PM2 #28). |
+
+Push policy : workspace canonique → push sur les 3 dans l'ordre `ulysseproject` → `007ulysse-test` → `007ulysse` (prod en dernier pour déclencher webhook seulement après staging OK).
+
+## Bridge MCP — déployé en prod (2026-04-18)
+
+- **Endpoint** : `POST https://ulyssepro.org/api/mcp/devops`
+- **Auth** : `Authorization: Bearer $MCP_BRIDGE_TOKEN`
+- **Protocole** : JSON-RPC 2.0 over HTTP
+- **Outils exposés (4)** : `devops_server`, `devops_github`, `devmax_db`, `sensory_hub`
+- **Code source** : `server/services/mcp/devopsMcpServer.ts`, `server/routes/mcpDevops.ts`, `server/services/tools/maxAdvancedTools.ts`
+- **Commits MCP** : `69ce211a` (init bridge + 5 outils MaxAI) + `e7f0f0f7` (descriptions affinées) + commit deploy `<SHA>`
+
+### Tests E2E (curl, depuis n'importe où)
+
+```bash
+# 1. Lister les outils
+curl -i -X POST https://ulyssepro.org/api/mcp/devops \
+  -H "Authorization: Bearer $MCP_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 2. Appeler devops_server status
+curl -i -X POST https://ulyssepro.org/api/mcp/devops \
+  -H "Authorization: Bearer $MCP_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"devops_server","arguments":{"action":"status"}}}'
+
+# 3. Sans Bearer → 401 attendu
+curl -i -X POST https://ulyssepro.org/api/mcp/devops \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/list"}'
+```
+
+### Intégration DeerFlow
+
+Sur Hetzner, `~/.deerflow/mcp.json` ajoute :
+```json
+{ "mcpServers": { "devops_ulysse": { "url": "https://ulyssepro.org/api/mcp/devops", "headers": { "Authorization": "Bearer <MCP_BRIDGE_TOKEN>" } } } }
+```
+Vérification : `curl http://localhost:8001/api/mcp/config | jq '.mcpServers.devops_ulysse'`.

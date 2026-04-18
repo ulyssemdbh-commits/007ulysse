@@ -92,6 +92,7 @@ export async function registerRoutes(
     "/coba",
     "/guest",
     "/health",
+    "/mcp/",
   ];
   const PUBLIC_ROUTE_EXACT: ReadonlyArray<string> = [
     "/discord/internal-test",
@@ -191,6 +192,10 @@ export async function registerRoutes(
     res.setHeader("Content-Type", "text/x-python; charset=utf-8");
     res.sendFile(agentPath);
   });
+
+  // MCP Bridge — expose devops_server to external MCP clients (DeerFlow, Claude Desktop)
+  const { default: mcpDevopsRouter } = await import("./routes/mcpDevops");
+  app.use("/api/mcp/devops", mcpDevopsRouter);
 
   // Register AI Integration Routes
   registerChatRoutes(app);

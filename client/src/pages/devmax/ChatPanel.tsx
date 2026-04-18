@@ -11,6 +11,7 @@ import {
   XCircle,
   Loader2,
   Send,
+  Square,
   File,
   Bot,
   Terminal,
@@ -238,13 +239,36 @@ export function DevOpsChatPanel({ currentTab }: { currentTab?: string }) {
   const autoContinueCountRef = useRef(0);
   const pendingAutoContinueRef = useRef(false);
   const handleSendRef = useRef<Function | null>(null);
+  const userStoppedRef = useRef(false);
+
+  const handleStop = useCallback(() => {
+    userStoppedRef.current = true;
+    pendingAutoContinueRef.current = false;
+    autoContinueCountRef.current = 0;
+    try { abortRef.current?.abort(); } catch {}
+    abortRef.current = null;
+    setIsLoading(false);
+    setMessages(prev => [...prev, { role: "assistant", content: "⏹ Arrêté à ta demande." }]);
+  }, []);
 
   const handleSend = useCallback(async (overrideMsg?: string, _unused1?: any, _unused2?: any, isAutoContinue?: boolean, isRetry?: boolean) => {
     const msg = overrideMsg || input.trim();
     if ((!msg && attachments.length === 0) || isLoading) return;
+
+    const stopRegex = /^\s*(stop|arr[eê]te|arrete|stoppe|halte|cancel|annule|tais[\s-]?toi)\s*[!.?]*\s*$/i;
+    if (!isAutoContinue && !isRetry && stopRegex.test(msg)) {
+      if (!overrideMsg) setInput("");
+      handleStop();
+      return;
+    }
+
     if (!overrideMsg && !isAutoContinue) setInput("");
 
     if (isAutoContinue) {
+      if (userStoppedRef.current) {
+        autoContinueCountRef.current = 0;
+        return;
+      }
       autoContinueCountRef.current += 1;
       if (autoContinueCountRef.current > 3) {
         autoContinueCountRef.current = 0;
@@ -252,6 +276,7 @@ export function DevOpsChatPanel({ currentTab }: { currentTab?: string }) {
       }
     } else {
       autoContinueCountRef.current = 0;
+      userStoppedRef.current = false;
     }
 
     const currentAttachments = (isRetry || isAutoContinue) ? [] : [...attachments];
@@ -459,7 +484,7 @@ APRES chaque deploy, lance TOUJOURS url_diagnose_all pour verifier staging ET pr
       ];
       const hasPromise = continuePatterns.some(p => p.test(fullContent));
       const hadToolCalls = toolCallsCollected.length > 0;
-      if (hasPromise && !hadToolCalls && !isAutoContinue) {
+      if (hasPromise && !hadToolCalls && !isAutoContinue && !userStoppedRef.current) {
         pendingAutoContinueRef.current = true;
       }
     } catch (err: any) {
@@ -487,9 +512,10 @@ APRES chaque deploy, lance TOUJOURS url_diagnose_all pour verifier staging ET pr
   handleSendRef.current = handleSend;
 
   useEffect(() => {
-    if (!isLoading && pendingAutoContinueRef.current) {
+    if (!isLoading && pendingAutoContinueRef.current && !userStoppedRef.current) {
       pendingAutoContinueRef.current = false;
       const timer = setTimeout(() => {
+        if (userStoppedRef.current) return;
         handleSendRef.current?.("Continue. Exécute maintenant les actions que tu as annoncées. Utilise les outils disponibles immédiatement.", undefined, undefined, true);
       }, 1500);
       return () => clearTimeout(timer);
@@ -668,10 +694,16 @@ Sois exhaustif et structure ta réponse clairement. L'objectif est que les 2 URL
             <Zap className="w-4 h-4" />
           </Button>
         )}
-        <Input value={input} onChange={e => setInput(e.target.value)} onPaste={handlePaste} placeholder={isLoading ? "MaxAI exécute..." : "Collez ou tapez ici..."} disabled={isLoading} className="flex-1 rounded-xl" data-testid="input-devops-chat" />
-        <Button type="submit" size="icon" className="rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-600 hover:opacity-90 text-white border-0" disabled={(!input.trim() && attachments.length === 0) || isLoading} data-testid="button-send-devops">
-          <Send className="w-4 h-4" />
-        </Button>
+        <Input value={input} onChange={e => setInput(e.target.value)} onPaste={handlePaste} placeholder={isLoading ? "MaxAI exécute... (tape « stop » ou clique ⏹)" : "Collez ou tapez ici..."} className="flex-1 rounded-xl" data-testid="input-devops-chat" />
+        {isLoading ? (
+          <Button type="button" size="icon" onClick={handleStop} className="rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:opacity-90 text-white border-0 animate-pulse" data-testid="button-stop-devops" title="Arrêter MaxAI">
+            <Square className="w-4 h-4 fill-current" />
+          </Button>
+        ) : (
+          <Button type="submit" size="icon" className="rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-600 hover:opacity-90 text-white border-0" disabled={(!input.trim() && attachments.length === 0)} data-testid="button-send-devops">
+            <Send className="w-4 h-4" />
+          </Button>
+        )}
       </form>
     </div>
   );
