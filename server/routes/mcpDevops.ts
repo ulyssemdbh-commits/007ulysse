@@ -61,4 +61,19 @@ router.get("/", (_req: Request, res: Response) => {
   });
 });
 
+// GET /api/mcp/devops/tools — discovery complet (name + description + inputSchema)
+// pour clients MCP qui veulent introspecter les capacités sans authentification.
+// L'invocation des tools reste protégée par MCP_BRIDGE_TOKEN sur POST /.
+router.get("/tools", (_req: Request, res: Response) => {
+  const tools = mcpDevopsServer.listTools();
+  res.json({
+    server: "ulysse-devops-mcp",
+    version: "1.0.0",
+    invoke_endpoint: "POST /api/mcp/devops",
+    invoke_auth: "Authorization: Bearer <MCP_BRIDGE_TOKEN>",
+    tools_count: tools.length,
+    tools, // includes inputSchema
+  });
+});
+
 export default router;

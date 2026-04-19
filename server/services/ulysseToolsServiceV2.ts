@@ -14,7 +14,11 @@ import {
   executeSubagentParallel,
   executeTodoPlanner,
   executeCodeSandbox,
+  executeCodeSandboxPython,
+  executeCodeSandboxShell,
+  executeDeerflowDeepResearch,
   executeMcpDevopsBridge,
+  executeAppDiagnoseFix,
 } from "./tools/maxAdvancedTools";
 
 export const ulysseToolsV2: ChatCompletionTool[] = [
@@ -2333,7 +2337,11 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   subagent_parallel: (a, u) => executeSubagentParallel(a, u, executeToolCallV2),
   todo_planner: (a, u) => executeTodoPlanner(a, u),
   code_sandbox: (a, u) => executeCodeSandbox(a, u),
+  code_sandbox_python: (a, u) => executeCodeSandboxPython(a, u),
+  code_sandbox_shell: (a, u) => executeCodeSandboxShell(a, u),
+  deerflow_deep_research: (a, u) => executeDeerflowDeepResearch(a, u),
   mcp_devops_bridge: (a, u) => executeMcpDevopsBridge(a, u),
+  app_diagnose_fix: (a, u) => executeAppDiagnoseFix(a, u),
 };
 
 async function executeEmailReply(args: Record<string, any>): Promise<string> {
@@ -7139,7 +7147,7 @@ const MAXAI_TOOLS = [
   "integration_hub",
   // MaxAI Advanced (DeerFlow capabilities)
   "firecrawl_research", "subagent_parallel", "todo_planner",
-  "code_sandbox", "mcp_devops_bridge",
+  "code_sandbox", "mcp_devops_bridge", "app_diagnose_fix",
 ];
 
 export type PersonaToolType = "ulysse" | "iris" | "alfred" | "maxai";

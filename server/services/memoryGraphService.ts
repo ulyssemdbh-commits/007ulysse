@@ -509,6 +509,53 @@ class MemoryGraphService {
     }
   }
 
+  /**
+   * Record an "observation" node in the memory graph (e.g. homework result,
+   * web fetch, autonomous tool call). Auto-connects to the rest of the user's
+   * graph. Best-effort: never throws, returns the new memory id or null.
+   */
+  async recordObservation(input: {
+    userId: number;
+    kind: string;          // "homework_result", "web_fetch", ...
+    summary: string;
+    payload?: unknown;
+    source?: string;
+    confidence?: number;   // 0..100, defaults 60
+  }): Promise<number | null> {
+    try {
+      if (!input?.userId || !input?.summary) return null;
+      const conf = Math.max(0, Math.min(100, Math.round(input.confidence ?? 60)));
+      const key = `${input.kind}_${Date.now()}`;
+      const value = String(input.summary).slice(0, 1500);
+      const metadata: Record<string, unknown> = {
+        kind: input.kind,
+        recordedAt: Date.now(),
+      };
+      if (input.payload !== undefined) metadata.payload = input.payload;
+      const [inserted] = await db.insert(ulysseMemory).values({
+        userId: input.userId,
+        category: input.kind,
+        key,
+        value,
+        confidence: conf,
+        source: input.source || input.kind,
+        verified: false,
+        metadata,
+      }).returning();
+      if (inserted?.id) {
+        // Fire-and-forget auto-connect so observation joins the graph.
+        this.autoConnect(inserted.id).catch(err =>
+          console.error(`${LOG_PREFIX} recordObservation autoConnect error:`, err)
+        );
+        return inserted.id;
+      }
+      return null;
+    } catch (error) {
+      console.error(`${LOG_PREFIX} recordObservation error:`, error);
+      return null;
+    }
+  }
+
   async buildGraphContextBlock(query: string, userId: number): Promise<string> {
     const contextual = await this.getContextualMemories(query, userId);
     if (contextual.length === 0) return "";

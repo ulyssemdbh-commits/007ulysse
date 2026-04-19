@@ -12,6 +12,10 @@
 
 import OpenAI from "openai";
 import * as vm from "node:vm";
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import * as cheerio from "cheerio";
 import { brainPulse } from "../sensory/BrainPulse";
 import { memoryGraphService } from "../memoryGraphService";
@@ -433,6 +437,302 @@ export async function executeCodeSandbox(args: Record<string, any>, userId?: num
 }
 
 // ────────────────────────────────────────────────────────────────────
+//  4ter. deerflow_deep_research — délègue une recherche profonde
+//        au backend DeerFlow Hetzner et trace l'état dans le brain.
+//        Le résultat final arrive de manière asynchrone via le webhook
+//        /api/webhooks/deerflow (signé HMAC) qui pulse aussi le brain.
+// ────────────────────────────────────────────────────────────────────
+
+const DEERFLOW_API_BASE = process.env.DEERFLOW_API_BASE || "https://deerflow.ulyssepro.org";
+const DEERFLOW_RESEARCH_TIMEOUT = 12000;
+
+const pendingResearches = new Map<string, { query: string; userId: number; startedAt: number }>();
+
+export function getPendingDeerflowResearches() {
+  // Nettoie les vieilles entrées (>2h)
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+  for (const [id, info] of pendingResearches) {
+    if (info.startedAt < cutoff) pendingResearches.delete(id);
+  }
+  return Array.from(pendingResearches.entries()).map(([id, info]) => ({ research_id: id, ...info }));
+}
+
+/** Appelé par le webhook quand DeerFlow renvoie un résultat → retire de pending. */
+export function markDeerflowResearchCompleted(researchId: string | null | undefined): boolean {
+  if (!researchId) return false;
+  return pendingResearches.delete(researchId);
+}
+
+export async function executeDeerflowDeepResearch(args: Record<string, any>, userId?: number): Promise<string> {
+  if (userId !== OWNER_USER_ID) {
+    return JSON.stringify({ error: "deerflow_deep_research réservé au owner Ulysse." });
+  }
+  const action = String(args.action || "start") as "start" | "list_pending" | "ping" | "get_result";
+  brainPulse(["association", "prefrontal"], "deerflow_deep_research", action, { userId, intensity: 2 });
+
+  if (action === "ping") {
+    try {
+      const r = await fetch(`${DEERFLOW_API_BASE}/`, { signal: AbortSignal.timeout(5000) });
+      return JSON.stringify({ ok: true, deerflow_status: r.status, base: DEERFLOW_API_BASE });
+    } catch (e: any) {
+      return JSON.stringify({ ok: false, error: e.message, base: DEERFLOW_API_BASE });
+    }
+  }
+
+  if (action === "list_pending") {
+    return JSON.stringify({ ok: true, pending: getPendingDeerflowResearches() });
+  }
+
+  if (action === "get_result") {
+    const thread_id = String(args.thread_id || "");
+    if (!thread_id) return JSON.stringify({ error: "thread_id requis pour get_result" });
+    try {
+      const r = await fetch(`${DEERFLOW_API_BASE}/api/threads/${encodeURIComponent(thread_id)}/state`, {
+        signal: AbortSignal.timeout(10000),
+        headers: process.env.MCP_BRIDGE_TOKEN ? { "Authorization": `Bearer ${process.env.MCP_BRIDGE_TOKEN}` } : {},
+      });
+      if (!r.ok) return JSON.stringify({ ok: false, status: r.status, error: await r.text().catch(()=>"") });
+      const state: any = await r.json();
+      const messages = state?.values?.messages || [];
+      const lastAi = [...messages].reverse().find((m: any) => m.type === "ai" || m.role === "assistant");
+      return JSON.stringify({
+        ok: true,
+        thread_id,
+        message_count: messages.length,
+        last_response: lastAi?.content || lastAi?.text || null,
+        next: state?.next || [],
+      });
+    } catch (e: any) {
+      return JSON.stringify({ ok: false, error: e.message });
+    }
+  }
+
+  // action === "start" — utilise l'API LangGraph thread+run (DeerFlow 2.0)
+  const query = String(args.query || "").trim();
+  if (!query) return JSON.stringify({ error: "query requise (string)" });
+
+  brainPulse(["sensory", "concept"], "deerflow_deep_research", `🔍 Lance: "${query.slice(0, 80)}"`, { userId, intensity: 4 });
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.MCP_BRIDGE_TOKEN) headers["Authorization"] = `Bearer ${process.env.MCP_BRIDGE_TOKEN}`;
+
+  try {
+    // 1) Créer un thread
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), DEERFLOW_RESEARCH_TIMEOUT);
+    const threadRes = await fetch(`${DEERFLOW_API_BASE}/api/threads`, {
+      method: "POST", headers, signal: ctrl.signal,
+      body: JSON.stringify({ metadata: { source: "ulysse_maxai", userId } }),
+    }).finally(() => clearTimeout(t));
+
+    if (!threadRes.ok) {
+      const errBody = await threadRes.text().catch(() => "");
+      brainPulse("prefrontal", "deerflow_deep_research", `✗ DeerFlow ${threadRes.status}`, { userId, intensity: 2 });
+      return JSON.stringify({ ok: false, status: "thread_create_failed", deerflow_status: threadRes.status, detail: errBody.slice(0, 300), hint: "Vérifie que le backend Python DeerFlow tourne (PM2 deerflow-backend)." });
+    }
+    const thread: any = await threadRes.json();
+    const thread_id = thread.thread_id || thread.id;
+
+    // 2) Lancer une run async (non-bloquante) sur l'agent lead
+    const ctrl2 = new AbortController();
+    const t2 = setTimeout(() => ctrl2.abort(), DEERFLOW_RESEARCH_TIMEOUT);
+    const runRes = await fetch(`${DEERFLOW_API_BASE}/api/threads/${thread_id}/runs`, {
+      method: "POST", headers, signal: ctrl2.signal,
+      body: JSON.stringify({
+        assistant_id: "lead_agent",
+        input: { messages: [{ role: "user", content: query }] },
+        metadata: { source: "ulysse_maxai", userId },
+      }),
+    }).finally(() => clearTimeout(t2));
+
+    if (!runRes.ok && runRes.status !== 202) {
+      const errBody = await runRes.text().catch(() => "");
+      return JSON.stringify({ ok: false, status: "run_create_failed", thread_id, deerflow_status: runRes.status, detail: errBody.slice(0, 300) });
+    }
+    const run: any = await runRes.json().catch(() => ({}));
+    const run_id = run.run_id || run.id;
+
+    pendingResearches.set(thread_id, { query, userId, startedAt: Date.now() });
+    brainPulse("hippocampus", "deerflow_deep_research", `✓ Run lancée (thread=${thread_id?.slice(0,8)})`, { userId, intensity: 3 });
+
+    return JSON.stringify({
+      ok: true,
+      status: "dispatched",
+      thread_id,
+      run_id,
+      message: `Recherche lancée sur DeerFlow Hetzner. Récupère le résultat avec action=get_result + thread_id (peut prendre 1-3 min selon profondeur).`,
+    });
+  } catch (e: any) {
+    brainPulse("prefrontal", "deerflow_deep_research", `✗ ${e.message?.slice(0, 60)}`, { userId, intensity: 2 });
+    return JSON.stringify({
+      ok: false,
+      status: "network_error",
+      error: e.message || String(e),
+      hint: "DeerFlow injoignable. Utilise firecrawl_research en attendant.",
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
+//  4bis. code_sandbox_python / code_sandbox_shell — exécution multi-langage
+//        via child_process.spawn dans un cwd jetable, owner-only.
+// ────────────────────────────────────────────────────────────────────
+
+interface SpawnSandboxResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  signal: string | null;
+  durationMs: number;
+  error?: string;
+}
+
+async function runIsolatedProcess(
+  cmd: string,
+  cmdArgs: string[],
+  opts: { stdin?: string; timeoutMs: number; allowNetwork: boolean },
+): Promise<SpawnSandboxResult> {
+  const start = Date.now();
+  const cwd = mkdtempSync(join(tmpdir(), "ulysse-sandbox-"));
+  // env minimal — pas de propagation de secrets
+  const env: Record<string, string> = {
+    PATH: "/usr/local/bin:/usr/bin:/bin",
+    HOME: cwd,
+    LANG: "C.UTF-8",
+    LC_ALL: "C.UTF-8",
+    TMPDIR: cwd,
+  };
+  if (!opts.allowNetwork) {
+    // Hint au runtime, pas une vraie isolation réseau (nécessiterait netns)
+    env.NO_PROXY = "*";
+    env.http_proxy = "http://127.0.0.1:1"; // proxy invalide → bloque la plupart des libs respectueuses
+    env.https_proxy = "http://127.0.0.1:1";
+  }
+
+  return new Promise<SpawnSandboxResult>((resolve) => {
+    // detached:true → le child devient leader d'un nouveau process group (PGID = child.pid)
+    // ce qui permet de killer TOUT le sous-arbre (grandchildren via &, subprocess.Popen, etc.)
+    // avec `process.kill(-pgid, signal)`. Critique pour vraie containment du timeout.
+    const child = spawn(cmd, cmdArgs, {
+      cwd,
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    let killed = false;
+    let settled = false;
+
+    const killGroup = (signal: NodeJS.Signals) => {
+      if (!child.pid) return;
+      try { process.kill(-child.pid, signal); }
+      catch { try { child.kill(signal); } catch { /* dernier recours */ } }
+    };
+
+    const settle = (payload: SpawnSandboxResult) => {
+      if (settled) return;
+      settled = true;
+      try { rmSync(cwd, { recursive: true, force: true }); } catch { /* noop */ }
+      resolve(payload);
+    };
+
+    const killer = setTimeout(() => {
+      killed = true;
+      killGroup("SIGTERM");
+      // Si le groupe ne meurt pas en 500ms, SIGKILL
+      setTimeout(() => killGroup("SIGKILL"), 500);
+      // Garde-fou ultime: si aucun event 'close' n'arrive, on settle quand même après 1.5s
+      setTimeout(() => settle({
+        ok: false,
+        stdout: truncate(stdout, 30000),
+        stderr: truncate(stderr, 10000),
+        exitCode: null,
+        signal: "SIGKILL",
+        durationMs: Date.now() - start,
+        error: `Timeout ${opts.timeoutMs}ms — process group tué (force settle)`,
+      }), 1500);
+    }, opts.timeoutMs);
+
+    child.stdout.on("data", (b) => { stdout += b.toString(); if (stdout.length > MAX_OUTPUT_CHARS) stdout = stdout.slice(0, MAX_OUTPUT_CHARS) + "…[tronqué]"; });
+    child.stderr.on("data", (b) => { stderr += b.toString(); if (stderr.length > MAX_OUTPUT_CHARS) stderr = stderr.slice(0, MAX_OUTPUT_CHARS) + "…[tronqué]"; });
+    if (opts.stdin) child.stdin.end(opts.stdin); else child.stdin.end();
+
+    child.on("error", (err) => {
+      clearTimeout(killer);
+      settle({ ok: false, stdout, stderr, exitCode: null, signal: null, durationMs: Date.now() - start, error: err.message });
+    });
+
+    child.on("close", (code, signal) => {
+      clearTimeout(killer);
+      settle({
+        ok: code === 0 && !killed,
+        stdout: truncate(stdout, 30000),
+        stderr: truncate(stderr, 10000),
+        exitCode: code,
+        signal: signal || null,
+        durationMs: Date.now() - start,
+        error: killed ? `Timeout ${opts.timeoutMs}ms — process group tué` : undefined,
+      });
+    });
+  });
+}
+
+export async function executeCodeSandboxPython(args: Record<string, any>, userId?: number): Promise<string> {
+  if (userId !== OWNER_USER_ID) {
+    return JSON.stringify({ error: "code_sandbox_python réservé au owner Ulysse." });
+  }
+  const code = String(args.code || "");
+  if (!code) return JSON.stringify({ error: "code requis (string Python)" });
+  const timeoutMs = Math.min(Math.max(args.timeoutMs ?? 10000, 200), 60000);
+  const allowNetwork = !!args.allowNetwork;
+  brainPulse(["sensory", "concept"], "code_sandbox_python", `Exécute ${code.length} chars (timeout=${timeoutMs}ms, net=${allowNetwork})`, { userId, intensity: 3 });
+
+  // Préfère le python du venv .pythonlibs s'il existe, sinon python3 du PATH
+  const pythonBin = process.env.PYTHON_BIN || "/home/runner/workspace/.pythonlibs/bin/python3";
+  const result = await runIsolatedProcess(pythonBin, ["-I", "-c", code], { timeoutMs, allowNetwork });
+  // Fallback PATH si binaire absent
+  if (result.error?.includes("ENOENT")) {
+    const r2 = await runIsolatedProcess("python3", ["-I", "-c", code], { timeoutMs, allowNetwork });
+    Object.assign(result, r2);
+  }
+
+  if (result.ok) brainPulse("hippocampus", "code_sandbox_python", `✓ Exécuté en ${result.durationMs}ms`, { userId, intensity: 2 });
+  else brainPulse("prefrontal", "code_sandbox_python", `✗ ${result.error || "exit " + result.exitCode}`, { userId, intensity: 2 });
+  return JSON.stringify(result);
+}
+
+const SHELL_FORBIDDEN = /\b(rm\s+-rf\s+\/|mkfs|dd\s+if=|:\(\)\s*\{|>\s*\/etc\/|>\s*\/root\/\.ssh|chmod\s+777\s+\/|shutdown|reboot|halt|init\s+[06])/;
+
+export async function executeCodeSandboxShell(args: Record<string, any>, userId?: number): Promise<string> {
+  if (userId !== OWNER_USER_ID) {
+    return JSON.stringify({ error: "code_sandbox_shell réservé au owner Ulysse." });
+  }
+  const command = String(args.command || "");
+  if (!command) return JSON.stringify({ error: "command requise (string bash)" });
+  if (SHELL_FORBIDDEN.test(command)) {
+    return JSON.stringify({ error: "Commande bloquée: motif destructeur détecté (rm -rf /, mkfs, fork-bomb, écriture /etc/, etc.)" });
+  }
+  const timeoutMs = Math.min(Math.max(args.timeoutMs ?? 10000, 200), 60000);
+  const allowNetwork = !!args.allowNetwork;
+  brainPulse(["sensory", "motor"], "code_sandbox_shell", `$ ${command.slice(0, 80)}`, { userId, intensity: 3 });
+
+  const result = await runIsolatedProcess("/bin/bash", ["-c", command], { timeoutMs, allowNetwork });
+  if (result.ok) brainPulse("hippocampus", "code_sandbox_shell", `✓ exit 0 en ${result.durationMs}ms`, { userId, intensity: 2 });
+  else brainPulse("prefrontal", "code_sandbox_shell", `✗ ${result.error || "exit " + result.exitCode}`, { userId, intensity: 2 });
+  return JSON.stringify(result);
+}
+
+// ────────────────────────────────────────────────────────────────────
+//  Lecture du plan Todo actif (pour UI panel temps-réel)
+// ────────────────────────────────────────────────────────────────────
+
+export function getTodoPlanForUser(userId: number): TodoPlan | null {
+  return todoPlans.get(userId) || null;
+}
+
+// ────────────────────────────────────────────────────────────────────
 //  5. mcp_devops_bridge — Statut + URL du bridge MCP exposé
 // ────────────────────────────────────────────────────────────────────
 
@@ -469,6 +769,36 @@ export async function executeMcpDevopsBridge(args: Record<string, any>, userId?:
 // ────────────────────────────────────────────────────────────────────
 //  Définitions OpenAI pour ces outils
 // ────────────────────────────────────────────────────────────────────
+
+// === APP DIAGNOSE & AUTO-FIX (502 / port mismatch / nginx) ===
+// Permet à MaxAI/Ulysse de diagnostiquer et auto-réparer une URL en panne sur Hetzner
+// (curl→detect 502→pm2 list/restart→port check→ecosystem env→rebuild si besoin).
+export async function executeAppDiagnoseFix(
+  args: Record<string, any>,
+  userId?: number,
+): Promise<string> {
+  try {
+    const OWNER_USER_ID = 1;
+    if (userId !== undefined && userId !== OWNER_USER_ID) {
+      return JSON.stringify({ error: "Owner only" });
+    }
+    const { sshService } = await import("../ssh");
+    const domain = String(args.domain || "").trim();
+    const appName = String(args.app_name || args.appName || "").trim();
+    if (!domain || !appName) {
+      return JSON.stringify({ error: "domain et app_name requis (ex: 007ulysse.ulyssepro.org / 007ulysse)" });
+    }
+    const result = await (sshService as any).diagnoseAndFixUrl({
+      domain,
+      appName,
+      autoFix: args.auto_fix !== false,
+      caller: "max",
+    });
+    return JSON.stringify(result);
+  } catch (e: any) {
+    return JSON.stringify({ error: e?.message || String(e) });
+  }
+}
 
 export const maxAdvancedToolDefs: ChatCompletionTool[] = [
   {
@@ -556,6 +886,54 @@ export const maxAdvancedToolDefs: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "deerflow_deep_research",
+      description: "Délègue une recherche profonde à DeerFlow 2.0 sur Hetzner (LangGraph + lead_agent, https://deerflow.ulyssepro.org). Async: start crée un thread+run (non bloquant), get_result récupère l'état du thread après ~1-3 min. Pulse le brain à chaque étape. Actions: start (lance), get_result (récupère par thread_id), list_pending (en cours), ping (santé backend).",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["start", "list_pending", "ping", "get_result"] },
+          query: { type: "string", description: "Sujet/question (action=start)" },
+          thread_id: { type: "string", description: "Thread DeerFlow à interroger (action=get_result)" },
+        },
+        required: ["action"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "code_sandbox_python",
+      description: "Exécute du Python 3 dans un cwd jetable (mkdtemp), env minimal, timeout configurable. Réservé au owner Ulysse. Utilise -I (isolated mode). Idéal pour calculs scientifiques, parsing pandas, prototypage d'algos. Retourne stdout/stderr/exitCode/durationMs.",
+      parameters: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "Code Python à exécuter" },
+          timeoutMs: { type: "number", description: "Timeout (200-60000, défaut 10000)" },
+          allowNetwork: { type: "boolean", description: "Lever le proxy invalide (défaut false)" },
+        },
+        required: ["code"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "code_sandbox_shell",
+      description: "Exécute une commande bash dans un cwd jetable. Owner-only. Filtre les motifs destructeurs (rm -rf /, mkfs, fork-bomb, etc.). Idéal pour tests rapides (curl, jq, ls, awk). NE PAS utiliser pour du code persistant — utiliser les outils DevOps dédiés.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "Commande bash à exécuter" },
+          timeoutMs: { type: "number", description: "Timeout (200-60000, défaut 10000)" },
+          allowNetwork: { type: "boolean", description: "Lever le proxy invalide (défaut false)" },
+        },
+        required: ["command"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "mcp_devops_bridge",
       description: "Bridge MCP (Model Context Protocol) qui expose devops_server à des clients externes (DeerFlow Ulysse, Claude Desktop, autres agents). URL: https://ulyssepro.org/api/mcp/devops. Actions: status (URL + métadonnées), list_tools (outils MCP exposés), test_call (test interne d'un appel MCP).",
       parameters: {
@@ -566,6 +944,22 @@ export const maxAdvancedToolDefs: ChatCompletionTool[] = [
           toolArgs: { type: "object", description: "Arguments pour test_call" },
         },
         required: ["action"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "app_diagnose_fix",
+      description: "Diagnostique et auto-répare une URL Hetzner en panne (502, port mismatch, PM2 down, nginx manquant). Curl le domaine, lit pm2 list, vérifie le port écouté vs nginx upstream, restart pm2 et rebuild si nécessaire. Owner only. Utiliser quand une app du portfolio Ulysse (007ulysse, deerflow, etc.) ne répond plus.",
+      parameters: {
+        type: "object",
+        properties: {
+          domain: { type: "string", description: "Domaine complet (ex: 007ulysse.ulyssepro.org)" },
+          app_name: { type: "string", description: "Nom de l'app PM2 (ex: 007ulysse)" },
+          auto_fix: { type: "boolean", description: "Appliquer les fix automatiquement (default true)" },
+        },
+        required: ["domain", "app_name"],
       },
     },
   },

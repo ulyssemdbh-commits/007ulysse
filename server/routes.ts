@@ -96,6 +96,9 @@ export async function registerRoutes(
   ];
   const PUBLIC_ROUTE_EXACT: ReadonlyArray<string> = [
     "/discord/internal-test",
+    "/deerflow/auth-check",
+    "/deerflow/health",
+    "/webhooks/deerflow",
   ];
   const PUBLIC_ROUTE_INCLUDES: ReadonlyArray<string> = [
     "dgm/internal-trigger",
@@ -197,6 +200,15 @@ export async function registerRoutes(
   const { default: mcpDevopsRouter } = await import("./routes/mcpDevops");
   app.use("/api/mcp/devops", mcpDevopsRouter);
 
+  const { default: todoStateRouter } = await import("./routes/todoState");
+  app.use("/api/v2/todo", todoStateRouter);
+
+  // DeerFlow bridge — owner auth-check (nginx auth_request) + research webhook (HMAC).
+  // Auth router exposes only /auth-check + /health; webhook exposes only POST /api/webhooks/deerflow.
+  const { deerflowAuthRouter, handleDeerflowWebhook } = await import("./routes/deerflowWebhook");
+  app.use("/api/deerflow", deerflowAuthRouter);
+  app.post("/api/webhooks/deerflow", handleDeerflowWebhook);
+
   // Register AI Integration Routes
   registerChatRoutes(app);
   registerImageRoutes(app);
@@ -280,7 +292,7 @@ export async function registerRoutes(
   
   const devmaxWebhookRoutes = (await import("./routes/devmaxWebhook")).default;
   app.use("/api/devmax/webhook", devmaxWebhookRoutes);
-  
+
   app.use("/api/devmax", lazyRouter(() => import("./routes/devmaxAuth")));
   app.use("/api/devmax/ops", lazyRouter(() => import("./routes/devopsMaxRoutes")));
   app.use("/api/iris", lazyRouter(() => import("./routes/irisDevopsRoutes")));

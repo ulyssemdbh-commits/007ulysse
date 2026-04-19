@@ -3,9 +3,21 @@ import { Calendar, CreditCard, Trophy, Activity, ChevronRight, TrendingUp, Zap, 
 import { cn } from "@/lib/utils";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { useLocation } from "wouter";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { UlysseTodoPanel } from "@/components/UlysseTodoPanel";
 
 const UlysseBrainVisualizer = lazy(() =>
   import("@/components/visualizer/UlysseBrainVisualizer").then(m => ({ default: m.UlysseBrainVisualizer }))
+);
+
+const BrainUnavailableFallback = ({ height }: { height: number }) => (
+  <div
+    className="w-full rounded-xl border border-blue-900/40 bg-slate-950 flex items-center justify-center text-[10px] font-mono text-blue-400/60"
+    style={{ height }}
+    data-testid="brain-unavailable"
+  >
+    brain unavailable (no WebGL)
+  </div>
 );
 
 type BrainSize = "s" | "m" | "l";
@@ -35,18 +47,20 @@ function BrainPanel() {
   return (
     <>
       <div className="relative" data-testid="brain-panel-right">
-        <Suspense
-          fallback={
-            <div
-              className="w-full rounded-xl border border-blue-900/40 bg-slate-950 flex items-center justify-center text-[10px] font-mono text-blue-400/60"
-              style={{ height: BRAIN_HEIGHTS[size] }}
-            >
-              loading brain…
-            </div>
-          }
-        >
-          <UlysseBrainVisualizer height={BRAIN_HEIGHTS[size]} />
-        </Suspense>
+        <ErrorBoundary fallback={<BrainUnavailableFallback height={BRAIN_HEIGHTS[size]} />}>
+          <Suspense
+            fallback={
+              <div
+                className="w-full rounded-xl border border-blue-900/40 bg-slate-950 flex items-center justify-center text-[10px] font-mono text-blue-400/60"
+                style={{ height: BRAIN_HEIGHTS[size] }}
+              >
+                loading brain…
+              </div>
+            }
+          >
+            <UlysseBrainVisualizer height={BRAIN_HEIGHTS[size]} />
+          </Suspense>
+        </ErrorBoundary>
         <div className="absolute bottom-2 right-2 flex gap-1">
           <button
             onClick={shrink}
@@ -100,9 +114,17 @@ function BrainPanel() {
             </button>
           </div>
           <div className="flex-1 p-4">
-            <Suspense fallback={<div className="text-blue-400/60 font-mono text-sm">loading…</div>}>
-              <UlysseBrainVisualizer height={typeof window !== "undefined" ? window.innerHeight - 100 : 800} />
-            </Suspense>
+            <ErrorBoundary
+              fallback={
+                <BrainUnavailableFallback
+                  height={typeof window !== "undefined" ? window.innerHeight - 100 : 800}
+                />
+              }
+            >
+              <Suspense fallback={<div className="text-blue-400/60 font-mono text-sm">loading…</div>}>
+                <UlysseBrainVisualizer height={typeof window !== "undefined" ? window.innerHeight - 100 : 800} />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </div>
       )}
@@ -185,6 +207,7 @@ export function DashboardRightPanel() {
   return (
     <aside className="w-72 shrink-0 flex flex-col gap-3 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
       <BrainPanel />
+      <UlysseTodoPanel />
       <div className="border border-blue-200 dark:border-cyan-500/30 backdrop-blur-md rounded-xl p-3 flex flex-col bg-white dark:bg-[#00000000] shadow-sm dark:shadow-none">
         <h3 className="text-[10px] font-mono text-blue-500 dark:text-cyan-500/70 tracking-widest uppercase mb-2 flex items-center gap-2 pb-2 border-b border-blue-100 dark:border-cyan-900/40">
           <Calendar className="w-3 h-3" /> Agenda du jour

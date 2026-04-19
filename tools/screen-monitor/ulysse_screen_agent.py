@@ -310,6 +310,7 @@ class ScreenMonitorAgent:
         print("[INFO] Agent stopped")
 
 
+<<<<<<< HEAD
 AUTOSTART_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".ulysse_agent_config.json")
 
 def get_startup_folder():
@@ -409,6 +410,11 @@ def autostart_status():
 def main():
     parser = argparse.ArgumentParser(description="Ulysse Screen Monitor Agent")
     parser.add_argument("--server", "-s",
+=======
+def main():
+    parser = argparse.ArgumentParser(description="Ulysse Screen Monitor Agent")
+    parser.add_argument("--server", "-s", required=True, 
+>>>>>>> 4c2530ad (Ulysse full sync - complete codebase)
                         help="WebSocket server URL (e.g., wss://your-app.replit.app/ws/screen)")
     parser.add_argument("--token", "-t", 
                         help="Authentication token (JWT)")
@@ -424,6 +430,7 @@ def main():
                         help="Image quality (default: medium)")
     parser.add_argument("--privacy", "-p", action="store_true",
                         help="Enable privacy mode (blur all window titles)")
+<<<<<<< HEAD
     parser.add_argument("--autostart", choices=["enable", "disable", "status"],
                         help="Manage Windows autostart (enable/disable/status)")
     
@@ -452,6 +459,10 @@ def main():
     if not args.server:
         print("[ERROR] --server is required")
         sys.exit(1)
+=======
+    
+    args = parser.parse_args()
+>>>>>>> 4c2530ad (Ulysse full sync - complete codebase)
     
     if not args.token and not args.user_id:
         print("[ERROR] Either --token or --user-id is required")
@@ -465,8 +476,11 @@ def main():
     print(f"  FPS: {args.fps}")
     print(f"  Quality: {args.quality}")
     print(f"  Privacy Mode: {'ON' if args.privacy else 'OFF'}")
+<<<<<<< HEAD
     status = autostart_status()
     print(f"  Autostart: {'ON' if status['enabled'] else 'OFF'}")
+=======
+>>>>>>> 4c2530ad (Ulysse full sync - complete codebase)
     print("=" * 50)
     print()
     

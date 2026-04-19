@@ -25,22 +25,31 @@ export function getSessionToken(req: Request): string | null {
   return null;
 }
 
+function getCookieDomain(): string | undefined {
+  const raw = process.env.COOKIE_DOMAIN?.trim();
+  return raw && raw.length > 0 ? raw : undefined;
+}
+
 export function setSessionCookie(res: Response, token: string): void {
+  const domain = getCookieDomain();
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days with rolling refresh
     path: "/",
+    ...(domain ? { domain } : {}),
   });
 }
 
 export function clearSessionCookie(res: Response): void {
+  const domain = getCookieDomain();
   res.clearCookie(SESSION_COOKIE_NAME, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
+    ...(domain ? { domain } : {}),
   });
 }
 

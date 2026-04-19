@@ -1120,6 +1120,7 @@ async function devopsAutoJournal(repoFullName: string, entryType: string, title:
 }
 
 async function resolveGitHubTokenForProject(db: any, owner?: string, repo?: string, projectId?: string, tenantContext?: { isTenant?: boolean; tenantUserId?: number; tenantId?: string }): Promise<string | null> {
+    let rawToken: string | null = null;
     try {
         const { resolveGitHubToken } = await import("../devmax/tokenService");
         return resolveGitHubToken({ projectId, owner, repo, tenantContext, validate: false });

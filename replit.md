@@ -276,6 +276,15 @@ Push policy : workspace canonique → push sur les 3 dans l'ordre `ulysseproject
 - **Code source** : `server/services/mcp/devopsMcpServer.ts`, `server/routes/mcpDevops.ts`, `server/services/tools/maxAdvancedTools.ts`
 - **Commits MCP** : `69ce211a` (init bridge + 5 outils MaxAI) + `e7f0f0f7` (descriptions affinées) + commit deploy GitHub `1b863202` (Smart sync 2026-04-18 19:22, 8 fichiers).
 
+### Propagation du `MCP_BRIDGE_TOKEN` en prod (durable, anti-régression)
+
+Le runtime prod (`007ulysse` / PM2 #86) charge son env depuis `ecosystem.config.cjs`, **pas** depuis `.env`. Pour éviter qu'un redeploy efface le token :
+
+1. **Source unique de vérité** : `MCP_BRIDGE_TOKEN` est exporté au niveau système sur Hetzner (`/etc/environment` — alternative : un `EnvironmentFile` systemd ou le shell qui lance `pm2 resurrect`). Ne jamais hard-coder le token dans `ecosystem.config.cjs`.
+2. **Forwarding PM2** : `ecosystem.config.cjs` déclare `FORWARDED_SECRETS = ['MCP_BRIDGE_TOKEN', ...]` et injecte `process.env[key]` dans `env_production` / `env_staging`. Pour ajouter un nouveau secret prod-critique, l'ajouter à cette liste — ne plus patcher le fichier à la main sur la box.
+3. **Restart fait suivre l'env** : `scripts/007ulysse-deploy.sh` et `scripts/hetzner_deploy.sh` font `pm2 restart 007ulysse --update-env` (sans `--update-env`, PM2 garde l'ancien snapshot d'env même si `/etc/environment` change).
+4. **Garde-fou loud-fail** : étape `[7/7]` des deux scripts hit `GET http://127.0.0.1:5000/api/mcp/devops` après le restart. Si la réponse ne contient pas `"auth":"Bearer …"`, le deploy `exit 1` avec le mode de réparation explicite. Plus jamais de "token silencieusement disparu".
+
 ### Tests E2E (curl, depuis n'importe où)
 
 ```bash
@@ -304,3 +313,58 @@ Sur Hetzner, `~/.deerflow/mcp.json` ajoute :
 { "mcpServers": { "devops_ulysse": { "url": "https://ulyssepro.org/api/mcp/devops", "headers": { "Authorization": "Bearer <MCP_BRIDGE_TOKEN>" } } } }
 ```
 Vérification : `curl http://localhost:8001/api/mcp/config | jq '.mcpServers.devops_ulysse'`.
+
+### Token partagé dev ↔ prod
+
+Le `MCP_BRIDGE_TOKEN` est **un seul et même secret** entre Replit (workspace dev) et Hetzner prod (PM2 #86 `007ulysse`). Cela permet aux mêmes commandes curl de tests E2E d'être lancées indifféremment depuis le workspace ou depuis n'importe quelle machine, sans avoir à connaître deux tokens. Valeur courante (2026-04-18) : `a1e42f06…5811` (64 hex). Présent dans :
+
+- **Replit** : secret `MCP_BRIDGE_TOKEN` (visible via le panneau Secrets / `viewEnvVars`).
+- **Hetzner** : `/var/www/apps/007ulysse/ecosystem.config.cjs` (champ `env.MCP_BRIDGE_TOKEN`) **et** `/var/www/apps/007ulysse/.env` (les deux doivent rester en phase, le premier gagne au boot PM2).
+
+#### Rotation (procédure manuelle)
+
+1. Générer un nouveau token : `openssl rand -hex 32`.
+2. **Hetzner** : éditer `/var/www/apps/007ulysse/ecosystem.config.cjs` (champ `MCP_BRIDGE_TOKEN`) **et** `/var/www/apps/007ulysse/.env` (ligne `MCP_BRIDGE_TOKEN=…`). Puis `pm2 restart 007ulysse --update-env` et vérifier `pm2 env 86 | grep MCP_BRIDGE_TOKEN`.
+3. **Replit** : mettre à jour le secret `MCP_BRIDGE_TOKEN` (panneau Secrets) avec la même valeur. Redémarrer le workflow `Start application`.
+4. **Validation** : depuis le workspace, `curl -i -X POST https://ulyssepro.org/api/mcp/devops -H "Authorization: Bearer $MCP_BRIDGE_TOKEN" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` doit retourner 200 ; sans header → 401.
+5. **DeerFlow** : si `~/.deerflow/mcp.json` contient le token en dur, le mettre à jour aussi puis redémarrer DeerFlow.
+
+Si dev et prod doivent un jour diverger (ex : test d'un nouveau token côté prod uniquement), documenter explicitement la raison ici avant de désaligner.
+
+## DeerFlow Phase 2 — secrets prod & cookie partagé
+
+L'auth DeerFlow réutilise la session owner Ulysse via cookie partagé sur `.ulyssepro.org`, et le webhook DeerFlow → memoryGraph est signé avec un secret HMAC partagé. Les deux valeurs vivent côté Hetzner (PM2 #86 `007ulysse`) et doivent survivre à chaque redéploiement.
+
+### `COOKIE_DOMAIN`
+
+- **Valeur prod** : `.ulyssepro.org` (avec le point initial — couvre `ulyssepro.org` et tous les sous-domaines, dont `deerflow.ulyssepro.org`).
+- **Valeur dev / Replit** : ne pas définir (cookie reste host-only sur le `.replit.dev`). Le code `server/middleware/auth.ts` n'ajoute le champ `domain` au cookie que si `COOKIE_DOMAIN` est non vide.
+- **Setup Hetzner** : `echo 'COOKIE_DOMAIN=.ulyssepro.org' | sudo tee -a /etc/environment` puis `pm2 restart 007ulysse --update-env`. Présent dans `FORWARDED_SECRETS` → durable.
+
+### `DEERFLOW_WEBHOOK_SECRET`
+
+- Secret HMAC partagé entre DeerFlow (émetteur du webhook) et Ulysse (récepteur `/api/webhooks/deerflow`). **Même valeur des deux côtés**.
+- **Setup** :
+  1. Générer : `openssl rand -hex 32`.
+  2. **Hetzner Ulysse** : `echo 'DEERFLOW_WEBHOOK_SECRET=…' | sudo tee -a /etc/environment` puis `pm2 restart 007ulysse --update-env` ; vérifier `pm2 env 86 | grep DEERFLOW_WEBHOOK_SECRET`.
+  3. **DeerFlow runtime** (Hetzner aussi) : exporter la même valeur dans son env (`/etc/environment` ou son propre `ecosystem.config`), puis redémarrer DeerFlow.
+- Présent dans `FORWARDED_SECRETS` côté Ulysse → survit à `pm2 restart` après chaque déploiement.
+
+### Validation E2E (après setup)
+
+```bash
+# 1. Login frais sur ulyssepro.org pour récupérer le cookie owner
+curl -c cookies.txt -X POST https://ulyssepro.org/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"...","password":"..."}'
+
+# 2. Le cookie doit être accepté côté Ulysse
+curl -b cookies.txt https://ulyssepro.org/api/deerflow/auth-check
+# → 200 attendu
+
+# 3. Le même cookie doit être accepté côté DeerFlow (domaine partagé)
+curl -b cookies.txt https://deerflow.ulyssepro.org/
+# → 200 (page DeerFlow) attendu, pas 401
+```
+
+Si l'étape 3 retourne 401, c'est que `COOKIE_DOMAIN` n'a pas été pris en compte au login (le cookie a été émis avant le restart, ou la valeur est mal positionnée). Refaire un login après `pm2 restart`.
