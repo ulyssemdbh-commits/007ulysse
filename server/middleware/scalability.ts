@@ -335,18 +335,41 @@ export function healthTrackingMiddleware(req: Request, res: Response, next: Next
   next();
 }
 
+// Endpoints that hold a connection open for a long time (SSE, WebSocket-style polls).
+// These must NOT count against the concurrent-requests budget, otherwise a single
+// open dashboard tab can monopolise slots and shed legitimate traffic forever.
+const BACKPRESSURE_BYPASS_PREFIXES = [
+  "/api/v2/sensory/stream",
+  "/api/v2/sensory/sse",
+  "/api/v2/health",
+  "/api/health",
+  "/api/healthz",
+];
+
+function isBackpressureBypass(path: string): boolean {
+  for (const p of BACKPRESSURE_BYPASS_PREFIXES) if (path.startsWith(p)) return true;
+  return false;
+}
+
 class BackpressureGuard {
   private activeRequests = 0;
   private readonly maxConcurrentRequests: number;
   private readonly shedThreshold: number;
 
-  constructor(maxConcurrent: number = 200, shedPercent: number = 0.9) {
+  constructor(maxConcurrent: number = 1000, shedPercent: number = 0.9) {
     this.maxConcurrentRequests = maxConcurrent;
     this.shedThreshold = Math.floor(maxConcurrent * shedPercent);
   }
 
   middleware() {
     return (req: Request, res: Response, next: NextFunction) => {
+      const path = req.path || req.url || "";
+
+      // Long-lived connections + health probes: never counted, never shed.
+      if (isBackpressureBypass(path)) {
+        return next();
+      }
+
       if (this.activeRequests >= this.maxConcurrentRequests) {
         res.status(503).json({
           error: "Server at capacity, please retry shortly",
@@ -356,8 +379,14 @@ class BackpressureGuard {
       }
 
       if (this.activeRequests >= this.shedThreshold) {
-        const priority = (req as Request & { tenantPlan?: string }).tenantPlan || "free";
-        if (PRIORITY_MAP[priority] >= 3) {
+        // Only shed truly anonymous "free" traffic — authenticated users
+        // (session cookie present OR tenantPlan explicitly set) are always allowed.
+        const tenantPlan = (req as Request & { tenantPlan?: string }).tenantPlan;
+        const hasSession = !!(req as Request & { session?: { userId?: number } }).session?.userId
+          || !!req.headers.authorization
+          || !!req.headers.cookie;
+        const priority = tenantPlan || (hasSession ? "owner" : "free");
+        if (!hasSession && PRIORITY_MAP[priority] >= 4) {
           res.status(503).json({
             error: "Server under heavy load, premium users prioritized",
             retryAfter: 10,
@@ -384,7 +413,7 @@ class BackpressureGuard {
   }
 }
 
-export const backpressureGuard = new BackpressureGuard(200);
+export const backpressureGuard = new BackpressureGuard(1000);
 
 export function concurrencyMiddleware(domain: string, timeoutMs: number = 30000) {
   return async (req: Request, res: Response, next: NextFunction) => {
