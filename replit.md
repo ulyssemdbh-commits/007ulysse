@@ -254,7 +254,11 @@ Fichiers ajoutés:
 - `server/routes/mcpDevops.ts` (Express router avec auth)
 
 Fichiers modifiés:
-- `server/services/ulysseToolsServiceV2.ts` (imports + 5 entries TOOL_REGISTRY + 5 noms MAXAI_TOOLS)
+- `server/services/ulysseToolsServiceV2.ts` (imports + entries TOOL_REGISTRY + noms MAXAI_TOOLS)
+- `server/services/sensory/ActionHubBridge.ts` (TOOL_CATEGORY_MAP — sinon fallback `tool_call`)
+- ⚠️ Tout nouveau tool MaxAI/Ulysse doit être ajouté dans CES TROIS endroits + déclaration `ulysseToolsV2` + dispatcher `ulysseToolDispatchersV2`. Le bridge ActionHub auto-enregistre tous les noms de `ulysseToolsV2` mais sans catégorie il tombe en `tool_call` générique.
+
+**Tools ajoutés avr. 2026** : `firecrawl_research`, `subagent_parallel`, `todo_planner`, `code_sandbox{,_python,_shell}`, `deerflow_deep_research`, `mcp_devops_bridge`, `app_diagnose_fix`, `dgm_pr_manage`.
 - `server/routes.ts` (mount `/api/mcp/devops` + `/mcp/` ajouté à PUBLIC_ROUTE_PREFIXES)
 
 ## Repos GitHub — rôles réels

@@ -235,6 +235,50 @@ export const calendarService = {
     }
   },
   
+  async updateEvent(
+    userId: number,
+    eventId: string,
+    updates: { summary?: string; description?: string; location?: string; startTime?: Date; endTime?: Date }
+  ): Promise<CalendarEvent | null> {
+    try {
+      const calendar = await getCalendarClient();
+      const requestBody: any = {};
+      if (updates.summary !== undefined) requestBody.summary = updates.summary;
+      if (updates.description !== undefined) requestBody.description = updates.description;
+      if (updates.location !== undefined) requestBody.location = updates.location;
+      if (updates.startTime) requestBody.start = { dateTime: updates.startTime.toISOString(), timeZone: 'Europe/Paris' };
+      if (updates.endTime) requestBody.end = { dateTime: updates.endTime.toISOString(), timeZone: 'Europe/Paris' };
+      const response = await calendar.events.patch({ calendarId: 'primary', eventId, requestBody });
+      globalOptimizerService.invalidate("calendar_day");
+      globalOptimizerService.invalidate("calendar_events");
+      return {
+        id: response.data.id || '',
+        summary: response.data.summary || '',
+        description: response.data.description || undefined,
+        start: response.data.start?.dateTime || response.data.start?.date || '',
+        end: response.data.end?.dateTime || response.data.end?.date || '',
+        location: response.data.location || undefined,
+        isAllDay: !response.data.start?.dateTime,
+      };
+    } catch (err) {
+      console.error('[Calendar] updateEvent error:', err);
+      return null;
+    }
+  },
+
+  async deleteEvent(userId: number, eventId: string): Promise<boolean> {
+    try {
+      const calendar = await getCalendarClient();
+      await calendar.events.delete({ calendarId: 'primary', eventId });
+      globalOptimizerService.invalidate("calendar_day");
+      globalOptimizerService.invalidate("calendar_events");
+      return true;
+    } catch (err) {
+      console.error('[Calendar] deleteEvent error:', err);
+      return false;
+    }
+  },
+
   formatEventsForAI(events: CalendarEvent[]): string {
     if (!events || events.length === 0) {
       return "Aucun événement prévu.";

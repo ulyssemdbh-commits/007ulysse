@@ -19,6 +19,7 @@ import {
   executeDeerflowDeepResearch,
   executeMcpDevopsBridge,
   executeAppDiagnoseFix,
+  executeDgmPrManage,
 } from "./tools/maxAdvancedTools";
 
 export const ulysseToolsV2: ChatCompletionTool[] = [
@@ -350,6 +351,216 @@ export const ulysseToolsV2: ChatCompletionTool[] = [
           max_results: { type: "number", description: "Nombre de résultats (défaut: 5)" }
         },
         required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "image_search",
+      description: "Recherche des PHOTOS RÉELLES sur Google Images (personnalités, lieux, objets, événements). À utiliser quand l'utilisateur demande de MONTRER, AFFICHER, TROUVER une PHOTO ou IMAGE de quelque chose ou quelqu'un de réel. NE PAS utiliser image_generate pour ça (qui est pour créer une image artistique). Renvoie une liste d'URLs d'images. RÈGLE D'AFFICHAGE : tu DOIS inclure dans ta réponse markdown les images en format ![titre](url) pour qu'elles s'affichent dans le chat.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Sujet recherché (ex: 'Diego Maradona', 'Tour Eiffel', 'lever de soleil Mars')" },
+          count: { type: "number", description: "Nombre de photos (défaut 4, max 10)" }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "news_search",
+      description: "Recherche d'ACTUALITÉS récentes (sources presse: Reuters, BBC, Le Monde, etc.) via Serper News. À utiliser pour 'dernières news', 'actualités sur X', 'breaking news'.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Sujet d'actualité" },
+          count: { type: "number", description: "Nombre d'articles (défaut 6)" },
+          lang: { type: "string", description: "Langue: fr (défaut), en, es..." }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "youtube_search",
+      description: "Recherche de vidéos YouTube (titre, chaîne, vues, durée, lien) via Serper Videos. À utiliser pour 'trouve une vidéo de…', 'tuto YouTube sur…'.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Sujet recherché" },
+          count: { type: "number", description: "Nombre de vidéos (défaut 5)" }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "wikipedia_search",
+      description: "Recherche d'un sujet sur Wikipédia (résumé encyclopédique fiable et gratuit). À utiliser AVANT web_search pour les questions encyclopédiques (personnes, lieux, faits historiques, définitions).",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Sujet" },
+          lang: { type: "string", description: "Code langue Wikipédia: fr (défaut), en, es..." }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "weather_forecast",
+      description: "Prévisions météo sur 1 à 7 jours pour un lieu (température min/max, précipitations, vent). Différent de location_get_weather qui ne donne que la météo INSTANTANÉE.",
+      parameters: {
+        type: "object",
+        properties: {
+          location: { type: "string", description: "Ville (défaut: Marseille)" },
+          days: { type: "number", description: "Nombre de jours (1-7, défaut 3)" }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "currency_convert",
+      description: "Convertit un montant entre 2 devises avec taux de change actuel (EUR, USD, GBP, JPY, ILS, CHF, etc.).",
+      parameters: {
+        type: "object",
+        properties: {
+          amount: { type: "number", description: "Montant à convertir" },
+          from: { type: "string", description: "Devise source (code ISO 3 lettres, ex: EUR)" },
+          to: { type: "string", description: "Devise cible (code ISO 3 lettres, ex: USD)" }
+        },
+        required: ["amount", "from", "to"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "github_manage",
+      description: "GitHub: rechercher, lister, lire, modifier des repos, fichiers, commits, pull requests, issues, workflows. À utiliser pour TOUTES les actions liées au code GitHub.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list_my_repos", "get_repo", "list_branches", "list_commits", "get_file", "list_pull_requests", "get_pull_request", "create_issue_comment", "list_workflow_runs", "trigger_workflow", "list_orgs"] },
+          owner: { type: "string", description: "Propriétaire du repo (user ou org)" },
+          repo: { type: "string", description: "Nom du repo" },
+          path: { type: "string", description: "Chemin du fichier (pour get_file)" },
+          ref: { type: "string", description: "Branche ou SHA (optionnel)" },
+          branch: { type: "string", description: "Branche (pour list_commits)" },
+          state: { type: "string", enum: ["open", "closed", "all"], description: "Pour list_pull_requests" },
+          pullNumber: { type: "number", description: "Numéro de PR" },
+          issueNumber: { type: "number", description: "Numéro d'issue (pour create_issue_comment)" },
+          body: { type: "string", description: "Corps du commentaire" },
+          workflowId: { type: "string", description: "ID ou filename du workflow" },
+          per_page: { type: "number", description: "Pagination (défaut 20)" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "notion_manage",
+      description: "Notion: rechercher, lister bases, interroger une DB, lire, créer ou ajouter du contenu à une page Notion.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["search", "list_databases", "query_database", "create_page", "read_page", "append_page"] },
+          query: { type: "string", description: "Pour search" },
+          databaseId: { type: "string", description: "Pour query_database ou create_page dans une DB" },
+          pageId: { type: "string", description: "Pour read_page ou append_page" },
+          parentId: { type: "string", description: "Page parente pour create_page" },
+          title: { type: "string", description: "Titre pour create_page" },
+          content: { type: "string", description: "Contenu pour create_page ou append_page" },
+          limit: { type: "number" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "drive_manage",
+      description: "Google Drive: lister, rechercher, créer dossier/Doc/Sheet, déplacer en corbeille, voir fichiers récents et quota.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list_files", "search", "create_folder", "create_doc", "create_sheet", "trash", "recent", "quota"] },
+          query: { type: "string", description: "Pour search" },
+          folderId: { type: "string", description: "Pour list_files (filtrer par dossier)" },
+          name: { type: "string", description: "Nom à créer" },
+          parentId: { type: "string", description: "Dossier parent" },
+          fileId: { type: "string", description: "Pour trash" },
+          limit: { type: "number" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "commax_manage",
+      description: "ComMax (gestion réseaux sociaux): stats, lister/créer/planifier posts, gérer mentions, comptes connectés.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["stats", "list_posts", "create_post", "list_mentions", "mark_mention_read", "list_accounts"] },
+          status: { type: "string", description: "Filtre statut posts: published|scheduled|draft|all" },
+          content: { type: "string", description: "Contenu du post" },
+          platforms: { type: "array", items: { type: "string" }, description: "Plateformes ciblées" },
+          scheduledAt: { type: "string", description: "Date ISO de planification" },
+          mentionId: { type: "string" },
+          limit: { type: "number" }
+        },
+        required: ["action"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "calendar_update_event",
+      description: "Modifie un événement Google Calendar existant (titre, description, lieu, horaires).",
+      parameters: {
+        type: "object",
+        properties: {
+          event_id: { type: "string", description: "ID de l'événement à modifier" },
+          title: { type: "string" },
+          description: { type: "string" },
+          location: { type: "string" },
+          start_datetime: { type: "string", description: "ISO 8601 nouveau début" },
+          end_datetime: { type: "string", description: "ISO 8601 nouvelle fin" }
+        },
+        required: ["event_id"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "calendar_delete_event",
+      description: "Supprime un événement Google Calendar.",
+      parameters: {
+        type: "object",
+        properties: {
+          event_id: { type: "string", description: "ID de l'événement à supprimer" }
+        },
+        required: ["event_id"]
       }
     }
   },
@@ -2173,6 +2384,15 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   smarthome_control: (a, u) => executeSmartHomeControl(a, u),
   location_get_weather: (a) => executeWeatherGet(a),
   web_search: (a) => executeWebSearch(a),
+  image_search: (a) => executeImageSearch(a),
+  news_search: (a) => executeNewsSearch(a),
+  youtube_search: (a) => executeYoutubeSearch(a),
+  wikipedia_search: (a) => executeWikipediaSearch(a),
+  weather_forecast: (a) => executeWeatherForecast(a),
+  currency_convert: (a) => executeCurrencyConvert(a),
+  github_manage: (a) => executeGithubManage(a),
+  calendar_update_event: (a, u) => executeCalendarUpdateEvent(a, u),
+  calendar_delete_event: (a, u) => executeCalendarDeleteEvent(a, u),
   read_url: (a) => executeReadUrl(a),
   spotify_control: (a, u) => executeSpotifyControl(a, u),
   discord_send_message: (a, u) => executeDiscordSendMessage(a, u),
@@ -2342,6 +2562,7 @@ const TOOL_REGISTRY: Record<string, ToolHandler> = {
   deerflow_deep_research: (a, u) => executeDeerflowDeepResearch(a, u),
   mcp_devops_bridge: (a, u) => executeMcpDevopsBridge(a, u),
   app_diagnose_fix: (a, u) => executeAppDiagnoseFix(a, u),
+  dgm_pr_manage: (a, u) => executeDgmPrManage(a, u),
 };
 
 async function executeEmailReply(args: Record<string, any>): Promise<string> {
@@ -3687,6 +3908,272 @@ async function executeWebSearch(args: { query: string; max_results?: number }): 
     });
   } catch (err: any) {
     return JSON.stringify({ error: err.message });
+  }
+}
+
+async function executeImageSearch(args: { query: string; count?: number }): Promise<string> {
+  const count = Math.min(Math.max(args.count ?? 4, 1), 10);
+  const displayHint = "Affiche TOUTES ces images dans ta réponse en markdown: ![titre](url) sur des lignes séparées.";
+
+  const serperKey = process.env.SERPER_API_KEY;
+  if (serperKey) {
+    try {
+      const resp = await fetch("https://google.serper.dev/images", {
+        method: "POST",
+        headers: { "X-API-KEY": serperKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ q: args.query, num: count, gl: "fr", hl: "fr", safe: "active" })
+      });
+      if (resp.ok) {
+        const data: any = await resp.json();
+        const items = (data.images || []).slice(0, count).map((img: any) => ({
+          title: img.title,
+          url: img.imageUrl,
+          thumbnail: img.thumbnailUrl,
+          source: img.link
+        }));
+        if (items.length > 0) {
+          return JSON.stringify({
+            type: 'image_search', success: true, source: 'serper',
+            query: args.query, count: items.length, images: items, displayHint
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[image_search] Serper failed:', err);
+    }
+  }
+
+  try {
+    const { searchImages } = await import("./googleImageService");
+    const result = await searchImages(args.query, count);
+    if (!result.success) {
+      return JSON.stringify({ type: 'image_search', success: false, query: args.query, error: result.error || "Aucun fournisseur de recherche d'images disponible", images: [] });
+    }
+    return JSON.stringify({
+      type: 'image_search', success: true, source: 'google_cse',
+      query: result.query, count: result.images.length,
+      images: result.images.map(img => ({ title: img.title, url: img.link, thumbnail: img.thumbnailLink, source: img.contextLink })),
+      remainingQuota: result.remainingQuota, displayHint
+    });
+  } catch (err: any) {
+    return JSON.stringify({ type: 'image_search', success: false, error: err?.message || String(err), images: [] });
+  }
+}
+
+async function executeNewsSearch(args: { query: string; count?: number; lang?: string }): Promise<string> {
+  const count = Math.min(Math.max(args.count ?? 6, 1), 15);
+  const serperKey = process.env.SERPER_API_KEY;
+  if (!serperKey) return JSON.stringify({ type: 'news_search', success: false, error: "SERPER_API_KEY manquant", articles: [] });
+  try {
+    const resp = await fetch("https://google.serper.dev/news", {
+      method: "POST",
+      headers: { "X-API-KEY": serperKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: args.query, num: count, gl: (args.lang === 'en' ? 'us' : 'fr'), hl: args.lang || 'fr' })
+    });
+    if (!resp.ok) return JSON.stringify({ type: 'news_search', success: false, error: `Serper ${resp.status}`, articles: [] });
+    const data: any = await resp.json();
+    const articles = (data.news || []).slice(0, count).map((n: any) => ({
+      title: n.title, link: n.link, snippet: n.snippet, source: n.source, date: n.date, imageUrl: n.imageUrl
+    }));
+    return JSON.stringify({ type: 'news_search', success: true, query: args.query, count: articles.length, articles });
+  } catch (err: any) {
+    return JSON.stringify({ type: 'news_search', success: false, error: err?.message || String(err), articles: [] });
+  }
+}
+
+async function executeYoutubeSearch(args: { query: string; count?: number }): Promise<string> {
+  const count = Math.min(Math.max(args.count ?? 5, 1), 10);
+  const serperKey = process.env.SERPER_API_KEY;
+  if (!serperKey) return JSON.stringify({ type: 'youtube_search', success: false, error: "SERPER_API_KEY manquant", videos: [] });
+  try {
+    const resp = await fetch("https://google.serper.dev/videos", {
+      method: "POST",
+      headers: { "X-API-KEY": serperKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: `${args.query} site:youtube.com`, num: count, gl: 'fr', hl: 'fr' })
+    });
+    if (!resp.ok) return JSON.stringify({ type: 'youtube_search', success: false, error: `Serper ${resp.status}`, videos: [] });
+    const data: any = await resp.json();
+    const videos = (data.videos || []).slice(0, count).map((v: any) => ({
+      title: v.title, link: v.link, channel: v.channel || v.source, duration: v.duration,
+      date: v.date, imageUrl: v.imageUrl, snippet: v.snippet
+    }));
+    return JSON.stringify({
+      type: 'youtube_search', success: true, query: args.query, count: videos.length, videos,
+      displayHint: "Pour chaque vidéo affiche un lien markdown [titre](link) avec la chaîne et la durée."
+    });
+  } catch (err: any) {
+    return JSON.stringify({ type: 'youtube_search', success: false, error: err?.message || String(err), videos: [] });
+  }
+}
+
+async function executeWikipediaSearch(args: { query: string; lang?: string }): Promise<string> {
+  const lang = args.lang || 'fr';
+  try {
+    const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(args.query)}&format=json&srlimit=3&origin=*`;
+    const sResp = await fetch(searchUrl);
+    if (!sResp.ok) return JSON.stringify({ type: 'wikipedia_search', success: false, error: `Wiki search ${sResp.status}` });
+    const sData: any = await sResp.json();
+    const hits = (sData.query?.search || []).map((h: any) => h.title);
+    if (hits.length === 0) return JSON.stringify({ type: 'wikipedia_search', success: true, query: args.query, found: false, results: [] });
+    const top = hits[0];
+    const sumUrl = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(top)}`;
+    const sumResp = await fetch(sumUrl);
+    const sumData: any = sumResp.ok ? await sumResp.json() : {};
+    return JSON.stringify({
+      type: 'wikipedia_search', success: true, query: args.query, found: true,
+      title: sumData.title || top,
+      description: sumData.description,
+      extract: sumData.extract,
+      url: sumData.content_urls?.desktop?.page || `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(top)}`,
+      thumbnail: sumData.thumbnail?.source,
+      otherResults: hits.slice(1)
+    });
+  } catch (err: any) {
+    return JSON.stringify({ type: 'wikipedia_search', success: false, error: err?.message || String(err) });
+  }
+}
+
+async function executeWeatherForecast(args: { location?: string; days?: number }): Promise<string> {
+  const location = args.location || 'Marseille';
+  const days = Math.min(Math.max(args.days ?? 3, 1), 7);
+  try {
+    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`);
+    const geoData: any = await geoRes.json();
+    if (!geoData.results?.length) return JSON.stringify({ type: 'weather_forecast', success: false, error: `Lieu "${location}" introuvable` });
+    const { latitude, longitude, name, country } = geoData.results[0];
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,weather_code&forecast_days=${days}&timezone=auto`;
+    const wRes = await fetch(url);
+    const wData: any = await wRes.json();
+    const daily = wData.daily;
+    const forecast = (daily?.time || []).map((date: string, i: number) => ({
+      date,
+      tempMin: `${daily.temperature_2m_min[i]}°C`,
+      tempMax: `${daily.temperature_2m_max[i]}°C`,
+      precipitation: `${daily.precipitation_sum[i]} mm`,
+      windMax: `${daily.wind_speed_10m_max[i]} km/h`,
+      weatherCode: daily.weather_code[i]
+    }));
+    return JSON.stringify({ type: 'weather_forecast', success: true, location: `${name}, ${country}`, days, forecast });
+  } catch (err: any) {
+    return JSON.stringify({ type: 'weather_forecast', success: false, error: err?.message || String(err) });
+  }
+}
+
+async function executeCurrencyConvert(args: { amount: number; from: string; to: string }): Promise<string> {
+  try {
+    const from = args.from.toUpperCase();
+    const to = args.to.toUpperCase();
+    const url = `https://open.er-api.com/v6/latest/${from}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return JSON.stringify({ type: 'currency_convert', success: false, error: `API ${resp.status}` });
+    const data: any = await resp.json();
+    const rate = data?.rates?.[to];
+    if (!rate) return JSON.stringify({ type: 'currency_convert', success: false, error: `Taux ${from}→${to} indisponible` });
+    const converted = +(args.amount * rate).toFixed(4);
+    return JSON.stringify({
+      type: 'currency_convert', success: true,
+      amount: args.amount, from, to, rate, converted,
+      summary: `${args.amount} ${from} = ${converted} ${to} (taux: 1 ${from} = ${rate} ${to})`,
+      lastUpdated: data.time_last_update_utc
+    });
+  } catch (err: any) {
+    return JSON.stringify({ type: 'currency_convert', success: false, error: err?.message || String(err) });
+  }
+}
+
+async function executeGithubManage(args: any): Promise<string> {
+  try {
+    const gh: any = await import("./githubService");
+    const { action } = args;
+    const need = (...keys: string[]) => keys.filter(k => !args[k]);
+    switch (action) {
+      case "list_my_repos": {
+        const repos = await gh.listRepos({ sort: "updated", per_page: args.per_page || 20 });
+        return JSON.stringify({ type: "github_repos", count: repos.length, repos: repos.map((r: any) => ({ name: r.full_name, private: r.private, description: r.description, language: r.language, stars: r.stargazers_count, updatedAt: r.updated_at, url: r.html_url })) });
+      }
+      case "list_orgs": {
+        const orgs = await gh.listUserOrgs();
+        return JSON.stringify({ type: "github_orgs", count: orgs.length, orgs: orgs.map((o: any) => ({ login: o.login, description: o.description, url: o.url })) });
+      }
+      case "get_repo": {
+        const m = need("owner", "repo"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        const r = await gh.getRepo(args.owner, args.repo);
+        return JSON.stringify({ type: "github_repo", name: r.full_name, description: r.description, defaultBranch: r.default_branch, language: r.language, stars: r.stargazers_count, openIssues: r.open_issues_count, url: r.html_url });
+      }
+      case "list_branches": {
+        const m = need("owner", "repo"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        const branches = await gh.listBranches(args.owner, args.repo, args.per_page || 30);
+        return JSON.stringify({ type: "github_branches", count: branches.length, branches: branches.map((b: any) => ({ name: b.name, sha: b.commit?.sha })) });
+      }
+      case "list_commits": {
+        const m = need("owner", "repo"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        const commits = await gh.listCommits(args.owner, args.repo, args.branch, args.per_page || 20);
+        return JSON.stringify({ type: "github_commits", count: commits.length, commits: commits.map((c: any) => ({ sha: c.sha?.slice(0, 7), message: c.commit?.message?.split('\n')[0], author: c.commit?.author?.name, date: c.commit?.author?.date, url: c.html_url })) });
+      }
+      case "get_file": {
+        const m = need("owner", "repo", "path"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        const file = await gh.getFileContent(args.owner, args.repo, args.path, args.ref);
+        const content = file.content ? Buffer.from(file.content, 'base64').toString('utf-8').slice(0, 15000) : '';
+        return JSON.stringify({ type: "github_file", path: file.path, size: file.size, sha: file.sha, contentTruncated: content.length >= 15000, content });
+      }
+      case "list_pull_requests": {
+        const m = need("owner", "repo"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        const prs = await gh.listAllPullRequests(args.owner, args.repo, { state: args.state || "open", per_page: args.per_page || 20 });
+        return JSON.stringify({ type: "github_prs", count: prs.length, prs: prs.map((p: any) => ({ number: p.number, title: p.title, state: p.state, author: p.user?.login, head: p.head?.ref, base: p.base?.ref, url: p.html_url, createdAt: p.created_at })) });
+      }
+      case "get_pull_request": {
+        const m = need("owner", "repo", "pullNumber"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        const pr = await gh.getPullRequest(args.owner, args.repo, args.pullNumber);
+        return JSON.stringify({ type: "github_pr", number: pr.number, title: pr.title, body: pr.body, state: pr.state, mergeable: pr.mergeable, additions: pr.additions, deletions: pr.deletions, changedFiles: pr.changed_files, url: pr.html_url });
+      }
+      case "create_issue_comment": {
+        const m = need("owner", "repo", "issueNumber", "body"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        const c = await gh.createIssueComment(args.owner, args.repo, args.issueNumber, args.body);
+        return JSON.stringify({ type: "github_comment_created", success: true, id: c.id, url: c.html_url });
+      }
+      case "list_workflow_runs": {
+        const m = need("owner", "repo"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        const runs = await gh.listWorkflowRuns(args.owner, args.repo, args.per_page || 10);
+        const list = runs?.workflow_runs || runs;
+        return JSON.stringify({ type: "github_workflow_runs", count: list.length, runs: list.map((r: any) => ({ id: r.id, name: r.name, status: r.status, conclusion: r.conclusion, branch: r.head_branch, url: r.html_url, createdAt: r.created_at })) });
+      }
+      case "trigger_workflow": {
+        const m = need("owner", "repo", "workflowId"); if (m.length) return JSON.stringify({ error: `Manque: ${m.join(", ")}` });
+        await gh.triggerWorkflow(args.owner, args.repo, args.workflowId, args.ref || "main");
+        return JSON.stringify({ type: "github_workflow_triggered", success: true, workflowId: args.workflowId, ref: args.ref || "main" });
+      }
+      default:
+        return JSON.stringify({ error: `Action GitHub inconnue: ${action}` });
+    }
+  } catch (err: any) {
+    return JSON.stringify({ type: 'github_manage', success: false, error: err?.message || String(err) });
+  }
+}
+
+async function executeCalendarUpdateEvent(args: { event_id: string; title?: string; description?: string; location?: string; start_datetime?: string; end_datetime?: string }, userId: number): Promise<string> {
+  try {
+    const { calendarService } = await import("./googleCalendarService");
+    const updated = await calendarService.updateEvent(userId, args.event_id, {
+      summary: args.title,
+      description: args.description,
+      location: args.location,
+      startTime: args.start_datetime ? new Date(args.start_datetime) : undefined,
+      endTime: args.end_datetime ? new Date(args.end_datetime) : undefined
+    });
+    if (!updated) return JSON.stringify({ type: 'calendar_update_event', success: false, error: "Échec de la modification" });
+    return JSON.stringify({ type: 'calendar_update_event', success: true, event: updated });
+  } catch (err: any) {
+    return JSON.stringify({ type: 'calendar_update_event', success: false, error: err?.message || String(err) });
+  }
+}
+
+async function executeCalendarDeleteEvent(args: { event_id: string }, userId: number): Promise<string> {
+  try {
+    const { calendarService } = await import("./googleCalendarService");
+    const ok = await calendarService.deleteEvent(userId, args.event_id);
+    return JSON.stringify({ type: 'calendar_delete_event', success: ok, event_id: args.event_id });
+  } catch (err: any) {
+    return JSON.stringify({ type: 'calendar_delete_event', success: false, error: err?.message || String(err) });
   }
 }
 
@@ -7147,7 +7634,7 @@ const MAXAI_TOOLS = [
   "integration_hub",
   // MaxAI Advanced (DeerFlow capabilities)
   "firecrawl_research", "subagent_parallel", "todo_planner",
-  "code_sandbox", "mcp_devops_bridge", "app_diagnose_fix",
+  "code_sandbox", "mcp_devops_bridge", "app_diagnose_fix", "dgm_pr_manage",
 ];
 
 export type PersonaToolType = "ulysse" | "iris" | "alfred" | "maxai";

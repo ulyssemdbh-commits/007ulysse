@@ -800,6 +800,70 @@ export async function executeAppDiagnoseFix(
   }
 }
 
+// === DGM PR MANAGE (close zombies, list, circuit breaker status) ===
+// Owner-only. Couvre le cas Tetrisv1 (30 PRs zombies générées par DGM en boucle CI).
+export async function executeDgmPrManage(
+  args: Record<string, any>,
+  userId?: number,
+): Promise<string> {
+  try {
+    const OWNER_USER_ID = 1;
+    if (userId !== undefined && userId !== OWNER_USER_ID) {
+      return JSON.stringify({ error: "Owner only" });
+    }
+    const action = String(args.action || "").trim();
+    const owner = String(args.owner || "").trim();
+    const repo = String(args.repo || "").trim();
+    if (!action) return JSON.stringify({ error: "action requis (list_zombies | close_zombies | breaker_status)" });
+
+    const janitor = await import("../dgmPrJanitor");
+
+    if (action === "breaker_status") {
+      if (!owner || !repo) return JSON.stringify({ error: "owner+repo requis" });
+      const { DGM_GOVERNANCE } = await import("../dgmPipelineOrchestrator");
+      const max = DGM_GOVERNANCE.circuitBreaker?.maxOpenPrsPerRepoPer24h ?? 5;
+      const status = janitor.shouldFreezeDgmRepo(`${owner}/${repo}`, max);
+      return JSON.stringify({ ...status, governance: DGM_GOVERNANCE.circuitBreaker });
+    }
+
+    if (!owner || !repo) {
+      return JSON.stringify({ error: "owner et repo requis (ex: ulyssemdbh-commits / tetrisv1-test)" });
+    }
+
+    const opts = {
+      titlePrefix: args.title_prefix ?? "[DGM]",
+      authorLogin: args.author_login,
+      olderThanHours: typeof args.older_than_hours === "number" ? args.older_than_hours : 0,
+      deleteBranch: args.delete_branch !== false,
+      dryRun: args.dry_run === true,
+      reason: args.reason,
+    };
+
+    if (action === "list_zombies") {
+      const zombies = await janitor.listOpenZombies(owner, repo, opts);
+      return JSON.stringify({ count: zombies.length, zombies: zombies.slice(0, 50) });
+    }
+
+    if (action === "close_zombies") {
+      const result = await janitor.closeZombies(owner, repo, opts);
+      try {
+        await brainPulse({
+          userId: userId ?? OWNER_USER_ID,
+          channel: "ulysse",
+          intensity: 0.6,
+          tags: ["dgm", "janitor", "cleanup"],
+          payload: { owner, repo, ...result },
+        });
+      } catch {}
+      return JSON.stringify(result);
+    }
+
+    return JSON.stringify({ error: `action inconnue: ${action}` });
+  } catch (e: any) {
+    return JSON.stringify({ error: e?.message || String(e) });
+  }
+}
+
 export const maxAdvancedToolDefs: ChatCompletionTool[] = [
   {
     type: "function",
@@ -942,6 +1006,28 @@ export const maxAdvancedToolDefs: ChatCompletionTool[] = [
           action: { type: "string", enum: ["status", "list_tools", "test_call", "url"] },
           tool: { type: "string", description: "Nom du tool MCP pour test_call" },
           toolArgs: { type: "object", description: "Arguments pour test_call" },
+        },
+        required: ["action"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "dgm_pr_manage",
+      description: "Gère les PRs créés par le DGM (Dev Goal Manager) — list/close zombies + état du circuit breaker. Owner only. Actions: list_zombies (PRs DGM ouverts sur owner/repo, filtrables par âge/préfixe), close_zombies (ferme + supprime branches, dry_run dispo), breaker_status (état du circuit breaker pour ce repo: combien de PRs créés sur 24h, seuil max). Utiliser pour nettoyer les boucles DGM échouées (ex: tetrisv1-test après 30 PRs DGM).",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["list_zombies", "close_zombies", "breaker_status"] },
+          owner: { type: "string", description: "Owner GitHub (ex: ulyssemdbh-commits)" },
+          repo: { type: "string", description: "Nom du repo (ex: tetrisv1-test)" },
+          title_prefix: { type: "string", description: "Préfixe titre à filtrer (défaut '[DGM]')" },
+          author_login: { type: "string", description: "Filtrer par login auteur (optionnel)" },
+          older_than_hours: { type: "number", description: "Seulement les PRs plus vieux que N heures (défaut 0)" },
+          delete_branch: { type: "boolean", description: "Supprimer aussi la branche après close (défaut true)" },
+          dry_run: { type: "boolean", description: "Lister sans rien fermer (défaut false)" },
+          reason: { type: "string", description: "Commentaire posté sur chaque PR avant close" },
         },
         required: ["action"],
       },

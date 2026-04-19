@@ -1,649 +1,953 @@
-import { Suspense, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Html, OrbitControls, Sphere, Line, Stars } from "@react-three/drei";
+import { Html, OrbitControls, Line } from "@react-three/drei";
+import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import { useBrainActivity, type BrainZone, type BrainZoneId } from "@/hooks/useBrainActivity";
-import { AnimatedOrb } from "@/components/visualizer/UlysseOrb";
 
-// Anatomically-inspired zone positions inside an ellipsoidal brain (X=L/R, Y=up, Z=front/back).
-// Brain front = +Z, top = +Y. Two hemispheres around X axis.
-const ZONE_POSITIONS: Record<BrainZoneId, [number, number, number]> = {
-  prefrontal:  [ 0.0,  0.9,  1.7],   // frontal lobe (front-top), midline
-  motor:       [-0.9,  1.1,  0.4],   // motor cortex strip (top), left hemisphere bias
-  sensory:     [ 0.9,  0.7, -0.2],   // somatosensory (just behind motor), right hemisphere
-  association: [ 0.0,  0.5, -0.3],   // parietal association cortex (top-back midline)
-  language:    [-1.5, -0.2,  0.3],   // Broca/Wernicke area (left temporal)
-  feature:     [ 1.5, -0.2,  0.3],   // right temporal, semantic features
-  hippocampus: [ 0.0, -0.5,  0.0],   // deep central — hippocampus is deep medial
-  concept:     [ 0.0, -0.4, -1.6],   // occipital/posterior — concept consolidation
-};
+/* =====================================================================
+ * ULYSSE BRAIN — Real-only monitoring hybrid (Cockpit + Anatomical 3D)
+ *
+ * EVERY visible element is driven by REAL backend data:
+ *  - Hot-spot size & glow = log(real totalEvents) of that hub
+ *  - Hot-spot pulse       = real `pulses[]` delta from /api/v2/sensory/stream
+ *  - Travelling sparks    = only on connections whose endpoint just fired
+ *  - Sparklines           = client-side 30s timeseries built from polls
+ *  - Cockpit metrics      = direct read of /api/v2/sensory/* endpoints
+ *
+ * NO fake decoration: no random stars, no fake neurons, no breathing
+ * placeholder pulse, no decorative orb, no synthesized "ambient" activity.
+ * The anatomical wireframe is the only inert element, and it serves as
+ * a spatial reference (like the grid of an instrument), not as data.
+ * ===================================================================== */
 
-// Inter-zone "axons" — match real cross-hub bridges in the architecture.
-const CONNECTIONS: Array<[BrainZoneId, BrainZoneId]> = [
-  ["sensory", "prefrontal"],
-  ["prefrontal", "motor"],
-  ["prefrontal", "association"],
-  ["association", "concept"],
-  ["association", "hippocampus"],
-  ["concept", "feature"],
-  ["feature", "language"],
-  ["motor", "language"],
-  ["hippocampus", "concept"],
-  ["sensory", "feature"],
-];
+// =====================================================================
+// 5-Hub mapping (real Ulysse architecture)
+// =====================================================================
+type HubId = "brain" | "hearing" | "vision" | "voice" | "action" | "memory";
 
-// Direction of signal flow vs central core (BrainHub) — Ulysse's real architecture.
-// 'in'  = zone sends signals INTO the core (perception, recall, knowledge)
-// 'out' = core sends signals OUT to the zone (decision → action)
-// 'both' = bidirectional dialogue with the core
-const ZONE_FLOW: Record<BrainZoneId, "in" | "out" | "both"> = {
-  sensory:     "in",   // HearingHub/VisionHub → BrainHub
-  hippocampus: "in",   // memoryGraph recall → BrainHub
-  concept:     "in",   // learned knowledge → BrainHub
-  prefrontal:  "both", // BrainHub itself ↔ core
-  association: "both", // bridges, cross-hub intuitions
-  feature:     "both", // semantic embeddings ↔ core
-  motor:       "out",  // BrainHub → ActionHub
-  language:    "out",  // BrainHub → VoiceOutputHub (TTS)
-};
-
-function seedRand(i: number, j: number) {
-  const x = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
-  return x - Math.floor(x);
+interface HubDef {
+  id: HubId;
+  label: string;
+  shortLabel: string;
+  position: [number, number, number]; // anatomical surface position
+  feeds: BrainZoneId[];
+  /** Heuristic to attribute a recent event to this hub by its type/source. */
+  matchEvent: (e: { type?: string; source?: string }) => boolean;
 }
 
-function ZoneCluster({
-  zone,
-  position,
+const HUBS: HubDef[] = [
+  {
+    id: "brain",
+    label: "BRAIN-HUB",
+    shortLabel: "BRAIN",
+    position: [0, 0.1, 0], // inside the limbic core (deep center)
+    feeds: ["prefrontal", "association", "concept", "feature"],
+    matchEvent: (e) =>
+      /focus|memory|thought|context|bridge|concept|persona|consciousness/i.test(
+        `${e.type ?? ""} ${e.source ?? ""}`
+      ),
+  },
+  {
+    id: "hearing",
+    label: "HEARING-HUB",
+    shortLabel: "HEAR",
+    position: [-1.5, 0, 0.3], // left side (lateral, auditory cortex)
+    feeds: ["sensory"],
+    matchEvent: (e) =>
+      /input|hear|listen|message|user|stt|transcript|whisper/i.test(
+        `${e.type ?? ""} ${e.source ?? ""}`
+      ),
+  },
+  {
+    id: "vision",
+    label: "VISION-HUB",
+    shortLabel: "SEE",
+    position: [0, 0.8, 1.5], // top-front (visual association)
+    feeds: ["feature"],
+    matchEvent: (e) =>
+      /vision|ocr|image|screen|see|visual/i.test(
+        `${e.type ?? ""} ${e.source ?? ""}`
+      ),
+  },
+  {
+    id: "voice",
+    label: "VOICE-OUTPUT",
+    shortLabel: "VOICE",
+    position: [0, -0.5, 1.5], // front, below SEE (speech output)
+    feeds: ["language"],
+    matchEvent: (e) =>
+      /output|speech|voice|tts|speak|piper/i.test(
+        `${e.type ?? ""} ${e.source ?? ""}`
+      ),
+  },
+  {
+    id: "action",
+    label: "ACTION-HUB",
+    shortLabel: "ACT",
+    position: [0, 1.0, 0.2], // inside motor cortex strip (top, central sulcus)
+    feeds: ["motor"],
+    matchEvent: (e) =>
+      /action|tool|exec|motor|command|mcp/i.test(
+        `${e.type ?? ""} ${e.source ?? ""}`
+      ),
+  },
+  {
+    id: "memory",
+    label: "MEMORY-DB",
+    shortLabel: "MEM",
+    position: [0, 0, -1.8], // rear back (deep memory storage)
+    feeds: ["hippocampus"],
+    matchEvent: (e) =>
+      /db|query|insert|select|update|delete|memory|recall|storage|drizzle|postgres/i.test(
+        `${e.type ?? ""} ${e.source ?? ""}`
+      ),
+  },
+];
+
+const HUB_LINKS: Array<[HubId, HubId]> = [
+  ["hearing", "brain"],
+  ["vision", "brain"],
+  ["brain", "voice"],
+  ["brain", "action"],
+  ["hearing", "voice"],
+  ["vision", "action"],
+  ["brain", "memory"],   // BRAIN ↔ MEMORY (read/write)
+  ["memory", "voice"],   // recall → speech
+  ["memory", "action"],  // recall → tool
+];
+
+// =====================================================================
+// Aggregate raw zones into per-hub real metrics
+// =====================================================================
+interface HubMetric {
+  hub: HubDef;
+  totalEvents: number;
+  firingHz: number;
+  active: boolean;
+}
+
+function buildHubMetric(hub: HubDef, zones: BrainZone[]): HubMetric {
+  const fed = zones.filter((z) => hub.feeds.includes(z.id));
+  return {
+    hub,
+    totalEvents: fed.reduce((s, z) => s + z.totalEvents, 0),
+    firingHz: fed.reduce((s, z) => s + z.firingHz, 0),
+    active: fed.some((z) => z.active),
+  };
+}
+
+// =====================================================================
+// Procedural anatomical brain silhouette — visual reference (no data)
+// =====================================================================
+function BrainAnatomy() {
+  const wireMat = (opacity = 0.22) => (
+    <meshBasicMaterial
+      color="#3da9ff"
+      wireframe
+      transparent
+      opacity={opacity}
+      depthWrite={false}
+    />
+  );
+  const glowMat = (
+    <meshBasicMaterial
+      color="#1e40af"
+      transparent
+      opacity={0.05}
+      blending={THREE.AdditiveBlending}
+      depthWrite={false}
+      side={THREE.BackSide}
+    />
+  );
+
+  // Smooth hemisphere (no lobe bumps — hub homes are dedicated meshes below)
+  const Hemisphere = ({ side }: { side: "L" | "R" }) => {
+    const x = side === "L" ? -0.55 : 0.55;
+    return (
+      <group position={[x, 0.1, 0]}>
+        <mesh scale={[1.6, 1.7, 2.4]}>
+          <icosahedronGeometry args={[1, 4]} />
+          {wireMat(0.22)}
+        </mesh>
+        <mesh scale={[1.55, 1.65, 2.35]}>
+          <sphereGeometry args={[1, 24, 24]} />
+          {glowMat}
+        </mesh>
+      </group>
+    );
+  };
+
+  return (
+    <group>
+      <Hemisphere side="L" />
+      <Hemisphere side="R" />
+
+      {/* === HUB HOMES — one blue sphere per hub, exact positions === */}
+      {/* BRAIN — limbic core (deep center) */}
+      <mesh position={[0, 0.1, 0]} scale={[0.55, 0.5, 0.65]}>
+        <icosahedronGeometry args={[1, 3]} />
+        {wireMat(0.26)}
+      </mesh>
+      {/* ACT — motor cortex strip (top) */}
+      <mesh position={[0, 1.0, 0.2]} scale={[1.3, 0.32, 0.55]}>
+        <icosahedronGeometry args={[1, 3]} />
+        {wireMat(0.22)}
+      </mesh>
+      {/* SEE — top-front (frontal-superior) */}
+      <mesh position={[0, 0.8, 1.5]} scale={[0.7, 0.55, 0.55]}>
+        <icosahedronGeometry args={[1, 3]} />
+        {wireMat(0.22)}
+      </mesh>
+      {/* HEAR — left ear (lateral L) */}
+      <mesh position={[-1.5, 0, 0.3]} scale={[0.45, 0.7, 0.85]}>
+        <icosahedronGeometry args={[1, 3]} />
+        {wireMat(0.22)}
+      </mesh>
+      {/* HEAR — right ear (lateral R, mirror — like real ears) */}
+      <mesh position={[1.5, 0, 0.3]} scale={[0.45, 0.7, 0.85]}>
+        <icosahedronGeometry args={[1, 3]} />
+        {wireMat(0.22)}
+      </mesh>
+      {/* VOICE — front-bottom (below SEE) */}
+      <mesh position={[0, -0.5, 1.5]} scale={[0.6, 0.5, 0.5]}>
+        <icosahedronGeometry args={[1, 3]} />
+        {wireMat(0.22)}
+      </mesh>
+      {/* MEM — rear back (occipital, deep memory representation) */}
+      <mesh position={[0, 0, -1.8]} scale={[0.7, 0.65, 0.55]}>
+        <icosahedronGeometry args={[1, 3]} />
+        {wireMat(0.24)}
+      </mesh>
+
+    </group>
+  );
+}
+
+// =====================================================================
+// Hot-spot — a hub at the cortical surface. 100% data-driven.
+// =====================================================================
+function HubHotspot({
+  metric,
+  pulseTrigger,
+  hovered,
   onSelect,
+  onHover,
+  positionOverride,
 }: {
-  zone: BrainZone;
-  position: [number, number, number];
-  onSelect: (id: BrainZoneId) => void;
+  metric: HubMetric;
+  pulseTrigger: number; // increments on every real event for this hub
+  hovered: boolean;
+  onSelect: (id: HubId) => void;
+  onHover: (id: HubId | null) => void;
+  positionOverride?: [number, number, number];
 }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const pulseRef = useRef(0);
-  const ambientPhase = useRef(Math.random() * Math.PI * 2);
+  const lightRef = useRef<THREE.PointLight>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
+  const haloRef = useRef<THREE.Mesh>(null);
+  const pulseEnergyRef = useRef(0);
+  const lastTriggerRef = useRef(pulseTrigger);
 
-  // Stable random offsets per neuron based on zone id. TIGHT cluster (radius ~0.55).
-  const seed = zone.id.charCodeAt(0) + zone.id.length * 13;
-  const neurons = useMemo(() => {
-    return Array.from({ length: zone.neurons }, (_, i) => ({
-      pos: [
-        (seedRand(seed, i * 3) - 0.5) * 1.1,
-        (seedRand(seed, i * 3 + 1) - 0.5) * 1.1,
-        (seedRand(seed, i * 3 + 2) - 0.5) * 1.1,
-      ] as [number, number, number],
-      size: 0.012 + seedRand(seed, i * 7) * 0.018,
-    }));
-  }, [zone.neurons, seed]);
+  // Real, non-fake size: log of total events (idle ones stay small).
+  const baseRadius = 0.06 + Math.min(0.18, Math.log10(metric.totalEvents + 1) * 0.05);
 
-  // Intra-zone wires: connect each neuron to its 2 nearest peers.
-  const intraLines = useMemo(() => {
-    const pairs: Array<[[number, number, number], [number, number, number]]> = [];
-    for (let i = 0; i < neurons.length; i++) {
-      const distances = neurons
-        .map((n, j) => ({ j, d: Math.hypot(n.pos[0] - neurons[i].pos[0], n.pos[1] - neurons[i].pos[1], n.pos[2] - neurons[i].pos[2]) }))
-        .filter(x => x.j !== i)
-        .sort((a, b) => a.d - b.d)
-        .slice(0, 2);
-      for (const { j } of distances) {
-        if (j > i) pairs.push([neurons[i].pos, neurons[j].pos]);
-      }
+  useEffect(() => {
+    if (pulseTrigger !== lastTriggerRef.current) {
+      lastTriggerRef.current = pulseTrigger;
+      pulseEnergyRef.current = 1;
     }
-    return pairs;
-  }, [neurons]);
+  }, [pulseTrigger]);
 
-  // Radial axon trails — long lines shooting outward, with synapse dots along them.
-  const trails = useMemo(() => {
-    const count = 8 + Math.floor(zone.neurons / 4);
-    return Array.from({ length: count }, (_, i) => {
-      const r = seedRand(seed, i * 11);
-      const theta = seedRand(seed, i * 13) * Math.PI * 2;
-      const phi = (seedRand(seed, i * 17) - 0.5) * Math.PI;
-      const length = 4 + r * 8; // long radial trails 4..12 units
-      // Slight curve via mid-point displacement.
-      const dir: [number, number, number] = [
-        Math.cos(theta) * Math.cos(phi),
-        Math.sin(phi),
-        Math.sin(theta) * Math.cos(phi),
-      ];
-      const end: [number, number, number] = [dir[0] * length, dir[1] * length, dir[2] * length];
-      const mid: [number, number, number] = [
-        end[0] * 0.5 + (seedRand(seed, i * 23) - 0.5) * 1.5,
-        end[1] * 0.5 + (seedRand(seed, i * 29) - 0.5) * 1.5,
-        end[2] * 0.5 + (seedRand(seed, i * 31) - 0.5) * 1.5,
-      ];
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(...mid),
-        new THREE.Vector3(...end),
-      ]);
-      const pts = curve.getPoints(20).map(v => [v.x, v.y, v.z] as [number, number, number]);
-      // Synapse dots at 3 positions along the trail.
-      const synapses = [0.35, 0.6, 0.85].map(t => {
-        const v = curve.getPoint(t);
-        return [v.x, v.y, v.z] as [number, number, number];
-      });
-      return { pts, synapses };
-    });
-  }, [zone.neurons, seed]);
-
-  // Ambient activity intensity ∈ [0,1] — proportional to real total events.
-  const ambientIntensity = Math.min(1, Math.log10(zone.totalEvents + 1) / 3);
-
-  useFrame((state, delta) => {
-    // Real event spike → 1, decays slower (2.5s) for visibility.
-    if (zone.active) pulseRef.current = 1;
-    else pulseRef.current = Math.max(0, pulseRef.current - delta * 0.4);
-
-    // Ambient breathing — sinus modulated by real activity level.
-    ambientPhase.current += delta * (0.6 + ambientIntensity * 1.2);
-    const ambient = ambientIntensity * (0.5 + 0.5 * Math.sin(ambientPhase.current));
-
-    if (groupRef.current) {
-      const breath = 1 + pulseRef.current * 0.25 + ambient * 0.08;
-      groupRef.current.scale.setScalar(breath);
+  useFrame((_, delta) => {
+    pulseEnergyRef.current = Math.max(0, pulseEnergyRef.current - delta * 0.9);
+    const e = pulseEnergyRef.current;
+    // Static intensity floor proportional to real cumulative events.
+    const floor = Math.min(1.2, Math.log10(metric.totalEvents + 1) * 0.4);
+    const intensity = floor + e * 2.2 + (hovered ? 0.4 : 0);
+    if (lightRef.current) lightRef.current.intensity = intensity;
+    if (coreRef.current) coreRef.current.scale.setScalar(1 + e * 0.7);
+    if (haloRef.current) {
+      haloRef.current.scale.setScalar(1 + e * 1.5);
+      const m = haloRef.current.material as THREE.MeshBasicMaterial;
+      m.opacity = 0.10 + floor * 0.08 + e * 0.45;
     }
   });
 
-  const color = new THREE.Color(zone.color);
-  const intensityBase = 0.6 + Math.min(1.5, zone.firingHz * 0.4);
-
-  const trailOpacity = 0.18 + ambientIntensity * 0.25 + pulseRef.current * 0.4;
+  const color = metric.active || hovered ? "#ffd966" : "#ff5544";
 
   return (
-    <group ref={groupRef} position={position}>
-      {/* Radial axon trails — long lines shooting outward like comets */}
-      {trails.map((t, i) => (
-        <Line
-          key={`trail-${i}`}
-          points={t.pts}
-          color={zone.color}
-          lineWidth={0.6}
+    <group
+      position={positionOverride ?? metric.hub.position}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        onHover(metric.hub.id);
+        document.body.style.cursor = "pointer";
+      }}
+      onPointerOut={(e) => {
+        e.stopPropagation();
+        onHover(null);
+        document.body.style.cursor = "default";
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(metric.hub.id);
+      }}
+    >
+      <pointLight
+        ref={lightRef}
+        color={color}
+        intensity={0.5}
+        distance={3}
+        decay={2}
+      />
+      <mesh ref={haloRef}>
+        <sphereGeometry args={[baseRadius * 2.4, 16, 16]} />
+        <meshBasicMaterial
+          color={color}
           transparent
-          opacity={trailOpacity}
+          opacity={0.18}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
         />
-      ))}
-      {/* Bright white synapse dots along the trails */}
-      {trails.map((t, i) =>
-        t.synapses.map((s, k) => (
-          <Sphere key={`syn-${i}-${k}`} args={[0.022 + (k === 1 ? 0.012 : 0), 6, 6]} position={s}>
-            <meshBasicMaterial color="#cfe7ff" transparent opacity={0.6 + pulseRef.current * 0.4} />
-          </Sphere>
-        ))
-      )}
-      {/* Neurons — small dots at zone core */}
-      {neurons.map((n, i) => (
-        <Sphere key={i} args={[n.size, 8, 8]} position={n.pos}>
-          <meshBasicMaterial color={color} transparent opacity={0.95} />
-        </Sphere>
-      ))}
-      {/* Intra-zone wires */}
-      {intraLines.map((pair, i) => (
-        <Line
-          key={`l-${i}`}
-          points={[pair[0], pair[1]]}
-          color={zone.color}
-          lineWidth={0.8}
+      </mesh>
+      <mesh ref={coreRef}>
+        <sphereGeometry args={[baseRadius, 16, 16]} />
+        <meshBasicMaterial
+          color={color}
           transparent
-          opacity={0.4 + pulseRef.current * 0.5}
+          opacity={0.95}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
         />
-      ))}
-      {/* Tiny clickable label — only zone name */}
+      </mesh>
       <Html
         center
-        position={[0, 0.85, 0]}
+        position={[0, baseRadius * 2.2 + 0.18, 0]}
         zIndexRange={[10, 0]}
-        style={{ transform: "translate(-50%, -50%)" }}
+        style={{ pointerEvents: "none" }}
       >
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect(zone.id);
-          }}
-          className="font-mono whitespace-nowrap select-none px-1 py-px rounded-[2px] border cursor-pointer transition-all hover:scale-110"
+        <div
+          className="font-mono whitespace-nowrap select-none px-1 py-px rounded-[2px] border"
           style={{
             fontSize: "8px",
             lineHeight: "10px",
-            color: zone.color,
-            borderColor: zone.color,
-            background: "rgba(2, 8, 23, 0.85)",
-            boxShadow: zone.active ? `0 0 8px ${zone.color}` : "none",
-            opacity: 0.85,
+            color: "#ffd966",
+            borderColor: color,
+            background: "rgba(2, 8, 23, 0.78)",
+            opacity: hovered ? 1 : 0.85,
             letterSpacing: "0.1em",
             fontWeight: 700,
           }}
-          data-testid={`brain-zone-${zone.id}`}
-          title={`${zone.label} — clic pour détails`}
+          data-testid={`brain-hub-${metric.hub.id}`}
         >
-          {zone.label}
-        </button>
+          {metric.hub.shortLabel}
+        </div>
       </Html>
     </group>
   );
 }
 
-function AxonConnection({
+// =====================================================================
+// Connection line + traveling pulse (only travels on real activity)
+// =====================================================================
+function HubConnection({
   from,
   to,
-  active,
+  pulseTrigger,
 }: {
   from: [number, number, number];
   to: [number, number, number];
-  active: boolean;
+  pulseTrigger: number; // increments when either endpoint fires
 }) {
-  const ref = useRef<any>(null);
-  const pulseRef = useRef(0);
+  const sparkRef = useRef<THREE.Mesh>(null);
+  const tRef = useRef(0);
+  const activeRef = useRef(false);
+  const lastTriggerRef = useRef(pulseTrigger);
 
-  // Curved path (slight arc through midpoint offset).
   const points = useMemo(() => {
     const mid: [number, number, number] = [
-      (from[0] + to[0]) / 2 + (from[1] - to[1]) * 0.1,
-      (from[1] + to[1]) / 2 + 0.3,
-      (from[2] + to[2]) / 2 + (from[0] - to[0]) * 0.1,
+      (from[0] + to[0]) / 2 + (from[1] - to[1]) * 0.06,
+      (from[1] + to[1]) / 2 + 0.2,
+      (from[2] + to[2]) / 2 + (from[0] - to[0]) * 0.06,
     ];
     const curve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(...from),
       new THREE.Vector3(...mid),
       new THREE.Vector3(...to),
     ]);
-    return curve.getPoints(24).map(v => [v.x, v.y, v.z] as [number, number, number]);
+    return curve.getPoints(28);
   }, [from, to]);
 
+  const linePoints = useMemo(
+    () => points.map((v) => [v.x, v.y, v.z] as [number, number, number]),
+    [points]
+  );
+
+  useEffect(() => {
+    if (pulseTrigger !== lastTriggerRef.current) {
+      lastTriggerRef.current = pulseTrigger;
+      activeRef.current = true;
+      tRef.current = 0;
+    }
+  }, [pulseTrigger]);
+
   useFrame((_, delta) => {
-    if (active) pulseRef.current = 1;
-    else pulseRef.current = Math.max(0, pulseRef.current - delta * 0.8);
-    if (ref.current?.material) {
-      ref.current.material.opacity = 0.12 + pulseRef.current * 0.7;
+    if (!activeRef.current || !sparkRef.current) {
+      if (sparkRef.current) sparkRef.current.visible = false;
+      return;
     }
+    tRef.current += delta * 1.4;
+    if (tRef.current >= 1) {
+      activeRef.current = false;
+      sparkRef.current.visible = false;
+      return;
+    }
+    sparkRef.current.visible = true;
+    const idx = Math.min(points.length - 1, Math.floor(tRef.current * points.length));
+    const p = points[idx];
+    sparkRef.current.position.set(p.x, p.y, p.z);
   });
-
-  return (
-    <Line
-      ref={ref}
-      points={points}
-      color={active ? "#7dd3fc" : "#3b82f6"}
-      lineWidth={active ? 1.4 : 0.6}
-      transparent
-      opacity={0.15}
-    />
-  );
-}
-
-/**
- * Animated signal flow between a zone and the central core (BrainHub).
- * Renders a faint connection line + N traveling glowing pulses.
- * Direction (in/out/both) reflects the real Ulysse data flow.
- * Pulse density and speed proportional to the zone's real firing rate.
- */
-function SignalFlow({ zone, zonePos }: { zone: BrainZone; zonePos: [number, number, number] }) {
-  const flow = ZONE_FLOW[zone.id];
-  const ambientIntensity = Math.min(1, Math.log10(zone.totalEvents + 1) / 3);
-  // Number of traveling pulses: 1 baseline, more when zone is hot.
-  const pulseCount = 1 + Math.floor(ambientIntensity * 4) + (zone.active ? 3 : 0);
-  // Speed: 0.25 → 1.5 cycles/sec depending on real firingHz.
-  const speed = 0.25 + Math.min(1.25, zone.firingHz * 0.5 + ambientIntensity * 0.4);
-
-  const pulses = useMemo(
-    () =>
-      Array.from({ length: pulseCount }, (_, i) => ({
-        id: i,
-        offset: i / pulseCount,
-        // For 'both' zones: half go in, half go out.
-        direction:
-          flow === "in"  ? 1 :
-          flow === "out" ? -1 :
-          i % 2 === 0    ? 1 : -1,
-      })),
-    [pulseCount, flow]
-  );
-
-  const pulseRefs = useRef<Array<THREE.Mesh | null>>([]);
-  const lineRef = useRef<any>(null);
-  const linePulse = useRef(0);
-
-  useFrame((state, delta) => {
-    const t = state.clock.elapsedTime;
-    // Move each pulse along the line zone↔core based on its direction.
-    pulses.forEach((p, i) => {
-      const mesh = pulseRefs.current[i];
-      if (!mesh) return;
-      // Phase ∈ [0,1] cycles forward; direction flips travel sense.
-      const rawPhase = (t * speed + p.offset) % 1;
-      // direction=1 means zone→core (start at zone, go to 0,0,0)
-      // direction=-1 means core→zone (start at core, go to zone)
-      const phase = p.direction === 1 ? rawPhase : 1 - rawPhase;
-      mesh.position.set(
-        zonePos[0] * (1 - phase),
-        zonePos[1] * (1 - phase),
-        zonePos[2] * (1 - phase)
-      );
-      // Brighten in the middle of the journey for a comet feel.
-      const bright = 0.5 + Math.sin(rawPhase * Math.PI) * 0.5;
-      const mat = mesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.4 + bright * 0.6;
-      mesh.scale.setScalar(0.7 + bright * 0.6);
-    });
-    // Brighten the trunk line on real activity.
-    if (zone.active) linePulse.current = 1;
-    else linePulse.current = Math.max(0, linePulse.current - delta * 0.6);
-    if (lineRef.current?.material) {
-      lineRef.current.material.opacity = 0.1 + ambientIntensity * 0.15 + linePulse.current * 0.5;
-    }
-  });
-
-  return (
-    <group>
-      {/* Trunk line zone ↔ core */}
-      <Line
-        ref={lineRef}
-        points={[zonePos, [0, 0, 0]]}
-        color={zone.color}
-        lineWidth={0.7}
-        transparent
-        opacity={0.15}
-      />
-      {/* Traveling signal pulses */}
-      {pulses.map((p, i) => (
-        <Sphere
-          key={p.id}
-          ref={(el) => (pulseRefs.current[i] = el)}
-          args={[0.07, 8, 8]}
-          position={zonePos}
-        >
-          <meshBasicMaterial
-            color={p.direction === 1 ? zone.color : "#ffffff"}
-            transparent
-            opacity={0.8}
-          />
-        </Sphere>
-      ))}
-    </group>
-  );
-}
-
-function BrainScene({ onSelectZone, activity }: { onSelectZone: (id: BrainZoneId) => void; activity: ReturnType<typeof useBrainActivity> }) {
-  const groupRef = useRef<THREE.Group>(null);
-
-  // Smoothly interpolate brain scale toward evolution scale (so it visibly grows when new memories arrive).
-  const targetScale = activity.evolution.scale;
-  useFrame((_, delta) => {
-    if (groupRef.current) {
-      groupRef.current.rotation.y += delta * 0.06;
-      const cur = groupRef.current.scale.x;
-      const next = cur + (targetScale - cur) * Math.min(1, delta * 0.8);
-      groupRef.current.scale.setScalar(next);
-    }
-  });
-
-  // Build a deterministic list of extra synapses from cross-zone pairs not in CONNECTIONS.
-  const extraConnections = useMemo(() => {
-    const ids = Object.keys(ZONE_POSITIONS) as BrainZoneId[];
-    const existing = new Set(CONNECTIONS.map(([a, b]) => `${a}|${b}`).concat(CONNECTIONS.map(([a, b]) => `${b}|${a}`)));
-    const candidates: Array<[BrainZoneId, BrainZoneId]> = [];
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        if (!existing.has(`${ids[i]}|${ids[j]}`)) candidates.push([ids[i], ids[j]]);
-      }
-    }
-    return candidates.slice(0, activity.evolution.extraSynapses);
-  }, [activity.evolution.extraSynapses]);
 
   return (
     <>
-      <ambientLight intensity={0.4} />
-      <pointLight position={[5, 5, 5]} intensity={0.5} />
-      <Stars radius={40} depth={30} count={1200} factor={2} fade speed={0.3} />
+      <Line
+        points={linePoints}
+        color="#3da9ff"
+        lineWidth={1}
+        transparent
+        opacity={0.18}
+      />
+      <mesh ref={sparkRef} visible={false}>
+        <sphereGeometry args={[0.06, 10, 10]} />
+        <meshBasicMaterial
+          color="#ffd966"
+          transparent
+          opacity={1}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+    </>
+  );
+}
+
+// =====================================================================
+// 3D scene
+// =====================================================================
+function BrainScene({
+  hubMetrics,
+  hubPulseTriggers,
+  hovered,
+  onSelect,
+  onHover,
+}: {
+  hubMetrics: HubMetric[];
+  hubPulseTriggers: Record<HubId, number>;
+  hovered: HubId | null;
+  onSelect: (id: HubId) => void;
+  onHover: (id: HubId | null) => void;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+
+  useFrame((_, delta) => {
+    if (groupRef.current) groupRef.current.rotation.y += delta * 0.04;
+  });
+
+  const hubPosById = useMemo(() => {
+    const m: Record<HubId, [number, number, number]> = {} as any;
+    HUBS.forEach((h) => {
+      m[h.id] = h.position;
+    });
+    return m;
+  }, []);
+
+  return (
+    <>
+      <ambientLight intensity={0.25} />
+      <hemisphereLight args={["#67e8f9", "#0a0e1f", 0.3]} />
       <group ref={groupRef}>
-        {/* Central core = OrbUlysse — Ulysse's living signature orb at the heart of the brain. */}
-        {(() => {
-          const processing = activity.consciousness.processing;
-          const load = activity.consciousness.cognitiveLoad;
-          const coreColor = processing ? "#fde047" : "#7dd3fc";
-          return (
-            <>
-              <pointLight position={[0, 0, 0]} color={coreColor} intensity={3 + load / 30} distance={10} decay={2} />
-              <group scale={0.96}>
-                <AnimatedOrb
-                  isActive={processing}
-                  isAnalyzing={load > 50}
-                  orbColor={processing ? "#fef9c3" : "#e0f2fe"}
-                  orbIntensity={100}
-                />
-              </group>
-            </>
-          );
-        })()}
-
-        {/* Live signal flow zone ↔ central core (Ulysse data flow) */}
-        {activity.zones.map(zone => (
-          <SignalFlow key={`flow-${zone.id}`} zone={zone} zonePos={ZONE_POSITIONS[zone.id]} />
-        ))}
-
-        {/* Inter-zone axons (base architecture) */}
-        {CONNECTIONS.map(([a, b], i) => {
-          const zoneA = activity.zones.find(z => z.id === a);
-          const zoneB = activity.zones.find(z => z.id === b);
-          const active = !!(zoneA?.active || zoneB?.active);
-          return (
-            <AxonConnection
-              key={i}
-              from={ZONE_POSITIONS[a]}
-              to={ZONE_POSITIONS[b]}
-              active={active}
-            />
-          );
-        })}
-
-        {/* Acquired synapses — grow with bridges/cross-hub intuitions */}
-        {extraConnections.map(([a, b], i) => {
-          const zoneA = activity.zones.find(z => z.id === a);
-          const zoneB = activity.zones.find(z => z.id === b);
-          const active = !!(zoneA?.active || zoneB?.active);
-          return (
-            <AxonConnection
-              key={`extra-${i}`}
-              from={ZONE_POSITIONS[a]}
-              to={ZONE_POSITIONS[b]}
-              active={active}
-            />
-          );
-        })}
-
-        {/* Zones */}
-        {activity.zones.map(zone => (
-          <ZoneCluster
-            key={zone.id}
-            zone={zone}
-            position={ZONE_POSITIONS[zone.id]}
-            onSelect={onSelectZone}
+        <BrainAnatomy />
+        {HUB_LINKS.map(([a, b], i) => (
+          <HubConnection
+            key={i}
+            from={hubPosById[a]}
+            to={hubPosById[b]}
+            pulseTrigger={hubPulseTriggers[a] + hubPulseTriggers[b]}
           />
         ))}
+        {hubMetrics.map((metric) => (
+          <HubHotspot
+            key={metric.hub.id}
+            metric={metric}
+            pulseTrigger={hubPulseTriggers[metric.hub.id]}
+            hovered={hovered === metric.hub.id}
+            onSelect={onSelect}
+            onHover={onHover}
+          />
+        ))}
+        {/* HEAR mirror on the right (real ears = left + right) */}
+        {(() => {
+          const m = hubMetrics.find((x) => x.hub.id === "hearing");
+          if (!m) return null;
+          return (
+            <HubHotspot
+              key="hearing-mirror"
+              metric={m}
+              pulseTrigger={hubPulseTriggers.hearing}
+              hovered={hovered === "hearing"}
+              onSelect={onSelect}
+              onHover={onHover}
+              positionOverride={[1.5, 0, 0.3]}
+            />
+          );
+        })()}
       </group>
     </>
   );
 }
 
+// =====================================================================
+// Sparkline — client-side 30s rolling timeseries from real polls
+// =====================================================================
+function Sparkline({
+  series,
+  color = "#ff5544",
+  height = 28,
+  width = 88,
+}: {
+  series: number[];
+  color?: string;
+  height?: number;
+  width?: number;
+}) {
+  if (series.length < 2) {
+    return (
+      <div
+        style={{ width, height }}
+        className="border border-slate-800 bg-slate-950/40"
+      />
+    );
+  }
+  const max = Math.max(1, ...series);
+  const path = series
+    .map((v, i) => {
+      const x = (i / (series.length - 1)) * width;
+      const y = height - (v / max) * height;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const lastX = width;
+  const lastY = height - (series[series.length - 1] / max) * height;
+  return (
+    <svg
+      width={width}
+      height={height}
+      className="border border-slate-800 bg-slate-950/40"
+    >
+      <path d={path} stroke={color} strokeWidth={1} fill="none" />
+      <circle cx={lastX - 1} cy={lastY} r={1.5} fill={color} />
+    </svg>
+  );
+}
+
+// =====================================================================
+// Cockpit — per-hub real metric card
+// =====================================================================
+function HubCard({
+  metric,
+  series,
+  recentEvents,
+  hovered,
+  onHover,
+}: {
+  metric: HubMetric;
+  series: number[]; // events/sec last 30s
+  recentEvents: Array<{ type?: string; timestamp: number; summary?: string }>;
+  hovered: boolean;
+  onHover: (id: HubId | null) => void;
+}) {
+  const color = metric.active ? "#ffd966" : "#ff5544";
+  const lastEvent = recentEvents[0];
+  const ago = lastEvent
+    ? Math.max(0, Math.floor((Date.now() - lastEvent.timestamp) / 1000))
+    : null;
+
+  return (
+    <div
+      onMouseEnter={() => onHover(metric.hub.id)}
+      onMouseLeave={() => onHover(null)}
+      className="rounded border bg-slate-950/60 p-2 transition-colors"
+      style={{
+        borderColor: hovered ? color : "rgba(30,58,138,0.5)",
+        boxShadow: metric.active ? `0 0 12px ${color}33` : "none",
+      }}
+      data-testid={`hub-card-${metric.hub.id}`}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <div
+          className="font-mono text-[9px] tracking-wider font-bold"
+          style={{ color }}
+        >
+          {metric.hub.label}
+        </div>
+        <div
+          className="w-1.5 h-1.5 rounded-full"
+          style={{
+            background: metric.active ? "#22c55e" : "#475569",
+            boxShadow: metric.active ? "0 0 6px #22c55e" : "none",
+          }}
+          title={metric.active ? "actif" : "repos"}
+        />
+      </div>
+      <div className="flex items-baseline justify-between mb-1">
+        <div
+          className="font-mono text-lg font-bold leading-none"
+          style={{ color: "#e2e8f0" }}
+          data-testid={`hub-total-${metric.hub.id}`}
+        >
+          {metric.totalEvents.toLocaleString("fr-FR")}
+        </div>
+        <div className="font-mono text-[9px] text-slate-400">
+          {metric.firingHz.toFixed(1)} Hz
+        </div>
+      </div>
+      <Sparkline series={series} color={color} />
+      <div className="mt-1 font-mono text-[8px] text-slate-500">
+        {lastEvent
+          ? `dernier: ${ago}s · ${(lastEvent.type ?? "event").substring(0, 14)}`
+          : "aucun event récent"}
+      </div>
+      {recentEvents.slice(0, 2).map((e, i) => (
+        <div
+          key={i}
+          className="mt-0.5 truncate font-mono text-[8px] text-slate-400"
+          title={e.summary ?? e.type}
+        >
+          · {(e.summary ?? e.type ?? "").substring(0, 28)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// =====================================================================
+// Per-hub timeseries tracker (events/sec over last 30s)
+// =====================================================================
+const SERIES_LEN = 30;
+
+function useHubSeries(hubMetrics: HubMetric[]): Record<HubId, number[]> {
+  const [series, setSeries] = useState<Record<HubId, number[]>>(() => {
+    const s: Record<HubId, number[]> = {} as any;
+    HUBS.forEach((h) => (s[h.id] = []));
+    return s;
+  });
+  const lastTotalsRef = useRef<Record<HubId, number>>({} as any);
+  const lastTickRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now();
+      const dt = Math.max(0.5, (now - lastTickRef.current) / 1000);
+      lastTickRef.current = now;
+      setSeries((prev) => {
+        const next: Record<HubId, number[]> = { ...prev } as any;
+        hubMetrics.forEach((m) => {
+          const last = lastTotalsRef.current[m.hub.id] ?? m.totalEvents;
+          const delta = Math.max(0, m.totalEvents - last) / dt;
+          lastTotalsRef.current[m.hub.id] = m.totalEvents;
+          const arr = (prev[m.hub.id] ?? []).concat(delta);
+          next[m.hub.id] = arr.slice(-SERIES_LEN);
+        });
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [hubMetrics]);
+
+  return series;
+}
+
+// =====================================================================
+// Per-hub pulse trigger counter (increments on every real delta event)
+// =====================================================================
+function useHubPulseTriggers(hubMetrics: HubMetric[]): Record<HubId, number> {
+  const [triggers, setTriggers] = useState<Record<HubId, number>>(() => {
+    const t: Record<HubId, number> = {} as any;
+    HUBS.forEach((h) => (t[h.id] = 0));
+    return t;
+  });
+  const prevActiveRef = useRef<Record<HubId, boolean>>({} as any);
+
+  useEffect(() => {
+    setTriggers((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      hubMetrics.forEach((m) => {
+        const wasActive = prevActiveRef.current[m.hub.id] ?? false;
+        if (m.active && !wasActive) {
+          next[m.hub.id] = (prev[m.hub.id] ?? 0) + 1;
+          changed = true;
+        }
+        prevActiveRef.current[m.hub.id] = m.active;
+      });
+      return changed ? next : prev;
+    });
+  }, [hubMetrics]);
+
+  return triggers;
+}
+
+// =====================================================================
+// Public component
+// =====================================================================
 interface UlysseBrainVisualizerProps {
   className?: string;
   height?: number;
 }
 
-const ZONE_DESCRIPTIONS: Record<BrainZoneId, string> = {
-  prefrontal:  "Prend les décisions. Ce sur quoi Ulysse se concentre, sa charge cognitive du moment.",
-  motor:       "Exécute les actions concrètes : appels d'outils, commandes système, recherches.",
-  sensory:     "Perçoit le monde : messages que tu envoies, ce qu'il voit (vision), ce qu'il entend.",
-  concept:     "Apprend les notions nouvelles : règles métier, préférences, faits durables.",
-  feature:     "Pense en représentations vectorielles internes (embeddings sémantiques).",
-  language:    "Formule et prononce les réponses vocales (TTS, voix Ulysse).",
-  hippocampus: "Stocke et rappelle les souvenirs : graphe mémoire long terme.",
-  association: "Crée des connexions entre les zones — les intuitions et raccourcis cross-hub.",
-};
-
-export function UlysseBrainVisualizer({ className = "", height = 280 }: UlysseBrainVisualizerProps) {
+export function UlysseBrainVisualizer({
+  className = "",
+  height = 380,
+}: UlysseBrainVisualizerProps) {
   const activity = useBrainActivity(true);
-  const [selectedId, setSelectedId] = useState<BrainZoneId | null>(null);
-  const selectedZone = selectedId ? activity.zones.find(z => z.id === selectedId) : null;
+  const [hovered, setHovered] = useState<HubId | null>(null);
+  const [selected, setSelected] = useState<HubId | null>(null);
+  const [layout, setLayout] = useState<"hybrid" | "brain" | "cockpit">("hybrid");
+
+  const hubMetrics = useMemo(
+    () => HUBS.map((h) => buildHubMetric(h, activity.zones)),
+    [activity.zones]
+  );
+
+  const hubSeries = useHubSeries(hubMetrics);
+  const hubTriggers = useHubPulseTriggers(hubMetrics);
+
+  // Group recent events per hub (heuristic).
+  const eventsByHub = useMemo(() => {
+    const map: Record<HubId, typeof activity.recentEvents> = {} as any;
+    HUBS.forEach((h) => (map[h.id] = []));
+    activity.recentEvents.forEach((e) => {
+      const hub = HUBS.find((h) => h.matchEvent(e));
+      if (hub) map[hub.id].push(e);
+    });
+    return map;
+  }, [activity.recentEvents]);
+
+  const uptimeMin = Math.floor((activity.totals.uptime ?? 0) / 60_000);
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-xl border border-blue-900/40 ${className}`}
-      style={{
-        height,
-        background:
-          "radial-gradient(ellipse at center, rgba(15,23,42,0.95) 0%, rgba(2,6,23,1) 100%)",
-      }}
+      className={`relative w-full overflow-hidden rounded-lg border border-blue-900/40 bg-slate-950 ${className}`}
+      style={{ height }}
       data-testid="ulysse-brain-visualizer"
     >
-      <Canvas
-        camera={{ position: [0, 0.3, 7.5], fov: 55 }}
-        dpr={[1, 1.5]}
-        gl={{ antialias: true, alpha: true, powerPreference: "low-power", preserveDrawingBuffer: false, failIfMajorPerformanceCaveat: false }}
-        onCreated={({ gl }) => {
-          // Recover gracefully from WebGL context loss (HMR, tab switch, GPU reset).
-          const canvas = gl.domElement;
-          canvas.addEventListener("webglcontextlost", (e) => {
-            e.preventDefault();
-            console.warn("[BrainVisualizer] WebGL context lost — preventing default to allow restore");
-          });
-          canvas.addEventListener("webglcontextrestored", () => {
-            console.log("[BrainVisualizer] WebGL context restored");
-          });
-        }}
-      >
-        <Suspense fallback={null}>
-          <BrainScene onSelectZone={setSelectedId} activity={activity} />
-        </Suspense>
-        <OrbitControls
-          enablePan={false}
-          enableZoom={false}
-          enableRotate
-          autoRotate={false}
-        />
-      </Canvas>
+      <div className="grid h-full" style={{
+        gridTemplateColumns:
+          layout === "brain"   ? "1fr 0fr" :
+          layout === "cockpit" ? "0fr 1fr" :
+                                 "7fr 5fr",
+      }}>
+        {/* === LEFT: 3D anatomical brain === */}
+        <div
+          className="relative border-r border-slate-900 overflow-hidden"
+          style={{ display: layout === "cockpit" ? "none" : "block" }}
+        >
+          {/* Layout toggle (top-center) */}
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex gap-0.5 rounded border border-slate-700 bg-slate-950/80 backdrop-blur-sm overflow-hidden">
+            {([
+              { id: "brain",   label: "BRAIN",   title: "Cerveau seul" },
+              { id: "hybrid",  label: "HYBRID",  title: "Cerveau + cockpit" },
+              { id: "cockpit", label: "COCKPIT", title: "Cockpit seul" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setLayout(opt.id)}
+                title={opt.title}
+                className="font-mono text-[8px] px-1.5 py-0.5 tracking-wider transition-colors"
+                style={{
+                  color: layout === opt.id ? "#ffd966" : "#94a3b8",
+                  background: layout === opt.id ? "rgba(255,217,102,0.12)" : "transparent",
+                  fontWeight: 700,
+                }}
+                data-testid={`button-layout-${opt.id}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
 
-      {/* HUD overlay */}
-      <div className="pointer-events-none absolute top-2 left-3 font-mono text-[10px] text-blue-300/80 leading-tight">
-        <div className="font-bold tracking-widest text-blue-200" data-testid="text-brain-title">
-          ULYSSE · BRAIN v1
-        </div>
-        <div
-          className="font-bold tracking-[0.18em] mt-0.5 text-[11px] flex items-center gap-1"
-          style={{
-            color: activity.mood.color,
-            textShadow: `0 0 6px ${activity.mood.color}88`,
-          }}
-          data-testid="text-brain-mood"
-        >
-          <span>{activity.mood.emoji}</span>
-          <span>{activity.mood.label}</span>
-        </div>
-        <div data-testid="text-brain-load" className="mt-0.5">
-          charge: {activity.consciousness.cognitiveLoad.toFixed(0)}%
-        </div>
-      </div>
-      <div className="pointer-events-none absolute top-2 right-3 font-mono text-[10px] text-blue-300/80 text-right leading-tight">
-        <div data-testid="text-brain-totals">
-          in {activity.totals.inputs} · out {activity.totals.outputs} · act {activity.totals.actions}
-        </div>
-        <div data-testid="text-brain-wm">working memory: {activity.consciousness.workingMemory}</div>
-        <div className="opacity-70">persona: {activity.consciousness.persona}</div>
-      </div>
-      {/* Live event ticker — proof of real activity */}
-      {activity.recentEvents.length > 0 && (
-        <div
-          className="pointer-events-none absolute bottom-2 left-3 right-20 font-mono text-[9px] text-blue-200/80 leading-tight overflow-hidden"
-          data-testid="brain-event-ticker"
-        >
-          {activity.recentEvents.slice(0, 2).map((ev, i) => (
-            <div
-              key={`${ev.timestamp}-${i}`}
-              className="truncate"
-              style={{
-                opacity: 1 - i * 0.4,
-                color:
-                  ev.type === "hearing" ? "#3da9ff" :
-                  ev.type === "vision"  ? "#7dd3fc" :
-                  ev.type === "action"  ? "#ffb347" :
-                  ev.type === "speech"  ? "#ff5c8a" : "#94a3b8",
-              }}
-            >
-              ▸ {ev.type}{ev.summary ? ` · ${ev.summary}` : ""}
+          {/* HUD top-left: global state */}
+          <div className="absolute top-2 left-2 z-10 font-mono text-[9px] text-cyan-300/90 leading-tight">
+            <div className="text-cyan-200 font-bold tracking-wider">
+              ULYSSE · BRAIN
             </div>
-          ))}
-        </div>
-      )}
-      {!activity.ready && (
-        <div className="absolute inset-0 flex items-center justify-center font-mono text-xs text-blue-400/60">
-          connecting to sensory system…
-        </div>
-      )}
-
-      {/* Detail panel for clicked zone */}
-      {selectedZone && (
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm z-20 p-4"
-          onClick={() => setSelectedId(null)}
-          data-testid="brain-zone-detail-overlay"
-        >
-          <div
-            className="relative max-w-sm w-full rounded-lg border-2 p-4 font-mono text-xs"
-            style={{
-              borderColor: selectedZone.color,
-              background: "rgba(2, 8, 23, 0.95)",
-              boxShadow: `0 0 24px ${selectedZone.color}55`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setSelectedId(null)}
-              className="absolute top-2 right-2 text-slate-400 hover:text-white text-base leading-none"
-              data-testid="button-close-zone-detail"
-              aria-label="Fermer"
-            >
-              ×
-            </button>
-            <div
-              className="text-base font-bold tracking-[0.2em] mb-2"
-              style={{ color: selectedZone.color }}
-              data-testid="text-zone-detail-name"
-            >
-              {selectedZone.label}
+            <div className="text-slate-400">
+              <span style={{ color: activity.mood.color }}>
+                {activity.mood.emoji} {activity.mood.label}
+              </span>
+              {" · "}charge: {activity.consciousness.cognitiveLoad}%
             </div>
-            <div className="text-slate-300 leading-relaxed mb-3 font-sans text-[11px]">
-              {ZONE_DESCRIPTIONS[selectedZone.id]}
-            </div>
-            <div className="grid grid-cols-2 gap-y-1.5 gap-x-3 text-slate-200">
-              <div className="text-slate-500">Activité totale</div>
-              <div className="text-right font-bold" data-testid="text-zone-total-events">
-                {selectedZone.totalEvents.toLocaleString("fr-FR")}
-              </div>
-              <div className="text-slate-500">Fréquence (Hz)</div>
-              <div className="text-right font-bold" data-testid="text-zone-firing-hz">
-                {selectedZone.firingHz.toFixed(2)}
-              </div>
-              <div className="text-slate-500">Neurones</div>
-              <div className="text-right font-bold">{selectedZone.neurons}</div>
-              <div className="text-slate-500">État</div>
-              <div className="text-right font-bold" style={{ color: selectedZone.active ? "#4ade80" : "#64748b" }}>
-                {selectedZone.active ? "● actif" : "○ repos"}
-              </div>
-            </div>
-            <div
-              className="mt-3 pt-3 border-t border-slate-700/60 text-[11px]"
-              style={{ color: selectedZone.color }}
-              data-testid="text-zone-detail-info"
-            >
-              {selectedZone.detail}
+            <div className="text-slate-500">
+              uptime: {uptimeMin}m · WM: {activity.consciousness.workingMemory}
             </div>
           </div>
+
+          {/* HUD top-right: totals */}
+          <div className="absolute top-2 right-2 z-10 font-mono text-[9px] text-right text-slate-400 leading-tight">
+            <div>in {activity.totals.inputs}</div>
+            <div>out {activity.totals.outputs}</div>
+            <div>act {activity.totals.actions}</div>
+            <div className="text-slate-600">
+              total: {activity.totals.events}
+            </div>
+          </div>
+
+          <Canvas
+            camera={{ position: [4.5, 1.2, 5.8], fov: 50 }}
+            dpr={[1, 1.5]}
+            gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+            onCreated={({ gl }) => {
+              gl.toneMapping = THREE.ACESFilmicToneMapping;
+              gl.toneMappingExposure = 1.05;
+            }}
+          >
+            <Suspense fallback={null}>
+              <BrainScene
+                hubMetrics={hubMetrics}
+                hubPulseTriggers={hubTriggers}
+                hovered={hovered}
+                onSelect={setSelected}
+                onHover={setHovered}
+              />
+              <EffectComposer multisampling={0} disableNormalPass>
+                <Bloom intensity={0.9} luminanceThreshold={0.18} luminanceSmoothing={0.4} mipmapBlur radius={0.7} />
+                <Vignette eskil={false} offset={0.18} darkness={0.55} />
+              </EffectComposer>
+              <OrbitControls
+                enablePan={false}
+                minDistance={4}
+                maxDistance={11}
+                enableDamping
+                dampingFactor={0.08}
+              />
+            </Suspense>
+          </Canvas>
         </div>
-      )}
+
+        {/* === RIGHT: Cockpit (real metrics only) === */}
+        <div
+          className="relative flex flex-col p-2 gap-2 overflow-y-auto"
+          style={{ display: layout === "brain" ? "none" : "flex" }}
+        >
+          {/* Layout toggle visible aussi quand seul le cockpit est affiché */}
+          {layout === "cockpit" && (
+            <div className="absolute top-2 right-2 z-20 flex gap-0.5 rounded border border-slate-700 bg-slate-950/80 overflow-hidden">
+              {([
+                { id: "brain",   label: "BRAIN" },
+                { id: "hybrid",  label: "HYBRID" },
+                { id: "cockpit", label: "COCKPIT" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setLayout(opt.id)}
+                  className="font-mono text-[8px] px-1.5 py-0.5 tracking-wider transition-colors"
+                  style={{
+                    color: layout === opt.id ? "#ffd966" : "#94a3b8",
+                    background: layout === opt.id ? "rgba(255,217,102,0.12)" : "transparent",
+                    fontWeight: 700,
+                  }}
+                  data-testid={`button-layout-${opt.id}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div className="font-mono text-[10px] text-cyan-300 font-bold tracking-wider">
+              MISSION CONTROL
+            </div>
+            <div className="font-mono text-[8px] text-slate-500">
+              live · {activity.ready ? "online" : "boot…"}
+            </div>
+          </div>
+
+          {/* 6 Hub cards in 2 columns (BRAIN, HEAR, SEE, VOICE, ACT, MEM) */}
+          <div className="grid grid-cols-2 gap-1.5">
+            {hubMetrics.map((m) => (
+              <HubCard
+                key={m.hub.id}
+                metric={m}
+                series={hubSeries[m.hub.id] ?? []}
+                recentEvents={eventsByHub[m.hub.id]}
+                hovered={hovered === m.hub.id}
+                onHover={setHovered}
+              />
+            ))}
+            {/* extra tile: cumulative knowledge graph (concepts/bridges/persona) */}
+            <div className="rounded border border-blue-900/40 bg-slate-950/60 p-2 col-span-2">
+              <div className="font-mono text-[9px] tracking-wider font-bold text-cyan-300">
+                KNOWLEDGE GRAPH
+              </div>
+              <div
+                className="font-mono text-lg font-bold leading-none mt-1 text-slate-100"
+                data-testid="text-knowledge-total"
+              >
+                {activity.evolution.knowledge.toLocaleString("fr-FR")}
+              </div>
+              <div className="font-mono text-[8px] text-slate-500 mt-0.5">
+                bridges · concepts · souvenirs
+              </div>
+              <div className="font-mono text-[8px] text-slate-400 mt-1">
+                persona: {activity.consciousness.persona}
+              </div>
+            </div>
+          </div>
+
+          {/* Selected hub detail */}
+          {selected && (() => {
+            const m = hubMetrics.find((x) => x.hub.id === selected);
+            if (!m) return null;
+            return (
+              <div className="rounded border border-amber-900/40 bg-slate-950/80 p-2 mt-1">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-mono text-[10px] text-amber-300 font-bold tracking-wider">
+                    {m.hub.label}
+                  </div>
+                  <button
+                    onClick={() => setSelected(null)}
+                    className="text-slate-500 hover:text-slate-200 text-[10px]"
+                    data-testid="button-close-hub-detail"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-y-0.5 text-[9px] font-mono">
+                  <div className="text-slate-500">events totaux</div>
+                  <div className="text-right text-slate-200">{m.totalEvents}</div>
+                  <div className="text-slate-500">firing rate</div>
+                  <div className="text-right text-slate-200">{m.firingHz.toFixed(2)} Hz</div>
+                  <div className="text-slate-500">statut</div>
+                  <div className="text-right" style={{ color: m.active ? "#22c55e" : "#94a3b8" }}>
+                    {m.active ? "ACTIF" : "REPOS"}
+                  </div>
+                </div>
+                {eventsByHub[m.hub.id].length > 0 && (
+                  <div className="mt-1 pt-1 border-t border-slate-800">
+                    <div className="font-mono text-[8px] text-slate-500 mb-0.5">events récents:</div>
+                    {eventsByHub[m.hub.id].slice(0, 4).map((e, i) => (
+                      <div key={i} className="font-mono text-[8px] text-slate-400 truncate">
+                        · {Math.floor((Date.now() - e.timestamp) / 1000)}s · {e.type}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      </div>
     </div>
   );
 }
-
-export default UlysseBrainVisualizer;

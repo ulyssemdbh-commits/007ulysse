@@ -245,6 +245,29 @@ export async function mergePullRequest(owner: string, repo: string, pullNumber: 
   });
 }
 
+export async function closePullRequest(owner: string, repo: string, pullNumber: number) {
+  return githubApi(`/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+    method: "PATCH",
+    body: { state: "closed" }
+  });
+}
+
+export async function createIssueComment(owner: string, repo: string, issueNumber: number, body: string) {
+  return githubApi(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+    method: "POST",
+    body: { body }
+  });
+}
+
+export async function listAllPullRequests(owner: string, repo: string, opts: { state?: "open" | "closed" | "all"; per_page?: number; page?: number } = {}) {
+  const params = new URLSearchParams({
+    state: opts.state || "open",
+    per_page: String(opts.per_page || 100),
+    page: String(opts.page || 1),
+  });
+  return githubApi(`/repos/${owner}/${repo}/pulls?${params.toString()}`);
+}
+
 export async function listCommits(owner: string, repo: string, branch?: string, per_page = 20, options?: { author?: string; since?: string; until?: string; path?: string }) {
   const params = new URLSearchParams({ per_page: String(per_page) });
   if (branch) params.set("sha", branch);
@@ -747,8 +770,11 @@ export const githubService = {
   createOrUpdateFileRaw,
   createPullRequest,
   listPullRequests,
+  listAllPullRequests,
   getPullRequest,
   mergePullRequest,
+  closePullRequest,
+  createIssueComment,
   listCommits,
   getTree,
   listWorkflowRuns,

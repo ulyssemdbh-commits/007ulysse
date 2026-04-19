@@ -340,14 +340,93 @@ const ACTION_PATTERNS: IntentPattern[] = [
     priority: 10
   },
   
-  // IMAGES
+  // IMAGES - Génération artistique (DALL-E)
   {
     patterns: [
-      /(?:génère|crée|dessine|fais).*(?:image|illustration|dessin|logo)/i,
+      /(?:génère|génere|crée|cree|dessine|fais).*(?:image|illustration|dessin|logo)/i,
       /(?:imagine|visualise)/i
     ],
     tools: ["image_generate"],
     priority: 9
+  },
+  // ACTUALITÉS / NEWS
+  {
+    patterns: [
+      /(?:dernières?|derniere)\s+(?:news|actualités?|nouvelles?|infos?)/i,
+      /(?:actualités?|news|breaking)\s+(?:sur|de|du|à propos|concernant)/i,
+      /(?:quoi de neuf|que se passe-t-il|breaking news)/i,
+    ],
+    tools: ["news_search"],
+    priority: 9
+  },
+  // YOUTUBE
+  {
+    patterns: [
+      /(?:youtube|yt|vidéo|video|tuto|tutoriel|clip).*(?:cherche|trouve|montre|recommande|sur|de|à propos)/i,
+      /(?:cherche|trouve|montre).*(?:vidéo|video|youtube|tuto)/i,
+    ],
+    tools: ["youtube_search"],
+    priority: 9
+  },
+  // WIKIPEDIA
+  {
+    patterns: [
+      /(?:wikipedia|wikipédia|wiki)/i,
+      /(?:biographie|bio)\s+(?:de|du|d')/i,
+    ],
+    tools: ["wikipedia_search"],
+    priority: 9
+  },
+  // MÉTÉO PRÉVISIONS
+  {
+    patterns: [
+      /(?:prévisions?|previsions?|forecast).*(?:météo|meteo|temps)/i,
+      /(?:météo|meteo|temps).*(?:demain|semaine|week-?end|j\+\d|dans \d+ jours?)/i,
+      /(?:il (?:va|fera)|fera-t-il).*(?:demain|semaine|week-?end)/i,
+    ],
+    tools: ["weather_forecast"],
+    priority: 9
+  },
+  // DEVISES
+  {
+    patterns: [
+      /\d+(?:\.\d+)?\s*(?:eur|usd|gbp|jpy|chf|ils|cad|aud|nis|shekel|euro|dollar|livre|yen)\s+(?:en|to|vers|=|→)/i,
+      /(?:convertis?|change|change-moi|combien.*font?|taux\s+de\s+change)/i,
+      /(?:cours\s+du|prix\s+du)\s+(?:dollar|euro|bitcoin|btc|eth|yen|livre)/i,
+    ],
+    tools: ["currency_convert"],
+    priority: 9
+  },
+  // GITHUB
+  {
+    patterns: [
+      /(?:github|gh)\s+(?:repo|repos|pull request|pr|issue|commit|branch|workflow|action)/i,
+      /(?:mes|liste|montre).*(?:repos?|dépôts?|projets?\s+github)/i,
+      /(?:pull request|PR)\s+\d+/i,
+      /(?:dernier|dernière)s?\s+commits?/i,
+    ],
+    tools: ["github_manage"],
+    priority: 9
+  },
+  // CALENDAR - MODIFIER / SUPPRIMER
+  {
+    patterns: [
+      /(?:annule|supprime|enlève|efface|retire).*(?:rdv|rendez-vous|événement|event|réunion|meeting)/i,
+      /(?:déplace|reporte|décale|change|modifie|repousse).*(?:rdv|rendez-vous|événement|event|réunion|meeting)/i,
+    ],
+    tools: ["calendar_update_event", "calendar_delete_event"],
+    priority: 9
+  },
+  // IMAGES - Recherche de PHOTOS RÉELLES (Google Images)
+  {
+    patterns: [
+      /(?:montre|mo[nt]re|affiche|donne|envoie|trouve|cherche|recherche|voir|vois).{0,30}(?:photo|photos|image|images|picture|pictures)/i,
+      /(?:photo|photos|image|images).{0,15}(?:de|du|d'|des|sur|pour)\s+\S+/i,
+      /(?:à quoi (?:il|elle|ça) ressemble)/i,
+      /(?:c'est qui)\s+\S+/i,
+    ],
+    tools: ["image_search"],
+    priority: 10
   },
   
   // KANBAN
@@ -597,7 +676,9 @@ export function shouldForceToolChoice(intent: ActionIntent): "required" | "auto"
 const MAX_TOOLS_PER_CALL = 128;
 
 const CORE_TOOLS = new Set([
-  "query_brain", "memory_save", "web_search", "read_url", "image_generate",
+  "query_brain", "memory_save", "web_search", "image_search", "news_search", "youtube_search",
+  "wikipedia_search", "weather_forecast", "currency_convert", "github_manage",
+  "calendar_update_event", "calendar_delete_event", "read_url", "image_generate",
   "calendar_list_events", "calendar_create_event", "email_list_inbox", "email_send",
   "email_read_message", "email_reply", "email_forward",
   "todoist_list_tasks", "todoist_create_task", "todoist_complete_task", "homework_manage",

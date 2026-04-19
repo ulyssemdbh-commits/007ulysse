@@ -169,6 +169,12 @@ app.use((req, res, next) => {
 // Track API response times, DB queries, external API calls for Ulysse Dev++ insights
 app.use(perfProfiler.expressMiddleware());
 
+// ---------- UNIVERSAL BRAIN PULSE ----------
+// Guarantee: every server action produces a visible reaction on the 3D Brain.
+// Fires a brainPulse() on every API response so the visualizer reacts in real-time.
+import { brainPulseHttpMiddleware } from "./middleware/brainPulseMiddleware";
+app.use(brainPulseHttpMiddleware());
+
 
 // =============================================================================
 // CLEAN SHUTDOWN (SIGINT / SIGTERM / exit)

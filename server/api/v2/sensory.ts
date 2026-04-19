@@ -354,7 +354,7 @@ router.get("/memory", requireOwner, async (req: Request, res: Response) => {
       filtered: memory.length,
       items: memory.slice(0, limit).map(m => ({
         type: m.type,
-        content: m.content.substring(0, 300),
+        content: (m.content ?? '').toString().substring(0, 300),
         source: m.source,
         importance: m.importance,
         timestamp: m.timestamp,

@@ -44,7 +44,13 @@ export const DGM_GOVERNANCE = {
     maxRetryBackoffMs: 10_000,
   },
   owner: "Maurice",
-  lastUpdated: "2026-04-07",
+  lastUpdated: "2026-04-19",
+  circuitBreaker: {
+    enabled: true,
+    maxOpenPrsPerRepoPer24h: 5,
+    autoCleanupOnSessionFailure: true,
+    cleanupTitlePrefix: "[DGM]",
+  },
 };
 
 const REPO_APP_MAP: Record<string, string> = {
@@ -870,6 +876,17 @@ export async function runCreatePR(sessionId: number, taskId: number, config: Pip
     const sourceSha = branchInfo?.commit?.sha;
     if (!sourceSha) throw new Error(`Cannot resolve SHA for branch ${mainBranch}`);
 
+    const repoKey = `${config.owner}/${config.repo}`;
+    if (DGM_GOVERNANCE.circuitBreaker?.enabled) {
+      const { shouldFreezeDgmRepo } = await import("./dgmPrJanitor");
+      const breaker = shouldFreezeDgmRepo(repoKey, DGM_GOVERNANCE.circuitBreaker.maxOpenPrsPerRepoPer24h);
+      if (breaker.freeze) {
+        console.warn(`${LOG} CIRCUIT BREAKER TRIPPED on ${repoKey}: ${breaker.reason}`);
+        logPipelineRun(sessionId, taskId, "pr_creation", "blocked", { repoKey, breaker }, { reason: breaker.reason }, Date.now() - start);
+        throw new Error(`DGM circuit breaker: ${breaker.reason}`);
+      }
+    }
+
     await ghService.createBranch(config.owner, config.repo, branchName, sourceSha);
     await ghService.applyPatch(config.owner, config.repo, branchName, patchFiles, commitMessage);
 
@@ -877,6 +894,10 @@ export async function runCreatePR(sessionId: number, taskId: number, config: Pip
     const prBody = `## DGM Pipeline V2 - Tâche #${taskId}\n\n**Objectif:** ${task?.description || "N/A"}\n\n**Fichiers modifiés:** ${patchFiles.length}\n${patchFiles.map(f => `- \`${f.path}\``).join("\n")}\n\n**Risk Score:** ${task?.riskScore || "N/A"}/100 (${task?.riskLevel || "unknown"})\n\n**Test Criteria:** ${task?.testCriteria || "N/A"}\n\n---\n*Généré automatiquement par DGM Pipeline V2*`;
 
     const pr = await ghService.createPullRequest(config.owner, config.repo, prTitle, prBody, branchName, mainBranch);
+    try {
+      const { recordDgmPrCreation } = await import("./dgmPrJanitor");
+      recordDgmPrCreation(repoKey);
+    } catch {}
     const prNumber = (pr as any)?.number;
     const prUrl = (pr as any)?.html_url;
     const durationMs = Date.now() - start;

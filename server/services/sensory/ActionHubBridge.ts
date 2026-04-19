@@ -136,6 +136,17 @@ const TOOL_CATEGORY_MAP: Record<string, ActionCategory> = {
   commax_manage: "tool_call",
   // Screen Monitor
   screen_monitor_manage: "tool_call",
+  // MaxAI Advanced (DeerFlow capabilities)
+  firecrawl_research: "web",
+  deerflow_deep_research: "web",
+  subagent_parallel: "tool_call",
+  todo_planner: "tool_call",
+  code_sandbox: "system",
+  code_sandbox_python: "system",
+  code_sandbox_shell: "system",
+  mcp_devops_bridge: "system",
+  app_diagnose_fix: "monitoring",
+  dgm_pr_manage: "tool_call",
 };
 
 let bridgeInitialized = false;
