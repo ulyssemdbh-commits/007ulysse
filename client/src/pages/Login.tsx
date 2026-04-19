@@ -54,11 +54,18 @@ export default function Login() {
   const [loadingComplete, setLoadingComplete] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated && !isLoading && !showLoadingScreen && !requires2FA && !show2FA) {
+    if (
+      isAuthenticated &&
+      !isLoading &&
+      !showLoadingScreen &&
+      !requires2FA &&
+      !show2FA &&
+      !isSubmitting
+    ) {
       setShowLoadingScreen(true);
       runLoadingSequence();
     }
-  }, [isAuthenticated, isLoading, requires2FA, show2FA]);
+  }, [isAuthenticated, isLoading, requires2FA, show2FA, isSubmitting]);
 
   const updateStep = (stepId: string, progress: number, complete: boolean = false) => {
     setLoadingSteps(prev => prev.map(step => 
@@ -224,7 +231,7 @@ export default function Login() {
     );
   }
 
-  if (showLoadingScreen) {
+  if (showLoadingScreen && !show2FA && !requires2FA) {
     const personaName = user?.isOwner ? "Ulysse" : user?.role === "external" ? "Max" : "Iris";
     const overallProgress = Math.round(loadingSteps.reduce((sum, s) => sum + s.progress, 0) / loadingSteps.length);
     
@@ -329,7 +336,7 @@ export default function Login() {
     );
   }
 
-  if (show2FA) {
+  if (show2FA || requires2FA) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted p-4">
         <motion.div

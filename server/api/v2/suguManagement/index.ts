@@ -60,6 +60,9 @@ router.get("/hubrise/callback", async (req: Request, res: Response) => {
 });
 
 router.use((req: Request, res: Response, next) => {
+    if (req.path.startsWith("/inventory/backfill") && req.headers["x-webhook-secret"] === process.env.DEERFLOW_WEBHOOK_SECRET) {
+        return next();
+    }
     const user = (req as any).user;
     const isOwner = (req as any).isOwner;
     if (isOwner || user?.role === "approved" || user?.role === "suguval_only") {

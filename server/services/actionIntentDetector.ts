@@ -274,16 +274,30 @@ const ACTION_PATTERNS: IntentPattern[] = [
       /(?:compl[eè]te|remplis|mets|ajoute).*(?:prix|tarif|tableau|stock)/i,
       /stock\s+sugu/i,
     ],
-    tools: ["manage_sugu_purchases", "search_sugu_data"],
+    tools: ["manage_sugu_files", "manage_sugu_purchases", "search_sugu_data"],
     priority: 10
   },
   {
     patterns: [
-      /(?:fichier|document|pièce).*(?:sugu|restaurant)/i,
-      /(?:sugu|restaurant).*(?:fichier|document|pièce)/i
+      /(?:fichier|document|pi[èe]ce|facture|pdf|invoice).*(?:sugu|restaurant|metro|promocash|transgourmet|edf|fournisseur|paie|salaire|banque)/i,
+      /(?:sugu|restaurant|metro|promocash|transgourmet|edf|fournisseur|paie|salaire|banque).*(?:fichier|document|pi[èe]ce|facture|pdf|invoice|contenu|article|d[ée]tail|ligne)/i,
+      /(?:lis|ouvre|consulte|scanne|cherche dans|extrait|d[ée]taille).*(?:facture|pdf|invoice|document)/i,
+      /(?:prix|tarif|article|ligne|d[ée]tail|montant unitaire).*(?:metro|promocash|transgourmet|fournisseur|facture|pdf)/i,
     ],
-    tools: ["manage_sugu_files"],
-    priority: 8
+    tools: ["manage_sugu_files", "manage_sugu_inventory", "search_sugu_data", "manage_sugu_purchases"],
+    priority: 9
+  },
+  {
+    patterns: [
+      /(?:inventaire|stock|catalogue|articles?|produits?|r[ée]f[ée]rences?)/i,
+      /(?:combien|prix|tarif|co[uû]t).*(?:coca|orangina|evian|biere|bi[èe]re|vin|champagne|tomates?|salade|p[âa]tes?|riz|huile|farine|sucre|caf[ée]|sucre|fromage|jambon|poulet|bo[eœ]uf|porc|saumon)/i,
+      /(?:historique|[ée]volution).*(?:prix|tarif)/i,
+      /(?:top|classement).*(?:articles?|produits?|d[ée]penses?)/i,
+      /(?:articles?|produits?|lignes?).*(?:facture|invoice|metro|promocash|fournisseur)/i,
+      /(?:augment|baisse|diminu).*(?:prix|tarif|co[uû]t)/i,
+    ],
+    tools: ["manage_sugu_inventory", "manage_sugu_files", "manage_sugu_purchases"],
+    priority: 10
   },
   {
     patterns: [
@@ -708,23 +722,39 @@ const CORE_TOOLS = new Set([
 ]);
 
 export function getRelevantTools(intent: ActionIntent, allTools: any[]): any[] {
-  if (intent.shouldForceTools && intent.suggestedTools.length > 0) {
-    const relevantTools = allTools.filter(tool => 
-      intent.suggestedTools.includes(tool.function.name) ||
-      ['query_brain', 'memory_save', 'web_search'].includes(tool.function.name)
-    );
-    if (relevantTools.length > 0 && relevantTools.length <= MAX_TOOLS_PER_CALL) {
-      return relevantTools;
+  // ════════════════════════════════════════════════════════════════════════════
+  // STRATÉGIE PRIORITY-ORDER (jamais filter-out):
+  // 1. Outils suggérés par l'intent → en TÊTE de liste (le LLM les pondère plus fort)
+  // 2. Outils core (haute utilité quotidienne) → ensuite
+  // 3. TOUS les autres outils → ensuite, jusqu'à MAX_TOOLS_PER_CALL
+  // → Aucun outil n'est jamais "invisible" à cause d'une règle d'intent incomplète.
+  // → Le LLM choisit librement, biaisé par l'ordre, jamais bloqué.
+  // ════════════════════════════════════════════════════════════════════════════
+  const seen = new Set<string>();
+  const ordered: any[] = [];
+  const pushIfNew = (t: any) => {
+    const n = t?.function?.name;
+    if (!n || seen.has(n)) return;
+    seen.add(n);
+    ordered.push(t);
+  };
+
+  // Tier 1: outils suggérés par l'intent (priorité max)
+  if (intent.suggestedTools.length > 0) {
+    const suggestedSet = new Set(intent.suggestedTools);
+    for (const t of allTools) {
+      if (suggestedSet.has(t?.function?.name)) pushIfNew(t);
     }
   }
-  
-  if (allTools.length <= MAX_TOOLS_PER_CALL) {
-    return allTools;
+
+  // Tier 2: outils core (toujours présents — fallback safety net)
+  for (const t of allTools) {
+    if (CORE_TOOLS.has(t?.function?.name)) pushIfNew(t);
   }
 
-  const coreSet = allTools.filter(t => CORE_TOOLS.has(t.function.name));
-  const remaining = allTools.filter(t => !CORE_TOOLS.has(t.function.name));
-  const spotsLeft = MAX_TOOLS_PER_CALL - coreSet.length;
-  const result = [...coreSet, ...remaining.slice(0, Math.max(0, spotsLeft))];
-  return result;
+  // Tier 3: tout le reste (orphelins, outils rares mais disponibles si besoin)
+  for (const t of allTools) pushIfNew(t);
+
+  // Cap à la limite du modèle (OpenAI: 128, Gemini: ~512)
+  return ordered.slice(0, MAX_TOOLS_PER_CALL);
 }

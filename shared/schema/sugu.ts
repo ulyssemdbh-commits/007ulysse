@@ -205,6 +205,28 @@ export const suguFiles = pgTable("sugu_files", {
   emailedTo: text("emailed_to").array(),
 });
 
+export const suguInventoryItems = pgTable("sugu_inventory_items", {
+  id: serial("id").primaryKey(),
+  fileId: integer("file_id"),
+  purchaseId: integer("purchase_id"),
+  expenseId: integer("expense_id"),
+  supplier: text("supplier").notNull(),
+  invoiceNumber: text("invoice_number"),
+  invoiceDate: text("invoice_date"),
+  articleName: text("article_name").notNull(),
+  articleNameNormalized: text("article_name_normalized").notNull(),
+  articleCode: text("article_code"),
+  category: text("category"),
+  unit: text("unit"),
+  quantity: real("quantity"),
+  unitPriceHt: real("unit_price_ht"),
+  totalHt: real("total_ht"),
+  vatRate: real("vat_rate"),
+  totalTtc: real("total_ttc"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const suguTrash = pgTable("sugu_trash", {
   id: serial("id").primaryKey(),
   originalFileId: integer("original_file_id"),
@@ -354,6 +376,7 @@ export const insertSuguCashRegisterSchema = createInsertSchema(suguCashRegister)
 export const insertSuguEmployeeSchema = createInsertSchema(suguEmployees).omit({ id: true, createdAt: true });
 export const insertSuguPayrollSchema = createInsertSchema(suguPayroll).omit({ id: true, createdAt: true });
 export const insertSuguAbsenceSchema = createInsertSchema(suguAbsences).omit({ id: true, createdAt: true });
+export const insertSuguInventoryItemSchema = createInsertSchema(suguInventoryItems).omit({ id: true, createdAt: true });
 
 export type SuguvalCategory = typeof suguvalCategories.$inferSelect;
 export type InsertSuguvalCategory = z.infer<typeof insertSuguvalCategorySchema>;
@@ -424,3 +447,6 @@ export type SuguAbsence = typeof suguAbsences.$inferSelect;
 export type InsertSuguAbsence = z.infer<typeof insertSuguAbsenceSchema>;
 
 export type SuguBackup = typeof suguBackups.$inferSelect;
+
+export type SuguInventoryItem = typeof suguInventoryItems.$inferSelect;
+export type InsertSuguInventoryItem = z.infer<typeof insertSuguInventoryItemSchema>;

@@ -244,6 +244,15 @@ export interface ParsedDocumentData {
     phone: string | null;
     email: string | null;
     iban: string | null;
+    lineItems?: Array<{
+        articleName: string;
+        articleCode?: string | null;
+        quantity?: number | null;
+        unit?: string | null;
+        unitPriceHt?: number | null;
+        totalHt?: number | null;
+        vatRate?: number | null;
+    }> | null;
 }
 
 export function extractAmountFromFilename(filename: string): number {

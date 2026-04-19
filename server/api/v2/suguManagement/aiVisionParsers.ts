@@ -64,8 +64,26 @@ Réponds UNIQUEMENT avec un JSON valide (pas de markdown, pas de \`\`\`):
   "phone": null,
   "email": null,
   "iban": null,
-  "category": "alimentaire|boissons|emballages|entretien|comptabilite|assurances|vehicules|plateformes|materiels|eau|energie|autre"
-}`;
+  "category": "alimentaire|boissons|emballages|entretien|comptabilite|assurances|vehicules|plateformes|materiels|eau|energie|autre",
+  "lineItems": [
+    {
+      "articleName": "nom exact de l'article tel qu'écrit sur la facture (ex: 'COCA COLA 33CL X24', 'TOMATES GRAPPE FR CAT.1', 'EVIAN 1.5L X6')",
+      "articleCode": "code article ou EAN si présent, sinon null",
+      "quantity": 0,
+      "unit": "unité (kg, L, pcs, U, carton, palette, etc.) ou null",
+      "unitPriceHt": 0.00,
+      "totalHt": 0.00,
+      "vatRate": 5.5
+    }
+  ]
+}
+
+RÈGLE CRITIQUE LINE ITEMS:
+- Extrais TOUTES les lignes d'articles du tableau de la facture (chaque ligne = un article).
+- N'inclus PAS les lignes de sous-totaux, totaux, frais de port, remises globales, TVA récap.
+- Si une ligne d'article a une remise spécifique, applique-la au unitPriceHt et totalHt.
+- Pour Metro/Promocash/Transgourmet: chaque référence produit du tableau central est un line item.
+- Si le document n'a aucune ligne d'article visible (ex: relevé Deliveroo, facture EDF mensuelle), retourne lineItems: [].`;
 
     const response = await gemini.models.generateContent({
         model: "gemini-2.5-flash",
@@ -115,8 +133,30 @@ Réponds UNIQUEMENT avec un JSON valide (pas de markdown, pas de \`\`\`):
     if (parsed.email && typeof parsed.email === "string") result.email = parsed.email.toLowerCase();
     if (parsed.iban && typeof parsed.iban === "string") result.iban = parsed.iban.replace(/\s/g, "");
     if (parsed.category && typeof parsed.category === "string") result.category = parsed.category;
+    if (Array.isArray(parsed.lineItems)) (result as any).lineItems = sanitizeLineItems(parsed.lineItems);
 
     return result;
+}
+
+function sanitizeLineItems(raw: any[]): Array<{ articleName: string; articleCode?: string | null; quantity?: number | null; unit?: string | null; unitPriceHt?: number | null; totalHt?: number | null; vatRate?: number | null; }> {
+    const out: any[] = [];
+    for (const li of raw) {
+        if (!li || typeof li !== "object") continue;
+        const name = typeof li.articleName === "string" ? li.articleName.trim().substring(0, 200) : "";
+        if (!name || name.length < 2) continue;
+        const lower = name.toLowerCase();
+        if (/^(total|sous-?total|tva|net\s*a\s*payer|montant|remise|frais\s*de\s*port|escompte)/i.test(lower)) continue;
+        out.push({
+            articleName: name,
+            articleCode: typeof li.articleCode === "string" ? li.articleCode.trim().substring(0, 40) : null,
+            quantity: typeof li.quantity === "number" && isFinite(li.quantity) ? li.quantity : null,
+            unit: typeof li.unit === "string" ? li.unit.trim().substring(0, 16) : null,
+            unitPriceHt: typeof li.unitPriceHt === "number" && isFinite(li.unitPriceHt) ? Math.round(li.unitPriceHt * 10000) / 10000 : null,
+            totalHt: typeof li.totalHt === "number" && isFinite(li.totalHt) ? Math.round(li.totalHt * 100) / 100 : null,
+            vatRate: typeof li.vatRate === "number" && isFinite(li.vatRate) ? li.vatRate : null,
+        });
+    }
+    return out;
 }
 
 export async function parseDocumentWithGPT4oVision(pdfBuffer: Buffer, filename?: string, knowledgeHints?: string): Promise<Partial<ParsedDocumentData> | null> {
@@ -145,7 +185,9 @@ RÈGLES STRICTES:
 ${knowledgeHints || ""}${filenameHint}
 
 Réponds UNIQUEMENT avec un objet JSON valide (sans markdown ni \`\`\`):
-{"supplier":"nom exact du fournisseur","amount":0.00,"taxAmount":0.00,"date":"YYYY-MM-DD","dueDate":"YYYY-MM-DD ou null","invoiceNumber":"numéro","paymentMethod":null,"siret":null,"tvaNumber":null,"address":null,"city":null,"postalCode":null,"phone":null,"email":null,"iban":null,"category":"catégorie"}`;
+{"supplier":"nom exact du fournisseur","amount":0.00,"taxAmount":0.00,"date":"YYYY-MM-DD","dueDate":"YYYY-MM-DD ou null","invoiceNumber":"numéro","paymentMethod":null,"siret":null,"tvaNumber":null,"address":null,"city":null,"postalCode":null,"phone":null,"email":null,"iban":null,"category":"catégorie","lineItems":[{"articleName":"nom exact article","articleCode":"code ou null","quantity":0,"unit":"kg|L|pcs|U|carton ou null","unitPriceHt":0.00,"totalHt":0.00,"vatRate":5.5}]}
+
+LINE ITEMS: extrais TOUTES les lignes d'articles du tableau. Exclus totaux/sous-totaux/TVA récap/frais de port/remises globales. Si aucune ligne (ex: relevé Deliveroo, EDF), retourne lineItems:[].`;
 
         const detectedMime = detectBufferMimeType(pdfBuffer, filename);
         const isImage = detectedMime.startsWith("image/");
@@ -208,7 +250,8 @@ Réponds UNIQUEMENT avec un objet JSON valide (sans markdown ni \`\`\`):
         if (parsed.email && typeof parsed.email === "string") result.email = parsed.email.toLowerCase();
         if (parsed.iban && typeof parsed.iban === "string") result.iban = parsed.iban.replace(/\s/g, "");
         if (parsed.category && typeof parsed.category === "string") result.category = parsed.category;
-        console.log(`[SUGU] GPT-4o vision: supplier=${result.supplier}, amount=${result.amount}, category=${result.category}`);
+        if (Array.isArray(parsed.lineItems)) (result as any).lineItems = sanitizeLineItems(parsed.lineItems);
+        console.log(`[SUGU] GPT-4o vision: supplier=${result.supplier}, amount=${result.amount}, category=${result.category}, lineItems=${(result as any).lineItems?.length || 0}`);
         return result;
     } catch (err: any) {
         console.error("[SUGU] GPT-4o vision failed:", err?.message);
@@ -249,8 +292,11 @@ Réponds UNIQUEMENT avec un JSON valide (pas de markdown):
   "phone": null,
   "email": null,
   "iban": null,
-  "category": "catégorie"
-}`;
+  "category": "catégorie",
+  "lineItems": [{"articleName":"nom exact article","articleCode":"code ou null","quantity":0,"unit":"kg|L|pcs|U|carton ou null","unitPriceHt":0.00,"totalHt":0.00,"vatRate":5.5}]
+}
+
+LINE ITEMS: si la facture contient un tableau d'articles (Metro, Promocash, Sysco, fournisseur alimentaire...), extrais TOUTES les lignes — exclus totaux/sous-totaux/TVA récap/frais de port/remises globales. Si aucune ligne (EDF, Saur, Deliveroo, télécom), retourne lineItems:[].`;
 
     const detectedMimeGemini = detectBufferMimeType(pdfBuffer, filename);
     const base64Pdf = pdfBuffer.toString("base64");
@@ -307,7 +353,8 @@ Réponds UNIQUEMENT avec un JSON valide (pas de markdown):
     if (parsed.email && typeof parsed.email === "string") result.email = parsed.email.toLowerCase();
     if (parsed.iban && typeof parsed.iban === "string") result.iban = parsed.iban.replace(/\s/g, "");
     if (parsed.category && typeof parsed.category === "string") result.category = parsed.category;
-    console.log(`[SUGU] PDF Vision extraction: supplier=${result.supplier}, amount=${result.amount}, category=${result.category}`);
+    if (Array.isArray(parsed.lineItems)) (result as any).lineItems = sanitizeLineItems(parsed.lineItems);
+    console.log(`[SUGU] PDF Vision extraction: supplier=${result.supplier}, amount=${result.amount}, category=${result.category}, lineItems=${(result as any).lineItems?.length || 0}`);
     return result;
 }
 

@@ -281,6 +281,35 @@ export const utilityToolDefs: ChatCompletionTool[] = [
     {
         type: "function",
         function: {
+            name: "manage_sugu_inventory",
+            description: "Inventaire structuré SUGU : tous les ARTICLES extraits automatiquement des factures (achats + frais généraux) avec nom, quantité, unité, prix unitaire HT, prix total, TVA, fournisseur, date facture. Utilise pour : chercher un article ('combien j'ai payé le coca le mois dernier ?'), historique de prix d'un produit, top articles par dépense, articles d'un fournisseur, mise à jour manuelle d'une ligne d'inventaire, suppression d'un doublon, statistiques par catégorie.",
+            parameters: {
+                type: "object",
+                properties: {
+                    action: { type: "string", enum: ["list", "search", "price_history", "top_articles", "by_supplier", "by_invoice", "update_item", "delete_item", "stats", "backfill", "backfill_status"], description: "list: lister articles récents | search: chercher par nom (fuzzy) | price_history: évolution prix d'un article | top_articles: top dépenses par article | by_supplier: tous les articles d'un fournisseur | by_invoice: articles d'une facture | update_item: corriger une ligne | delete_item: supprimer une ligne | stats: stats globales | backfill: rejoue toutes les factures déjà en DB pour constituer l'inventaire (background) | backfill_status: progression du backfill en cours" },
+                    skip_existing: { type: "boolean", description: "Pour backfill: si true (défaut), saute les fichiers qui ont déjà des articles en inventaire" },
+                    max_files: { type: "number", description: "Pour backfill: limite max de fichiers à traiter (défaut: tous)" },
+                    article_name: { type: "string", description: "Nom (ou partie) de l'article. Recherche fuzzy multi-termes (ex: 'coca' ou 'eau evian 1.5L')" },
+                    supplier: { type: "string", description: "Filtrer par fournisseur (ex: 'metro', 'promocash')" },
+                    category: { type: "string", description: "Filtrer par catégorie (alimentaire, boissons, energie, etc.)" },
+                    file_id: { type: "number", description: "Pour by_invoice: ID du fichier source" },
+                    purchase_id: { type: "number", description: "Pour by_invoice: ID de l'achat" },
+                    expense_id: { type: "number", description: "Pour by_invoice: ID de la dépense" },
+                    item_id: { type: "number", description: "Pour update_item / delete_item: ID de l'article inventaire" },
+                    updates: { type: "object", description: "Pour update_item: champs à mettre à jour { articleName?, quantity?, unitPriceHt?, totalHt?, vatRate?, unit?, category?, notes? }" },
+                    month: { type: "number", description: "Mois 1-12" },
+                    year: { type: "number", description: "Année (ex: 2026)" },
+                    date_from: { type: "string", description: "Date début YYYY-MM-DD" },
+                    date_to: { type: "string", description: "Date fin YYYY-MM-DD" },
+                    limit: { type: "number", description: "Nombre max de résultats (défaut 50)" }
+                },
+                required: ["action"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
             name: "sugu_full_overview",
             description: "Récupère une vue complète et synthétique de TOUTES les données Suguval: achats, frais généraux, banque (écritures + solde), emprunts, caisse, employés, fiches de paie, absences, et fichiers archivés. Utilise cet outil quand l'utilisateur demande un état des lieux global du restaurant SUGU Valentine.",
             parameters: {
@@ -3328,18 +3357,29 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
             }
             case "summary": {
                 const allFiles = await db.select().from(suguFiles);
-                const grouped: Record<string, number> = {};
+                const byCategory: Record<string, number> = {};
+                const bySupplier: Record<string, number> = {};
+                const bySupplierCategory: Record<string, Record<string, number>> = {};
                 for (const f of allFiles) {
-                    grouped[f.category] = (grouped[f.category] || 0) + 1;
+                    byCategory[f.category] = (byCategory[f.category] || 0) + 1;
+                    const sup = (f.supplier || "(non renseigné)").trim();
+                    bySupplier[sup] = (bySupplier[sup] || 0) + 1;
+                    if (!bySupplierCategory[sup]) bySupplierCategory[sup] = {};
+                    bySupplierCategory[sup][f.category] = (bySupplierCategory[sup][f.category] || 0) + 1;
                 }
+                const sortedSuppliers = Object.entries(bySupplier).sort((a, b) => b[1] - a[1]);
                 return JSON.stringify({
                     type: "files_summary",
                     totalFiles: allFiles.length,
                     totalSizeKB: Math.round(allFiles.reduce((s: number, f: any) => s + f.fileSize, 0) / 1024),
-                    byCategory: grouped,
+                    byCategory,
+                    distinctSuppliers: sortedSuppliers.length,
+                    bySupplier: Object.fromEntries(sortedSuppliers),
+                    bySupplierAndCategory: bySupplierCategory,
                     recentFiles: allFiles.slice(0, 5).map((f: any) => ({
                         name: f.originalName, category: f.category, date: f.fileDate, supplier: f.supplier
-                    }))
+                    })),
+                    hint: "Pour scanner TOUS les fournisseurs avec read_invoice_content: omets le paramètre 'supplier'. Pour cibler un fournisseur spécifique: passe son nom (case-insensitive, accents tolérés)."
                 });
             }
             case "send_by_email": {
@@ -3459,8 +3499,16 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
                     return JSON.stringify({ type: "read_invoice_content", error: "Aucun PDF trouvé pour ces critères" });
                 }
 
-                const searchTerm = search ? search.toLowerCase() : null;
-                const searchTermNoAccent = searchTerm ? stripAcc(searchTerm) : null;
+                // ═══════════════════════════════════════════════════════════════
+                // Multi-term OR search: split par espace/virgule/pipe
+                // → "COCA ORANGINA EVIAN" cherche les lignes contenant COCA OU ORANGINA OU EVIAN
+                // → si search vide, retourne le texte brut (sample large)
+                // ═══════════════════════════════════════════════════════════════
+                const searchTerms: string[] = search
+                    ? String(search).toLowerCase().split(/[\s,;|]+/).map(t => t.trim()).filter(t => t.length >= 2)
+                    : [];
+                const searchTermsNoAccent = searchTerms.map(t => stripAcc(t));
+                const hasSearch = searchTerms.length > 0;
                 const parsePdf = await getPdfParse();
                 const invoiceResults: any[] = [];
                 let totalMatches = 0;
@@ -3475,12 +3523,21 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
                         const rawText: string = pdfData.text || "";
                         const lines = rawText.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 0);
 
-                        if (searchTerm) {
-                            const matchedLines = lines.filter((line: string) => {
+                        if (hasSearch) {
+                            const matchedLines: { line: string; terms: string[] }[] = [];
+                            for (const line of lines) {
                                 const lower = line.toLowerCase();
                                 const lna = stripAcc(lower);
-                                return lower.includes(searchTerm) || lna.includes(searchTermNoAccent!);
-                            });
+                                const matchedHere: string[] = [];
+                                for (let i = 0; i < searchTerms.length; i++) {
+                                    if (lower.includes(searchTerms[i]) || lna.includes(searchTermsNoAccent[i])) {
+                                        matchedHere.push(searchTerms[i]);
+                                    }
+                                }
+                                if (matchedHere.length > 0) {
+                                    matchedLines.push({ line, terms: matchedHere });
+                                }
+                            }
                             if (matchedLines.length > 0) {
                                 totalMatches += matchedLines.length;
                                 invoiceResults.push({
@@ -3489,13 +3546,24 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
                                     matchCount: matchedLines.length,
                                     matchedLines,
                                 });
+                            } else {
+                                // Aucun match → on renvoie quand même un échantillon du texte
+                                // pour qu'Ulysse voie ce qui est VRAIMENT dans la facture
+                                invoiceResults.push({
+                                    fileId: f.id, fileName: f.originalName,
+                                    supplier: f.supplier, category: f.category, date: f.fileDate,
+                                    matchCount: 0,
+                                    note: "Aucun terme trouvé. Échantillon du contenu brut pour analyse:",
+                                    sampleText: lines.slice(0, 80).join("\n"),
+                                    totalLinesInPdf: lines.length,
+                                });
                             }
                         } else {
                             invoiceResults.push({
                                 fileId: f.id, fileName: f.originalName,
                                 supplier: f.supplier, category: f.category, date: f.fileDate,
                                 totalLines: lines.length,
-                                fullText: lines.slice(0, 150).join("\n"),
+                                fullText: lines.slice(0, 200).join("\n"),
                             });
                         }
                     } catch (e: any) {
@@ -3505,14 +3573,26 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
                     }
                 }
 
+                // Liste des fournisseurs uniques scannés (utile quand supplier non fourni)
+                const suppliersScanned: Record<string, number> = {};
+                for (const f of filesToRead) {
+                    const sup = (f.supplier || "(non renseigné)").trim();
+                    suppliersScanned[sup] = (suppliersScanned[sup] || 0) + 1;
+                }
+
                 return JSON.stringify({
                     type: "read_invoice_content",
                     filesScanned: filesToRead.length,
-                    filesWithMatches: searchTerm ? invoiceResults.filter((r: any) => !r.error && r.matchCount).length : undefined,
-                    totalMatches: searchTerm ? totalMatches : undefined,
-                    searchTerm: search || null,
-                    supplier: args.supplier || null,
+                    suppliersScanned,
+                    filesWithMatches: hasSearch ? invoiceResults.filter((r: any) => !r.error && r.matchCount).length : undefined,
+                    totalMatches: hasSearch ? totalMatches : undefined,
+                    searchTerms: hasSearch ? searchTerms : null,
+                    searchMode: hasSearch ? "OR (any term matches)" : "full text dump",
+                    supplier: args.supplier || "(tous fournisseurs)",
                     category: category || "toutes",
+                    hint: hasSearch && totalMatches === 0
+                        ? "0 match. Vois suppliersScanned ci-dessus pour la liste des fournisseurs scannés et sampleText par fichier pour le contenu réel. Pour scanner d'autres fournisseurs: omets 'supplier' (scanne TOUT), ou passe un autre nom (ex: 'promocash', 'transgourmet', 'edf'). Ou relance avec d'autres termes basés sur les vraies désignations vues dans sampleText (ex: '33CL', 'L33', codes article)."
+                        : "Pour élargir: omets 'supplier' pour scanner TOUS fournisseurs, ou change supplier='promocash'/'transgourmet'/'edf'/etc.",
                     results: invoiceResults,
                 });
             }
@@ -3523,6 +3603,287 @@ export async function executeSuguFilesManagement(args: Record<string, any>): Pro
         const msg = error instanceof Error ? error.message : String(error);
         console.error("[executeSuguFilesManagement] Error:", msg);
         return JSON.stringify({ error: msg });
+    }
+}
+
+export async function executeSuguInventoryManagement(args: Record<string, any>): Promise<string> {
+    try {
+        const action = String(args.action || "list");
+        const { db } = await import("../../db");
+        const { suguInventoryItems } = await import("@shared/schema");
+        const { and, or, eq, ilike, desc, gte, lte, sql, inArray } = await import("drizzle-orm");
+
+        const limit = Math.max(1, Math.min(500, Number(args.limit) || 50));
+        const supplier = args.supplier ? String(args.supplier).trim() : null;
+        const category = args.category ? String(args.category).trim() : null;
+        const month = args.month ? Number(args.month) : null;
+        const year = args.year ? Number(args.year) : null;
+        const dateFrom = args.date_from ? String(args.date_from) : null;
+        const dateTo = args.date_to ? String(args.date_to) : null;
+
+        const filters: any[] = [];
+        if (supplier) filters.push(ilike(suguInventoryItems.supplier, `%${supplier}%`));
+        if (category) filters.push(eq(suguInventoryItems.category, category));
+        if (dateFrom) filters.push(gte(suguInventoryItems.invoiceDate, dateFrom));
+        if (dateTo) filters.push(lte(suguInventoryItems.invoiceDate, dateTo));
+        if (year && month) {
+            const mm = String(month).padStart(2, "0");
+            const start = `${year}-${mm}-01`;
+            const end = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+            filters.push(and(gte(suguInventoryItems.invoiceDate, start), lte(suguInventoryItems.invoiceDate, end)));
+        } else if (year) {
+            filters.push(and(gte(suguInventoryItems.invoiceDate, `${year}-01-01`), lte(suguInventoryItems.invoiceDate, `${year}-12-31`)));
+        }
+
+        const buildArticleFilter = (raw: string) => {
+            const norm = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+            const terms = norm.split(/\s+/).filter(t => t.length >= 2);
+            if (!terms.length) return null;
+            return or(...terms.map(t => ilike(suguInventoryItems.articleNameNormalized, `%${t}%`)));
+        };
+
+        switch (action) {
+            case "list": {
+                const where = filters.length ? and(...filters) : undefined;
+                const rows = await db.select().from(suguInventoryItems).where(where).orderBy(desc(suguInventoryItems.invoiceDate), desc(suguInventoryItems.id)).limit(limit);
+                return JSON.stringify({ type: "inventory_list", count: rows.length, items: rows });
+            }
+            case "search": {
+                if (!args.article_name) return JSON.stringify({ error: "article_name requis pour search" });
+                const f = buildArticleFilter(String(args.article_name));
+                if (f) filters.push(f);
+                const where = filters.length ? and(...filters) : undefined;
+                const rows = await db.select().from(suguInventoryItems).where(where).orderBy(desc(suguInventoryItems.invoiceDate)).limit(limit);
+                return JSON.stringify({ type: "inventory_search", query: args.article_name, count: rows.length, items: rows });
+            }
+            case "price_history": {
+                if (!args.article_name) return JSON.stringify({ error: "article_name requis pour price_history" });
+                const f = buildArticleFilter(String(args.article_name));
+                if (f) filters.push(f);
+                const where = filters.length ? and(...filters) : undefined;
+                const rows = await db.select({
+                    id: suguInventoryItems.id,
+                    invoiceDate: suguInventoryItems.invoiceDate,
+                    supplier: suguInventoryItems.supplier,
+                    articleName: suguInventoryItems.articleName,
+                    quantity: suguInventoryItems.quantity,
+                    unit: suguInventoryItems.unit,
+                    unitPriceHt: suguInventoryItems.unitPriceHt,
+                    totalHt: suguInventoryItems.totalHt,
+                }).from(suguInventoryItems).where(where).orderBy(desc(suguInventoryItems.invoiceDate)).limit(limit);
+                const prices = rows.map(r => r.unitPriceHt).filter((x): x is number => typeof x === "number" && x > 0);
+                const stats = prices.length ? {
+                    count: prices.length,
+                    min: Math.min(...prices),
+                    max: Math.max(...prices),
+                    avg: Math.round((prices.reduce((a, b) => a + b, 0) / prices.length) * 10000) / 10000,
+                    latest: prices[0],
+                    trend: prices.length > 1 ? (prices[0] > prices[prices.length - 1] ? "hausse" : prices[0] < prices[prices.length - 1] ? "baisse" : "stable") : "n/a",
+                } : null;
+                return JSON.stringify({ type: "price_history", query: args.article_name, count: rows.length, stats, history: rows });
+            }
+            case "top_articles": {
+                const where = filters.length ? and(...filters) : undefined;
+                const rows = await db.select({
+                    articleNameNormalized: suguInventoryItems.articleNameNormalized,
+                    articleName: sql<string>`MAX(${suguInventoryItems.articleName})`,
+                    supplier: sql<string>`MAX(${suguInventoryItems.supplier})`,
+                    occurrences: sql<number>`COUNT(*)::int`,
+                    totalSpent: sql<number>`COALESCE(SUM(${suguInventoryItems.totalHt}), 0)::float`,
+                    totalQty: sql<number>`COALESCE(SUM(${suguInventoryItems.quantity}), 0)::float`,
+                    avgUnitPrice: sql<number>`COALESCE(AVG(${suguInventoryItems.unitPriceHt}), 0)::float`,
+                    lastDate: sql<string>`MAX(${suguInventoryItems.invoiceDate})`,
+                }).from(suguInventoryItems).where(where).groupBy(suguInventoryItems.articleNameNormalized).orderBy(sql`SUM(${suguInventoryItems.totalHt}) DESC NULLS LAST`).limit(limit);
+                return JSON.stringify({ type: "top_articles", count: rows.length, items: rows });
+            }
+            case "by_supplier": {
+                if (!supplier) return JSON.stringify({ error: "supplier requis pour by_supplier" });
+                const where = filters.length ? and(...filters) : undefined;
+                const rows = await db.select().from(suguInventoryItems).where(where).orderBy(desc(suguInventoryItems.invoiceDate)).limit(limit);
+                const byArticle = new Map<string, { articleName: string; count: number; totalHt: number; totalQty: number; }>();
+                for (const r of rows) {
+                    const k = r.articleNameNormalized;
+                    const ex = byArticle.get(k) || { articleName: r.articleName, count: 0, totalHt: 0, totalQty: 0 };
+                    ex.count += 1;
+                    ex.totalHt += r.totalHt || 0;
+                    ex.totalQty += r.quantity || 0;
+                    byArticle.set(k, ex);
+                }
+                return JSON.stringify({ type: "by_supplier", supplier, count: rows.length, items: rows, summary: Array.from(byArticle.values()).sort((a, b) => b.totalHt - a.totalHt) });
+            }
+            case "by_invoice": {
+                const conds: any[] = [];
+                if (args.file_id) conds.push(eq(suguInventoryItems.fileId, Number(args.file_id)));
+                if (args.purchase_id) conds.push(eq(suguInventoryItems.purchaseId, Number(args.purchase_id)));
+                if (args.expense_id) conds.push(eq(suguInventoryItems.expenseId, Number(args.expense_id)));
+                if (!conds.length) return JSON.stringify({ error: "file_id, purchase_id ou expense_id requis pour by_invoice" });
+                const rows = await db.select().from(suguInventoryItems).where(or(...conds)).orderBy(suguInventoryItems.id);
+                const totalHt = rows.reduce((s, r) => s + (r.totalHt || 0), 0);
+                return JSON.stringify({ type: "by_invoice", count: rows.length, totalHt: Math.round(totalHt * 100) / 100, items: rows });
+            }
+            case "update_item": {
+                if (!args.item_id) return JSON.stringify({ error: "item_id requis pour update_item" });
+                const u = args.updates || {};
+                const patch: any = {};
+                if (typeof u.articleName === "string") {
+                    patch.articleName = u.articleName.substring(0, 200);
+                    patch.articleNameNormalized = u.articleName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim().substring(0, 200);
+                }
+                if (typeof u.quantity === "number") patch.quantity = u.quantity;
+                if (typeof u.unitPriceHt === "number") patch.unitPriceHt = u.unitPriceHt;
+                if (typeof u.totalHt === "number") patch.totalHt = u.totalHt;
+                if (typeof u.vatRate === "number") patch.vatRate = u.vatRate;
+                if (typeof u.unit === "string") patch.unit = u.unit;
+                if (typeof u.category === "string") patch.category = u.category;
+                if (typeof u.notes === "string") patch.notes = u.notes;
+                if (!Object.keys(patch).length) return JSON.stringify({ error: "Aucun champ valide à mettre à jour" });
+                const [updated] = await db.update(suguInventoryItems).set(patch).where(eq(suguInventoryItems.id, Number(args.item_id))).returning();
+                return JSON.stringify({ type: "inventory_updated", item: updated });
+            }
+            case "delete_item": {
+                if (!args.item_id) return JSON.stringify({ error: "item_id requis pour delete_item" });
+                const [deleted] = await db.delete(suguInventoryItems).where(eq(suguInventoryItems.id, Number(args.item_id))).returning();
+                return JSON.stringify({ type: "inventory_deleted", item: deleted || null });
+            }
+            case "stats": {
+                const where = filters.length ? and(...filters) : undefined;
+                const [global] = await db.select({
+                    totalItems: sql<number>`COUNT(*)::int`,
+                    distinctArticles: sql<number>`COUNT(DISTINCT ${suguInventoryItems.articleNameNormalized})::int`,
+                    distinctSuppliers: sql<number>`COUNT(DISTINCT ${suguInventoryItems.supplier})::int`,
+                    totalHt: sql<number>`COALESCE(SUM(${suguInventoryItems.totalHt}), 0)::float`,
+                    totalTtc: sql<number>`COALESCE(SUM(${suguInventoryItems.totalTtc}), 0)::float`,
+                    firstDate: sql<string>`MIN(${suguInventoryItems.invoiceDate})`,
+                    lastDate: sql<string>`MAX(${suguInventoryItems.invoiceDate})`,
+                }).from(suguInventoryItems).where(where);
+                const byCat = await db.select({
+                    category: suguInventoryItems.category,
+                    items: sql<number>`COUNT(*)::int`,
+                    totalHt: sql<number>`COALESCE(SUM(${suguInventoryItems.totalHt}), 0)::float`,
+                }).from(suguInventoryItems).where(where).groupBy(suguInventoryItems.category).orderBy(sql`SUM(${suguInventoryItems.totalHt}) DESC NULLS LAST`);
+                const bySup = await db.select({
+                    supplier: suguInventoryItems.supplier,
+                    items: sql<number>`COUNT(*)::int`,
+                    totalHt: sql<number>`COALESCE(SUM(${suguInventoryItems.totalHt}), 0)::float`,
+                }).from(suguInventoryItems).where(where).groupBy(suguInventoryItems.supplier).orderBy(sql`SUM(${suguInventoryItems.totalHt}) DESC NULLS LAST`).limit(20);
+                return JSON.stringify({ type: "inventory_stats", global, byCategory: byCat, bySupplier: bySup });
+            }
+            case "backfill": {
+                if ((globalThis as any).__inventoryBackfill?.running) {
+                    const s = (globalThis as any).__inventoryBackfill;
+                    return JSON.stringify({ status: "already_running", processed: s.processed, total: s.total, errors: s.errors, items_created: s.itemsCreated });
+                }
+                const skipExisting = args.skip_existing !== false;
+                const maxFiles = Number(args.max_files) || 0;
+                const { suguFiles, suguPurchases, suguExpenses } = await import("@shared/schema/sugu");
+                const { downloadFromObjectStorage } = await import("../../api/v2/suguManagement/shared");
+                const { parseDocumentPDF } = await import("../../api/v2/suguManagement/invoiceParsers");
+                const { saveInventoryItemsFromParsed } = await import("../../api/v2/suguManagement/filesRoutes");
+                const files = await db.select().from(suguFiles).where(and(
+                    or(eq(suguFiles.category, "achats"), eq(suguFiles.category, "frais_generaux")),
+                    eq(suguFiles.fileType, "file"),
+                )!).orderBy(suguFiles.id);
+                const target = maxFiles > 0 ? files.slice(0, maxFiles) : files;
+                const state = { running: true, processed: 0, total: target.length, errors: 0, itemsCreated: 0, skipped: 0, lastFile: "", startedAt: Date.now(), finishedAt: 0 as number };
+                (globalThis as any).__inventoryBackfill = state;
+                (async () => {
+                    for (const f of target) {
+                        try {
+                            state.lastFile = f.originalName;
+                            if (skipExisting) {
+                                const existing = await db.select({ id: suguInventoryItems.id }).from(suguInventoryItems).where(eq(suguInventoryItems.fileId, f.id)).limit(1);
+                                if (existing.length) { state.skipped++; state.processed++; continue; }
+                            }
+                            if (!f.mimeType?.includes("pdf")) { state.skipped++; state.processed++; continue; }
+                            const dl = await downloadFromObjectStorage(f.storagePath);
+                            const buf: Buffer = (dl as any)?.buffer || (dl as any);
+                            let parsed: any = null;
+                            if (f.category === "achats") {
+                                try {
+                                    const fs = await import("fs");
+                                    const path = await import("path");
+                                    const os = await import("os");
+                                    const tmpPath = path.join(os.tmpdir(), `inv-backfill-${f.id}-${Date.now()}.pdf`);
+                                    fs.writeFileSync(tmpPath, buf);
+                                    const { invoiceParserService } = await import("../invoiceParserService");
+                                    const coreResult = await invoiceParserService.extractFromPDF(tmpPath);
+                                    try { fs.unlinkSync(tmpPath); } catch {}
+                                    if (coreResult?.success && coreResult.factures?.length) {
+                                        const lineItems: any[] = [];
+                                        for (const fac of coreResult.factures) {
+                                            for (const ln of (fac.lignes || [])) {
+                                                if (!ln.designation || !ln.designation.trim()) continue;
+                                                lineItems.push({
+                                                    articleName: ln.designation.trim(),
+                                                    articleCode: ln.reference || null,
+                                                    quantity: ln.quantite ?? null,
+                                                    unit: null,
+                                                    unitPriceHt: ln.prixUnitaireHT ?? null,
+                                                    totalHt: ln.montantHT ?? null,
+                                                    vatRate: ln.tva ?? null,
+                                                });
+                                            }
+                                        }
+                                        if (lineItems.length) {
+                                            parsed = {
+                                                supplier: coreResult.fournisseur?.nom || null,
+                                                invoiceNumber: coreResult.factures[0]?.numero || null,
+                                                invoiceDate: coreResult.factures[0]?.date || null,
+                                                category: "alimentaire",
+                                                lineItems,
+                                            };
+                                            console.log(`[INVENTORY-BACKFILL] file#${f.id} core parser: ${lineItems.length} lignes extraites`);
+                                        }
+                                    }
+                                } catch (coreErr: any) {
+                                    console.warn(`[INVENTORY-BACKFILL] file#${f.id} core parser failed: ${coreErr?.message}`);
+                                }
+                            }
+                            if (!parsed) {
+                                parsed = await parseDocumentPDF(buf, f.originalName, "val");
+                            }
+                            if (parsed?.lineItems?.length) {
+                                const before = state.itemsCreated;
+                                const linkedPurchase = f.category === "achats" ? await db.select({ id: suguPurchases.id }).from(suguPurchases).where(eq(suguPurchases.fileId, f.id)).limit(1).catch(() => []) : [];
+                                const linkedExpense = f.category === "frais_generaux" ? await db.select({ id: suguExpenses.id }).from(suguExpenses).where(eq(suguExpenses.fileId, f.id)).limit(1).catch(() => []) : [];
+                                const n = await saveInventoryItemsFromParsed(parsed, {
+                                    fileId: f.id,
+                                    purchaseId: f.category === "achats" ? (linkedPurchase[0] as any)?.id ?? null : null,
+                                    expenseId: f.category === "frais_generaux" ? (linkedExpense[0] as any)?.id ?? null : null,
+                                    supplier: parsed.supplier || "Inconnu",
+                                    invoiceNumber: parsed.invoiceNumber ?? null,
+                                    invoiceDate: parsed.invoiceDate ?? null,
+                                    category: parsed.category ?? (f.category === "achats" ? "alimentaire" : "autre"),
+                                });
+                                state.itemsCreated += n;
+                                console.log(`[INVENTORY-BACKFILL] file#${f.id} ${f.originalName}: +${n} articles (total ${state.itemsCreated})`);
+                            } else {
+                                state.skipped++;
+                            }
+                        } catch (e: any) {
+                            state.errors++;
+                            console.error(`[INVENTORY-BACKFILL] file#${f.id} error:`, e?.message);
+                        }
+                        state.processed++;
+                    }
+                    state.running = false;
+                    state.finishedAt = Date.now();
+                    console.log(`[INVENTORY-BACKFILL] DONE: ${state.processed}/${state.total} files, ${state.itemsCreated} articles créés, ${state.skipped} skipped, ${state.errors} errors`);
+                })().catch((e) => { console.error("[INVENTORY-BACKFILL] fatal:", e); state.running = false; state.finishedAt = Date.now(); });
+                return JSON.stringify({ status: "started", total: target.length, message: `Re-parsing de ${target.length} factures lancé en arrière-plan. Utilise action='backfill_status' pour suivre la progression.` });
+            }
+            case "backfill_status": {
+                const s = (globalThis as any).__inventoryBackfill;
+                if (!s) return JSON.stringify({ status: "no_backfill_yet", message: "Aucun backfill n'a été lancé. Utilise action='backfill' pour démarrer." });
+                const elapsedSec = Math.round(((s.finishedAt || Date.now()) - s.startedAt) / 1000);
+                return JSON.stringify({ status: s.running ? "running" : "done", processed: s.processed, total: s.total, items_created: s.itemsCreated, skipped: s.skipped, errors: s.errors, last_file: s.lastFile, elapsed_seconds: elapsedSec });
+            }
+            default:
+                return JSON.stringify({ error: `Action inconnue: ${action}` });
+        }
+    } catch (err: any) {
+        console.error("[manage_sugu_inventory] error:", err?.message, err?.stack);
+        return JSON.stringify({ error: err?.message || String(err) });
     }
 }
 

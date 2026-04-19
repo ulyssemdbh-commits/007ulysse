@@ -87,6 +87,7 @@ export async function parseDocumentPDF(buffer: Buffer, filename?: string, restau
             if (aiResult.email) result.email = aiResult.email;
             if (aiResult.iban) result.iban = aiResult.iban;
             if (aiResult.category) result.category = aiResult.category;
+            if ((aiResult as any).lineItems && Array.isArray((aiResult as any).lineItems)) (result as any).lineItems = (aiResult as any).lineItems;
             aiSuccess = !!(result.supplier && result.amount && result.amount !== 0);
             console.log(`[SUGU] AI extraction: supplier=${result.supplier}, amount=${result.amount}, date=${result.date}, invoice=${result.invoiceNumber}`);
         }

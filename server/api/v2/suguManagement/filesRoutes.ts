@@ -10,6 +10,7 @@ import {
     suguSuppliers, insertSuguSupplierSchema,
     suguBackups, suguTrash,
     suguEmployees, suguPayroll,
+    suguInventoryItems,
 } from "@shared/schema";
 import { eq, desc, sql, and, inArray, ilike, isNull } from "drizzle-orm";
 import { emitSuguFilesUpdated, emitSuguPurchasesUpdated, emitSuguExpensesUpdated, emitSuguEmployeesUpdated, emitSuguPayrollUpdated, emitSuguBankUpdated } from "../../../services/realtimeSync";
@@ -19,6 +20,83 @@ import { parseDocumentPDF, parseMultiInvoicePDF } from "./invoiceParsers";
 import { getKnowledgePromptHints, overrideCategoryFromKnowledge, consolidateSupplierKnowledge, getKnowledgeStats } from "../../../services/suguLearningService";
 
 const router = Router();
+
+function normalizeArticleName(name: string): string {
+    return name.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+export async function saveInventoryItemsFromParsed(
+    parsed: any,
+    ctx: { fileId?: number | null; purchaseId?: number | null; expenseId?: number | null; supplier: string; invoiceNumber?: string | null; invoiceDate?: string | null; category?: string | null; }
+): Promise<number> {
+    try {
+        const items: any[] = Array.isArray(parsed?.lineItems) ? parsed.lineItems : [];
+        if (!items.length) return 0;
+        const rows = items.map((li: any) => {
+            const totalHt = typeof li.totalHt === "number" ? li.totalHt : (typeof li.unitPriceHt === "number" && typeof li.quantity === "number" ? li.unitPriceHt * li.quantity : null);
+            const vatRate = typeof li.vatRate === "number" ? li.vatRate : null;
+            const totalTtc = totalHt != null && vatRate != null ? Math.round(totalHt * (1 + vatRate / 100) * 100) / 100 : null;
+            return {
+                fileId: ctx.fileId ?? null,
+                purchaseId: ctx.purchaseId ?? null,
+                expenseId: ctx.expenseId ?? null,
+                supplier: ctx.supplier,
+                invoiceNumber: ctx.invoiceNumber ?? null,
+                invoiceDate: ctx.invoiceDate ?? null,
+                articleName: String(li.articleName).substring(0, 200),
+                articleNameNormalized: (normalizeArticleName(String(li.articleName)) || String(li.articleName).toLowerCase()).substring(0, 200) || "article",
+                articleCode: li.articleCode ?? null,
+                category: ctx.category ?? null,
+                unit: li.unit ?? null,
+                quantity: li.quantity ?? null,
+                unitPriceHt: li.unitPriceHt ?? null,
+                totalHt,
+                vatRate,
+                totalTtc,
+            };
+        });
+        await db.insert(suguInventoryItems).values(rows);
+        console.log(`[SUGU INVENTORY] Saved ${rows.length} article(s) from ${ctx.supplier} (file=${ctx.fileId}, purchase=${ctx.purchaseId}, expense=${ctx.expenseId})`);
+        try {
+            const { brainPulse } = await import("../../../services/sensory/BrainPulse");
+            brainPulse(["hippocampus", "concept"], "suguInventory", `+${rows.length} article(s) ${ctx.supplier}`, { intensity: Math.min(1, 0.3 + rows.length * 0.05) });
+        } catch {}
+        try {
+            const { sensorySystemService } = await import("../../../services/sensory");
+            sensorySystemService.recordPulse?.({
+                zones: ["hippocampus", "concept", "association"],
+                intensity: Math.min(1, 0.3 + rows.length * 0.05),
+                source: "sugu.inventory.save",
+                meta: { count: rows.length, supplier: ctx.supplier, fileId: ctx.fileId, invoice: ctx.invoiceNumber },
+            });
+        } catch {}
+        try {
+            const { brainHub } = await import("../../../services/sensory/BrainHub");
+            brainHub.addToWorkingMemory({
+                type: "input",
+                content: `SUGU Inventory: +${rows.length} article(s) from ${ctx.supplier}${ctx.invoiceNumber ? ` (facture ${ctx.invoiceNumber})` : ""}`,
+                source: "sugu.inventory.backfill",
+                timestamp: new Date(),
+                importance: Math.min(90, 40 + rows.length * 2),
+                ttlMs: 5 * 60 * 1000,
+            } as any);
+        } catch (e) {
+            console.warn("[SUGU INVENTORY] brainHub working memory push failed:", (e as any)?.message);
+        }
+        try {
+            const { broadcastSyncEvent } = await import("../../../services/realtimeSync");
+            broadcastSyncEvent("sugu.inventory.updated" as any, { count: rows.length, supplier: ctx.supplier, fileId: ctx.fileId });
+        } catch {}
+        return rows.length;
+    } catch (err: any) {
+        console.error("[SUGU INVENTORY] Failed to save line items:", err?.message);
+        return 0;
+    }
+}
 
 async function findOrCreateSupplier(parsed: ParsedDocumentData, fallbackName?: string): Promise<number | null> {
     const supplierName = parsed.supplier || fallbackName;
@@ -270,6 +348,7 @@ router.post("/files", hybridUpload({ storage: multer.memoryStorage(), limits: { 
                         notes: noteParts.join(" | "),
                     }).returning();
                     console.log(`[SUGU] Expense #${expense.id} from preview-parsed data: ${resolvedSupplier} ${resolvedAmount}€ TVA=${resolvedTaxAmount} N°${resolvedInvoice || "—"} date=${resolvedDate}`);
+                    await saveInventoryItemsFromParsed(p, { fileId: result.id, expenseId: expense.id, supplier: resolvedSupplier, invoiceNumber: resolvedInvoice, invoiceDate: resolvedDate, category: resolvedCategory });
                     res.json({ ...result, linkedExpenseId: expense.id, parsedData: p });
                     emitSuguFilesUpdated();
                     emitSuguExpensesUpdated();
@@ -359,6 +438,7 @@ router.post("/files", hybridUpload({ storage: multer.memoryStorage(), limits: { 
                                 notes: updatedNotes.join(" | "),
                             }).where(eq(suguExpenses.id, expense.id));
                             console.log(`[SUGU] Expense #${expense.id} updated from ${file.mimetype.startsWith("image/") ? "vision AI" : "PDF"}: ${betterSupplier} = ${betterAmount}€ TVA=${betterTax} N°${betterInvoice || "—"}`);
+                            await saveInventoryItemsFromParsed(parsed, { fileId: result.id, expenseId: expense.id, supplier: betterSupplier, invoiceNumber: betterInvoice, invoiceDate: betterDate, category: betterCategory });
                             emitSuguExpensesUpdated();
                         } catch (bgErr: any) {
                             console.error(`[SUGU] Background parse failed for expense #${expense.id}:`, bgErr?.message);
@@ -421,6 +501,7 @@ router.post("/files", hybridUpload({ storage: multer.memoryStorage(), limits: { 
                         notes: noteParts.join(" | "),
                     }).returning();
                     console.log(`[SUGU] Purchase #${purchase.id} from preview-parsed data: ${resolvedSupplier} ${resolvedAmount}€ TVA=${resolvedTaxAmount} N°${resolvedInvoice || "—"} date=${resolvedDate}`);
+                    await saveInventoryItemsFromParsed(p, { fileId: result.id, purchaseId: purchase.id, supplier: resolvedSupplier, invoiceNumber: resolvedInvoice, invoiceDate: resolvedDate, category: resolvedCategory });
                     res.json({ ...result, linkedPurchaseId: purchase.id, parsedData: p, supplierId });
                     emitSuguFilesUpdated();
                     emitSuguPurchasesUpdated();
@@ -471,6 +552,7 @@ router.post("/files", hybridUpload({ storage: multer.memoryStorage(), limits: { 
                                 }).returning();
                                 createdPurchases.push(purchase);
                                 console.log(`[SUGU] Multi-invoice: created purchase #${purchase.id} (${i + 1}/${multiParsed.length}): ${resolvedSupplier} = ${resolvedAmount}€`);
+                                await saveInventoryItemsFromParsed(parsed, { fileId: result.id, purchaseId: purchase.id, supplier: resolvedSupplier, invoiceNumber: resolvedInvoice, invoiceDate: resolvedDate, category: parsed.category || "alimentaire" });
                             }
                             res.json({
                                 ...result,
@@ -519,6 +601,7 @@ router.post("/files", hybridUpload({ storage: multer.memoryStorage(), limits: { 
                                 notes: noteParts.join(" | "),
                             }).returning();
                             console.log(`[SUGU] Auto-created purchase #${purchase.id} from PDF: ${resolvedSupplier} = ${resolvedAmount}€`);
+                            await saveInventoryItemsFromParsed(parsed, { fileId: result.id, purchaseId: purchase.id, supplier: resolvedSupplier, invoiceNumber: resolvedInvoice, invoiceDate: resolvedDate, category: parsed.category || "autre" });
                             res.json({ ...result, linkedPurchaseId: purchase.id, parsedData: parsed, supplierId });
                             emitSuguFilesUpdated();
                             emitSuguPurchasesUpdated();
@@ -570,6 +653,7 @@ router.post("/files", hybridUpload({ storage: multer.memoryStorage(), limits: { 
                                 notes: noteParts.join(" | "),
                             }).returning();
                             console.log(`[SUGU] Vision AI purchase #${purchase.id} from image: ${resolvedSupplier} = ${resolvedAmount}€ (${resolvedCategory})`);
+                            await saveInventoryItemsFromParsed(parsed, { fileId: result.id, purchaseId: purchase.id, supplier: resolvedSupplier, invoiceNumber: resolvedInvoice, invoiceDate: resolvedDate, category: resolvedCategory });
                             res.json({ ...result, linkedPurchaseId: purchase.id, parsedData: parsed, supplierId });
                             emitSuguFilesUpdated();
                             emitSuguPurchasesUpdated();
@@ -771,5 +855,21 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 // GET /files/:id/download — download a file
+
+router.post("/inventory/backfill", async (req: Request, res: Response) => {
+    try {
+        const { executeSuguInventoryManagement } = await import("../../../services/tools/utilityTools");
+        const out = await executeSuguInventoryManagement({ action: "backfill", skip_existing: req.body?.skip_existing !== false, max_files: req.body?.max_files });
+        res.json(JSON.parse(out));
+    } catch (e: any) { res.status(500).json({ error: e?.message }); }
+});
+
+router.get("/inventory/backfill/status", async (_req: Request, res: Response) => {
+    try {
+        const { executeSuguInventoryManagement } = await import("../../../services/tools/utilityTools");
+        const out = await executeSuguInventoryManagement({ action: "backfill_status" });
+        res.json(JSON.parse(out));
+    } catch (e: any) { res.status(500).json({ error: e?.message }); }
+});
 
 export default router;

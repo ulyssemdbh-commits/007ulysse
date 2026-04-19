@@ -72,6 +72,7 @@ async function v2AuthMiddleware(req: Request, res: Response, next: NextFunction)
     "/diagnostics/quick",
     "/sugu-management/cash/batch-import",
     "/sugu-management/cash/batch-import-init",
+    "/sugu-management/inventory/backfill",
     "/push/vapid-key",
   ];
   if (publicPaths.some(p => req.path.startsWith(p))) {
