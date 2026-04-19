@@ -43,6 +43,7 @@ const UlysseInsights = lazy(() => import("@/pages/UlysseInsights"));
 const SportsPredictions = lazy(() => import("@/pages/SportsPredictions"));
 const FootAlmanach = lazy(() => import("@/pages/FootAlmanach"));
 const BrainDashboard = lazy(() => import("@/pages/BrainDashboard"));
+const Brain3D = lazy(() => import("@/pages/Brain3D"));
 const Diagnostics = lazy(() => import("@/pages/Diagnostics"));
 const Finances = lazy(() => import("@/pages/Finances"));
 const SecurityDashboard = lazy(() => import("@/pages/SecurityDashboard"));
@@ -360,10 +361,17 @@ function AppRouter() {
           </ProtectedRoute>
         )}
       </Route>
-      <Route path="/brain">
+      <Route path="/brain/learning">
         {() => (
           <ProtectedRoute>
             <LazyPage><BrainDashboard /></LazyPage>
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/brain">
+        {() => (
+          <ProtectedRoute>
+            <LazyPage><Brain3D /></LazyPage>
           </ProtectedRoute>
         )}
       </Route>
